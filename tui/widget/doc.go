@@ -4,6 +4,22 @@
 // compose these primitives and add domain-specific controllers rather than
 // reimplementing their interaction machinery.
 //
+// # Where the widgets live
+//
+// The widgets live in packages of their own, and this package forwards each name
+// they export, marked Deprecated, so a program importing tui/widget still
+// compiles. New code imports the package a widget lives in:
+//
+//	tui/widget/core      Base, Box, the overlays, menus, controls, lists, tabs, windows
+//	tui/widget/editor    the Editor and EditorCore, the command line, the Markdown cells
+//	tui/widget/table     Table, DataTable and their sources
+//	tui/widget/files     the file list, the open and save views, the tree
+//	tui/widget/htmlview  the HTML view and its images
+//	tui/widget/terminal  the PTY terminal and its tabs
+//
+// A forwarded type is an alias, so a value's printed type (%T) names the package
+// it lives in (core.Box), not widget.
+//
 // # Complete Widget Inventory
 //
 //	Widget          Category         Focusable       Primary Emitted Events (Bus)

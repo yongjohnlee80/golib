@@ -11,6 +11,8 @@ import (
 )
 
 // AnchorSpec says what a layer is anchored to and where it would prefer to sit.
+//
+// Deprecated: use [core.AnchorSpec], from github.com/yongjohnlee80/golib/tui/widget/core.
 type AnchorSpec = core.AnchorSpec
 
 // AnchorPolicy decides where a popup actually goes when its preferred position
@@ -21,9 +23,13 @@ type AnchorSpec = core.AnchorSpec
 // a policy that could reach the tree would be doing layout from outside the
 // layout phase. The runtime bounds whatever it returns to the viewport, so a
 // policy cannot place a layer off-screen even by mistake.
+//
+// Deprecated: use [core.AnchorPolicy], from github.com/yongjohnlee80/golib/tui/widget/core.
 type AnchorPolicy = core.AnchorPolicy
 
 // AnchorPolicyFunc adapts a plain function to AnchorPolicy.
+//
+// Deprecated: use [core.AnchorPolicyFunc], from github.com/yongjohnlee80/golib/tui/widget/core.
 type AnchorPolicyFunc = core.AnchorPolicyFunc
 
 // FlipClipPolicy is the default: try the preferred side, flip to the opposite
@@ -34,6 +40,8 @@ type AnchorPolicyFunc = core.AnchorPolicyFunc
 // near the bottom of the screen that clipped would show two of its rows; the
 // same dropdown flipped above its field shows all of them, which is what every
 // toolkit does and what a user expects without being taught.
+//
+// Deprecated: use [core.FlipClipPolicy], from github.com/yongjohnlee80/golib/tui/widget/core.
 type FlipClipPolicy = core.FlipClipPolicy
 
 // Base provides NodeID and Context plumbing, dirty-marking, layout invalidation,
@@ -141,6 +149,8 @@ type FlipClipPolicy = core.FlipClipPolicy
 //		w.label = s
 //		w.MarkDirty() // Safe both before and after mount
 //	}
+//
+// Deprecated: use [core.Base], from github.com/yongjohnlee80/golib/tui/widget/core.
 type Base = core.Base
 
 // Box is the standard panel container: a bordered, single-child panel
@@ -222,9 +232,13 @@ type Base = core.Base
 //		widget.WithTitle("Preview"),
 //		widget.WithFocusable(true),
 //	)
+//
+// Deprecated: use [core.Box], from github.com/yongjohnlee80/golib/tui/widget/core.
 type Box = core.Box
 
 // BoxOption customizes a Box under construction.
+//
+// Deprecated: use [core.BoxOption], from github.com/yongjohnlee80/golib/tui/widget/core.
 type BoxOption = core.BoxOption
 
 // BufferView provides a high-performance, append-oriented log pager and terminal output
@@ -296,9 +310,13 @@ type BoxOption = core.BoxOption
 //	cmd.Stdout = logs.Writer()
 //	cmd.Stderr = logs.Writer()
 //	go cmd.Run()
+//
+// Deprecated: use [core.BufferView], from github.com/yongjohnlee80/golib/tui/widget/core.
 type BufferView = core.BufferView
 
 // BufferViewOption customizes a BufferView under construction.
+//
+// Deprecated: use [core.BufferViewOption], from github.com/yongjohnlee80/golib/tui/widget/core.
 type BufferViewOption = core.BufferViewOption
 
 // BufferWriter is the separate any-goroutine handle behind BufferView.Writer,
@@ -306,6 +324,8 @@ type BufferViewOption = core.BufferViewOption
 // calls (order = acquisition order); mu guards the byte budget and closed
 // flag. golib's components draw through it; a widget outside golib rarely needs it. The Terminal
 // writes its program's output through one.
+//
+// Deprecated: use [core.BufferWriter], from github.com/yongjohnlee80/golib/tui/widget/core.
 type BufferWriter = core.BufferWriter
 
 // ButtonRole says what a button MEANS to the dialog holding it — Qt's
@@ -317,6 +337,8 @@ type BufferWriter = core.BufferWriter
 // Matching on label text — "OK", "Cancel", "No" — breaks the moment an app is
 // translated, and matching on position breaks the moment the buttons are
 // reordered. A role is stated once by the author and survives both.
+//
+// Deprecated: use [core.ButtonRole], from github.com/yongjohnlee80/golib/tui/widget/core.
 type ButtonRole = core.ButtonRole
 
 // Button is a labelled control that can be activated by keyboard, pointer or
@@ -328,34 +350,47 @@ type ButtonRole = core.ButtonRole
 // so observers on the bus still see the activation. That is the right default
 // for a control an author has not finished wiring up, and it is not the same as
 // inert.
+//
+// Deprecated: use [core.Button], from github.com/yongjohnlee80/golib/tui/widget/core.
 type Button = core.Button
 
+// Deprecated: use [core.ButtonOption], from github.com/yongjohnlee80/golib/tui/widget/core.
 type ButtonOption = core.ButtonOption
 
 // ButtonStyle carries the four looks a button can have. It is IMMUTABLE: every
 // With* method returns a new value, so a style shared by a hundred buttons
 // cannot be altered underneath them by whoever happens to hold a reference.
+//
+// Deprecated: use [core.ButtonStyle], from github.com/yongjohnlee80/golib/tui/widget/core.
 type ButtonStyle = core.ButtonStyle
 
 // ContextOwner is a widget a menu, popup or prompt opens over: a component with the Context it is
 // mounted under (nil before it is). Every Base-embedding widget is one.
+//
+// Deprecated: use [core.ContextOwner], from github.com/yongjohnlee80/golib/tui/widget/core.
 type ContextOwner = core.ContextOwner
 
 // ChildLister lets non-Container widgets expose their children to
 // focusFirst's walk (Split, Tabs, Tiles, TerminalTabs). A composite of your own
 // that is not a Container lists its children with it, so focus can reach them.
+//
+// Deprecated: use [core.ChildLister], from github.com/yongjohnlee80/golib/tui/widget/core.
 type ChildLister = core.ChildLister
 
 // ContextMenuRequester is a row view that can ask its owner for a context menu instead of opening
 // one: List and Tree. On, a right press or the menu key is reported (ContextMenuEvent and the
 // owner's hook) and consumed; off, it goes on as before. A host with one context-menu policy sets it
 // on each of its views and opens its own menu at the point given.
+//
+// Deprecated: use [core.ContextMenuRequester], from github.com/yongjohnlee80/golib/tui/widget/core.
 type ContextMenuRequester = core.ContextMenuRequester
 
 // MenuOpener is a menu a view opens itself, as DataTable does on a right press: opened at a point in
 // the view's own cells, and closed when the view is given another. *EditorMenu is one. A menu that
 // can be switched off says so by an Enabled() bool of its own (EditorMenu's), which the view asks
 // for where it opens one; a menu without it is always on.
+//
+// Deprecated: use [core.MenuOpener], from github.com/yongjohnlee80/golib/tui/widget/core.
 type MenuOpener = core.MenuOpener
 
 // DismissReason says why an overlay closed.
@@ -365,10 +400,14 @@ type MenuOpener = core.MenuOpener
 // reason of its own — the reason travels through the toolkit untouched, and
 // renders as "unknown" rather than being rejected, so an application can carry
 // its own vocabulary without the toolkit needing to know it.
+//
+// Deprecated: use [core.DismissReason], from github.com/yongjohnlee80/golib/tui/widget/core.
 type DismissReason = core.DismissReason
 
 // LayerID names a keyed overlay layer. It is empty for an overlay opened
 // without a key, which is the ordinary case for a modal dialog.
+//
+// Deprecated: use [core.LayerID], from github.com/yongjohnlee80/golib/tui/widget/core.
 type LayerID = core.LayerID
 
 // OverlayDismissedEvent reports that an overlay closed, and why.
@@ -376,15 +415,23 @@ type LayerID = core.LayerID
 // Exactly one is published per lifecycle transition: a dismissal that finds the
 // overlay already closed publishes nothing, so a listener counting these is
 // counting closures rather than attempts.
+//
+// Deprecated: use [core.OverlayDismissedEvent], from github.com/yongjohnlee80/golib/tui/widget/core.
 type OverlayDismissedEvent = core.OverlayDismissedEvent
 
 // ModalPlacement says where a Modal's card sits within the host.
+//
+// Deprecated: use [core.ModalPlacement], from github.com/yongjohnlee80/golib/tui/widget/core.
 type ModalPlacement = core.ModalPlacement
 
 // PlacementSide is the side of an anchor a popup prefers.
+//
+// Deprecated: use [core.PlacementSide], from github.com/yongjohnlee80/golib/tui/widget/core.
 type PlacementSide = core.PlacementSide
 
 // PlacementAlign is how a popup lines up along the anchor's other axis.
+//
+// Deprecated: use [core.PlacementAlign], from github.com/yongjohnlee80/golib/tui/widget/core.
 type PlacementAlign = core.PlacementAlign
 
 // Placement is a popup's PREFERRED position relative to its anchor. It is a
@@ -394,9 +441,13 @@ type PlacementAlign = core.PlacementAlign
 // Its zero value is the common case — below the anchor, aligned to its start,
 // with no offset — so a caller that wants ordinary menu behaviour supplies
 // nothing.
+//
+// Deprecated: use [core.Placement], from github.com/yongjohnlee80/golib/tui/widget/core.
 type Placement = core.Placement
 
 // SubmitEvent is emitted by TextInput on Enter when validation passes.
+//
+// Deprecated: use [core.SubmitEvent], from github.com/yongjohnlee80/golib/tui/widget/core.
 type SubmitEvent = core.SubmitEvent
 
 // ChangeEvent is emitted by TextInput, TextArea and EditorCore whenever the
@@ -411,37 +462,55 @@ type SubmitEvent = core.SubmitEvent
 // subscriber already existed, the edit's event is queued, and a later
 // subscriber still receives it at delivery. Subscribe before the edits you
 // follow.
+//
+// Deprecated: use [core.ChangeEvent], from github.com/yongjohnlee80/golib/tui/widget/core.
 type ChangeEvent = core.ChangeEvent
 
 // SelectionChangedEvent is emitted by Select on commit, by List on cursor
 // movement in single-select mode, and by Tree when the node under its cursor
 // changes (Index is then the row among the Tree's VisibleRows).
+//
+// Deprecated: use [core.SelectionChangedEvent], from github.com/yongjohnlee80/golib/tui/widget/core.
 type SelectionChangedEvent = core.SelectionChangedEvent
 
 // OpenedEvent is emitted by Select when its option overlay opens.
+//
+// Deprecated: use [core.OpenedEvent], from github.com/yongjohnlee80/golib/tui/widget/core.
 type OpenedEvent = core.OpenedEvent
 
 // ClosedEvent is emitted by Select when its option overlay closes,
 // with or without a commit.
+//
+// Deprecated: use [core.ClosedEvent], from github.com/yongjohnlee80/golib/tui/widget/core.
 type ClosedEvent = core.ClosedEvent
 
 // ActivateEvent is emitted by List on Enter or double-click.
+//
+// Deprecated: use [core.ActivateEvent], from github.com/yongjohnlee80/golib/tui/widget/core.
 type ActivateEvent = core.ActivateEvent
 
 // ContextMenuEvent is emitted by List, when its context menu is on (List.SetContextMenu), for a
 // right press or the context-menu key (Shift+F10, Menu): the row it is for, the cursor already
 // moved there (-1 for a press below the rows), and where to open the menu, in the list's own cells.
+//
+// Deprecated: use [core.ContextMenuEvent], from github.com/yongjohnlee80/golib/tui/widget/core.
 type ContextMenuEvent = core.ContextMenuEvent
 
 // FollowTailChangedEvent is emitted by BufferView when follow-tail
 // disengages (manual scroll-up) or re-engages (End / scroll to bottom).
+//
+// Deprecated: use [core.FollowTailChangedEvent], from github.com/yongjohnlee80/golib/tui/widget/core.
 type FollowTailChangedEvent = core.FollowTailChangedEvent
 
 // TabChangedEvent is emitted by Tabs when the active tab changes.
+//
+// Deprecated: use [core.TabChangedEvent], from github.com/yongjohnlee80/golib/tui/widget/core.
 type TabChangedEvent = core.TabChangedEvent
 
 // SplitResizedEvent is emitted by Split when the divider moves (keyboard or
 // mouse drag).
+//
+// Deprecated: use [core.SplitResizedEvent], from github.com/yongjohnlee80/golib/tui/widget/core.
 type SplitResizedEvent = core.SplitResizedEvent
 
 // Floating Window, Modal Dialog & Overlay Presentation Architecture
@@ -538,44 +607,64 @@ type SplitResizedEvent = core.SplitResizedEvent
 //		widget.WithSizeFraction(90, 60),
 //		widget.WithAnchor(widget.Top),
 //	)
+//
+// Deprecated: use [core.Float], from github.com/yongjohnlee80/golib/tui/widget/core.
 type Float = core.Float
 
 // FloatOption customizes a Float under construction.
+//
+// Deprecated: use [core.FloatOption], from github.com/yongjohnlee80/golib/tui/widget/core.
 type FloatOption = core.FloatOption
 
 // Anchor positions a Float's content within the overlay area.
+//
+// Deprecated: use [core.Anchor], from github.com/yongjohnlee80/golib/tui/widget/core.
 type Anchor = core.Anchor
 
 // TabSpan is one tab's label on the bar: its first cell and its width, in cells.
+//
+// Deprecated: use [core.TabSpan], from github.com/yongjohnlee80/golib/tui/widget/core.
 type TabSpan = core.TabSpan
 
 // TabSpanner is a tab strip as a native painter reads it: the stretches its row draws (TabSpans)
 // and the active tab's place among them (-1 when it is not shown). Tabs, TabStrip and TerminalTabs
 // all draw through one strip, so each answers the same way.
+//
+// Deprecated: use [core.TabSpanner], from github.com/yongjohnlee80/golib/tui/widget/core.
 type TabSpanner = core.TabSpanner
 
 // TabControl is a window control at a tab strip's right end (SetWindowButtons): its cells, and what
 // a press on it does.
+//
+// Deprecated: use [core.TabControl], from github.com/yongjohnlee80/golib/tui/widget/core.
 type TabControl = core.TabControl
 
 // TabWindowController is a tab strip whose row may end in window controls, as a native painter reads
 // them: none unless its owner shows them (Tabs.SetWindowButtons, TerminalTabs.SetWindowButtons).
+//
+// Deprecated: use [core.TabWindowController], from github.com/yongjohnlee80/golib/tui/widget/core.
 type TabWindowController = core.TabWindowController
 
 // PopupHost is what a widget needs from the nearest OverlayHost to open a popup at a point. golib's
 // components draw through it; a widget outside golib rarely needs it. OverlayHost is one.
+//
+// Deprecated: use [core.PopupHost], from github.com/yongjohnlee80/golib/tui/widget/core.
 type PopupHost = core.PopupHost
 
 // ModalHost is what a Modal opens on and is dismissed through: the host performs the transition,
 // since dismissing a dialog that is not on top closes the ones above it first. The CommandLine
 // opens its prompt dialog on it. Its methods are unexported, so only this package's OverlayHost is
 // one; golib's components draw through it; a widget outside golib rarely needs it.
+//
+// Deprecated: use [core.ModalHost], from github.com/yongjohnlee80/golib/tui/widget/core.
 type ModalHost = core.ModalHost
 
 // ImageResolver opens a resource an HTMLView's page names, an image's src or a linked
 // stylesheet's href, for a layout that loads them. It is the application's: the view loads
 // nothing on its own, so a page cannot reach a file, or the network, the application did not hand
 // it. data: URIs never reach it; a layout decodes them itself.
+//
+// Deprecated: use [core.ImageResolver], from github.com/yongjohnlee80/golib/tui/widget/core.
 type ImageResolver = core.ImageResolver
 
 // ListSource is the data seam List renders through.
@@ -600,6 +689,8 @@ type ImageResolver = core.ImageResolver
 // a source without notifying is a CALLER VIOLATION, not a List bug — it is
 // undetectable by construction, which is why this is a contract rather than a
 // defence in code.
+//
+// Deprecated: use [core.ListSource], from github.com/yongjohnlee80/golib/tui/widget/core.
 type ListSource[T any] = core.ListSource[T]
 
 // Virtualized List & Row Selection Architecture
@@ -672,45 +763,65 @@ type ListSource[T any] = core.ListSource[T]
 //		widget.WithItems([]string{"Build", "Test", "Deploy"}, func(s string) string { return s }),
 //		widget.WithMultiSelect[string](true),
 //	)
+//
+// Deprecated: use [core.List], from github.com/yongjohnlee80/golib/tui/widget/core.
 type List[T any] = core.List[T]
 
 // ListStyles are the row style hooks. Zero fields keep the defaults.
+//
+// Deprecated: use [core.ListStyles], from github.com/yongjohnlee80/golib/tui/widget/core.
 type ListStyles = core.ListStyles
 
 // ListOption customizes a List under construction.
+//
+// Deprecated: use [core.ListOption], from github.com/yongjohnlee80/golib/tui/widget/core.
 type ListOption[T any] = core.ListOption[T]
 
 // RowStyler is a row view whose row looks a host or a palette replaces: List, Table and Tree.
 // SetStyles merges (zero fields keep theirs); ResetStyles starts from the view's defaults, so a
 // removed role drops. A view reads the fields it has use for; Tree, with no multi-selection, reads
 // Row, CursorRow and CursorBlurred.
+//
+// Deprecated: use [core.RowStyler], from github.com/yongjohnlee80/golib/tui/widget/core.
 type RowStyler = core.RowStyler
 
 // Menu is a model-driven menu: a vertical list of rows, with cascading submenu
 // levels opened as anchored overlays.
+//
+// Deprecated: use [core.Menu], from github.com/yongjohnlee80/golib/tui/widget/core.
 type Menu = core.Menu
 
 // MenuOption configures a Menu at construction.
+//
+// Deprecated: use [core.MenuOption], from github.com/yongjohnlee80/golib/tui/widget/core.
 type MenuOption = core.MenuOption
 
 // MenuArmAction presses a row: select it, remember it as armed, take the
 // pointer. Carries the row so the Menu knows which one, since the runtime
 // cannot.
+//
+// Deprecated: use [core.MenuArmAction], from github.com/yongjohnlee80/golib/tui/widget/core.
 type MenuArmAction = core.MenuArmAction
 
 // MenuSelectAction moves the selection to a row. It re-arms ONLY when the row
 // is the one originally pressed, so dragging across a menu highlights rows
 // without making any of them the thing a release would activate.
+//
+// Deprecated: use [core.MenuSelectAction], from github.com/yongjohnlee80/golib/tui/widget/core.
 type MenuSelectAction = core.MenuSelectAction
 
 // MenuDisarmAction clears the armed row while RETAINING the pointer. Visual
 // only: the gesture is still running, and moving back over the pressed row
 // re-arms it.
+//
+// Deprecated: use [core.MenuDisarmAction], from github.com/yongjohnlee80/golib/tui/widget/core.
 type MenuDisarmAction = core.MenuDisarmAction
 
 // MenuActivateAction runs a row. Shared by mouse release, Enter, Space, a
 // mnemonic, a UserEvent and DoAction — there is no pointer-specific activation
 // path, which is what makes keyboard and mouse provably equivalent.
+//
+// Deprecated: use [core.MenuActivateAction], from github.com/yongjohnlee80/golib/tui/widget/core.
 type MenuActivateAction = core.MenuActivateAction
 
 // MenuCancelAction ends the pointer gesture and closes NOTHING.
@@ -718,6 +829,8 @@ type MenuActivateAction = core.MenuActivateAction
 // Idempotent, and reports true only when it actually ended an active gesture —
 // so a caller cannot tell "cancelled a drag" from "there was nothing to cancel"
 // by accident, and the runtime's cleanup paths can call it unconditionally.
+//
+// Deprecated: use [core.MenuCancelAction], from github.com/yongjohnlee80/golib/tui/widget/core.
 type MenuCancelAction = core.MenuCancelAction
 
 // MenuCloseAction closes open levels: all of them, or only the deepest.
@@ -725,6 +838,8 @@ type MenuCancelAction = core.MenuCancelAction
 // Separate from cancel because it is usable with no pointer gesture in play —
 // from the keyboard, a UserEvent or DoAction — and because cancelling a drag and
 // closing a menu are different things that happened to be conflated once.
+//
+// Deprecated: use [core.MenuCloseAction], from github.com/yongjohnlee80/golib/tui/widget/core.
 type MenuCloseAction = core.MenuCloseAction
 
 // MenuActivatedEvent reports that a model row was activated.
@@ -737,9 +852,13 @@ type MenuCloseAction = core.MenuCloseAction
 // command whose action was nil or refused still happened as far as the user is
 // concerned, and a listener counting activations should see it. Disabled,
 // hidden, separator and submenu rows emit nothing at all.
+//
+// Deprecated: use [core.MenuActivatedEvent], from github.com/yongjohnlee80/golib/tui/widget/core.
 type MenuActivatedEvent = core.MenuActivatedEvent
 
 // MenuSelectionChangedEvent reports that the highlighted row moved.
+//
+// Deprecated: use [core.MenuSelectionChangedEvent], from github.com/yongjohnlee80/golib/tui/widget/core.
 type MenuSelectionChangedEvent = core.MenuSelectionChangedEvent
 
 // MenuBar is a PLACEMENT SHELL over a Menu, not a parallel widget.
@@ -751,12 +870,18 @@ type MenuSelectionChangedEvent = core.MenuSelectionChangedEvent
 // MenuBar with its own model would need its own SetModel, its own selection
 // repair and its own close path, and the day those disagreed with the Menu's
 // would be the day a dropdown outlived the bar that opened it.
+//
+// Deprecated: use [core.MenuBar], from github.com/yongjohnlee80/golib/tui/widget/core.
 type MenuBar = core.MenuBar
 
 // BarPlacement is the edge a MenuBar occupies.
+//
+// Deprecated: use [core.BarPlacement], from github.com/yongjohnlee80/golib/tui/widget/core.
 type BarPlacement = core.BarPlacement
 
 // MenuBarOption configures a MenuBar at construction.
+//
+// Deprecated: use [core.MenuBarOption], from github.com/yongjohnlee80/golib/tui/widget/core.
 type MenuBarOption = core.MenuBarOption
 
 // MenuItem is a STANDALONE menu-shaped control: a mountable, focusable leaf for
@@ -772,14 +897,20 @@ type MenuBarOption = core.MenuBarOption
 //
 // Both resolve activation through the same runtime path, so a MenuItem and a
 // Menu row triggered by the same input behave the same way.
+//
+// Deprecated: use [core.MenuItem], from github.com/yongjohnlee80/golib/tui/widget/core.
 type MenuItem = core.MenuItem
 
 // MenuItemOption configures a MenuItem at construction.
+//
+// Deprecated: use [core.MenuItemOption], from github.com/yongjohnlee80/golib/tui/widget/core.
 type MenuItemOption = core.MenuItemOption
 
 // ItemID is a caller-supplied row identity, stable across model replacement.
 // Every mutation, selection and submenu operation names a row by this rather
 // than by position, so inserting a row above does not silently retarget them.
+//
+// Deprecated: use [core.ItemID], from github.com/yongjohnlee80/golib/tui/widget/core.
 type ItemID = core.ItemID
 
 // ItemKind is what a row IS. The set is deliberately CLOSED.
@@ -791,6 +922,8 @@ type ItemID = core.ItemID
 // extension goes through Action (behaviour) and RowRenderer (appearance) — which
 // together cover the cases a new kind would have, without a switch edit and
 // without every consumer inheriting a half-supported variant.
+//
+// Deprecated: use [core.ItemKind], from github.com/yongjohnlee80/golib/tui/widget/core.
 type ItemKind = core.ItemKind
 
 // MenuItemModel is one row.
@@ -799,6 +932,8 @@ type ItemKind = core.ItemKind
 // nothing, rather than being an enabled no-op that silently appears in a menu
 // because a caller forgot a field. The constructors below set Enabled and
 // Visible; anything else is stated explicitly on the value they return.
+//
+// Deprecated: use [core.MenuItemModel], from github.com/yongjohnlee80/golib/tui/widget/core.
 type MenuItemModel = core.MenuItemModel
 
 // RowView is an IMMUTABLE projection of one row, handed to a RowRenderer.
@@ -807,6 +942,8 @@ type MenuItemModel = core.MenuItemModel
 // a slice header that aliases the Menu's own storage, so a renderer — which is
 // consumer code running inside the render phase — could mutate the model the
 // Menu owns. HasChildren carries the only fact a renderer needs from it.
+//
+// Deprecated: use [core.RowView], from github.com/yongjohnlee80/golib/tui/widget/core.
 type RowView = core.RowView
 
 // RowState is the four INDEPENDENT facts a renderer needs about one row.
@@ -824,6 +961,8 @@ type RowView = core.RowView
 // already has: RowView.Enabled, and the kind for a separator. A flag duplicating
 // a value in the same call is a second copy of one fact, and two copies can
 // disagree.
+//
+// Deprecated: use [core.RowState], from github.com/yongjohnlee80/golib/tui/widget/core.
 type RowState = core.RowState
 
 // RowRenderer paints one row into the rect the Menu laid out for it.
@@ -837,6 +976,8 @@ type RowState = core.RowState
 // apply to a hook exactly as they apply to a widget. It may not change the row's
 // geometry either: the Menu owns sizing, so that rows stay uniform and the
 // regions it declared for hit-testing keep matching what is on screen.
+//
+// Deprecated: use [core.RowRenderer], from github.com/yongjohnlee80/golib/tui/widget/core.
 type RowRenderer = core.RowRenderer
 
 // MenuStyle carries the looks a menu paints. It follows ButtonStyle and
@@ -848,12 +989,18 @@ type RowRenderer = core.RowRenderer
 // the App resolves the tokens at render time. A default built from literal
 // colours would be invisible to a theme swap, which is the defect this shape
 // exists to prevent.
+//
+// Deprecated: use [core.MenuStyle], from github.com/yongjohnlee80/golib/tui/widget/core.
 type MenuStyle = core.MenuStyle
 
 // Modal is a dialog layer: a focus trap filling its host, holding a placed card.
+//
+// Deprecated: use [core.Modal], from github.com/yongjohnlee80/golib/tui/widget/core.
 type Modal = core.Modal
 
 // ModalOption configures a Modal at construction.
+//
+// Deprecated: use [core.ModalOption], from github.com/yongjohnlee80/golib/tui/widget/core.
 type ModalOption = core.ModalOption
 
 // ButtonAlign is where a dialog's row of buttons sits within its card.
@@ -862,6 +1009,8 @@ type ModalOption = core.ModalOption
 // confirmation and the one a caller who says nothing should get: a pair of
 // controls hugging one edge of a card wider than they are reads as detached
 // from the question above.
+//
+// Deprecated: use [core.ButtonAlign], from github.com/yongjohnlee80/golib/tui/widget/core.
 type ButtonAlign = core.ButtonAlign
 
 // Scrim dims everything beneath a dialog. The overlay host makes and owns it; it is exported
@@ -872,12 +1021,16 @@ type ButtonAlign = core.ButtonAlign
 // by the host would be covered by the base UI, and one painted by a Modal could
 // not extend beyond that Modal's own rect. Ordering is the whole problem, and a
 // layer is the only thing the stack orders.
+//
+// Deprecated: use [core.Scrim], from github.com/yongjohnlee80/golib/tui/widget/core.
 type Scrim = core.Scrim
 
 // ModalStyle carries the surfaces a dialog paints. It follows ButtonStyle
 // exactly — immutable, nil-safe, token-valued — so a consumer who has learned
 // one styling type has learned them all, and one style value can safely dress
 // every dialog in an application.
+//
+// Deprecated: use [core.ModalStyle], from github.com/yongjohnlee80/golib/tui/widget/core.
 type ModalStyle = core.ModalStyle
 
 // OverlayHost is the root-level container that manages full-screen overlays,
@@ -955,11 +1108,15 @@ type ModalStyle = core.ModalStyle
 //
 //	// When mounted on the event loop, trigger the modal:
 //	// modalDialog.Show()
+//
+// Deprecated: use [core.OverlayHost], from github.com/yongjohnlee80/golib/tui/widget/core.
 type OverlayHost = core.OverlayHost
 
 // PopupLayer fills its host: the backdrop is transparent, and the panel sits
 // at the anchored point, flipped or clamped to stay on screen. golib's components draw through it;
 // a widget outside golib rarely needs it.
+//
+// Deprecated: use [core.PopupLayer], from github.com/yongjohnlee80/golib/tui/widget/core.
 type PopupLayer = core.PopupLayer
 
 // Progress Bar & Indeterminate Spinner Animation Architecture
@@ -1023,12 +1180,18 @@ type PopupLayer = core.PopupLayer
 //		widget.WithSpinner([]string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}, 80*time.Millisecond),
 //	)
 //	spinner.SetIndeterminate()
+//
+// Deprecated: use [core.ProgressBar], from github.com/yongjohnlee80/golib/tui/widget/core.
 type ProgressBar = core.ProgressBar
 
 // ProgressBarOption customizes a ProgressBar under construction.
+//
+// Deprecated: use [core.ProgressBarOption], from github.com/yongjohnlee80/golib/tui/widget/core.
 type ProgressBarOption = core.ProgressBarOption
 
 // SizeMode says where a Resizable's size comes from.
+//
+// Deprecated: use [core.SizeMode], from github.com/yongjohnlee80/golib/tui/widget/core.
 type SizeMode = core.SizeMode
 
 // Handle names one of the geometry operations a rectangle has: its four edges,
@@ -1042,12 +1205,18 @@ type SizeMode = core.SizeMode
 // ONE vocabulary for both widgets. [Split] uses the divider appropriate to its
 // axis and ignores the other, so a consumer binding a key to a resize action
 // does not have to know which of the two widgets will answer it.
+//
+// Deprecated: use [core.Handle], from github.com/yongjohnlee80/golib/tui/widget/core.
 type Handle = core.Handle
 
 // PlacementMode says whether the handle costs the child any cells.
+//
+// Deprecated: use [core.PlacementMode], from github.com/yongjohnlee80/golib/tui/widget/core.
 type PlacementMode = core.PlacementMode
 
 // StepUnit is what a keyboard resize step counts.
+//
+// Deprecated: use [core.StepUnit], from github.com/yongjohnlee80/golib/tui/widget/core.
 type StepUnit = core.StepUnit
 
 // ResizedEvent reports a committed size change.
@@ -1055,12 +1224,18 @@ type StepUnit = core.StepUnit
 // Owner is the WRAPPER's node, never a handle's: a wrapper with several grips
 // still has one size, and reporting which grip moved it would make every
 // listener normalise that away.
+//
+// Deprecated: use [core.ResizedEvent], from github.com/yongjohnlee80/golib/tui/widget/core.
 type ResizedEvent = core.ResizedEvent
 
 // Resizable is a single-child container whose size the user can drag.
+//
+// Deprecated: use [core.Resizable], from github.com/yongjohnlee80/golib/tui/widget/core.
 type Resizable = core.Resizable
 
 // ResizableOption configures a Resizable at construction.
+//
+// Deprecated: use [core.ResizableOption], from github.com/yongjohnlee80/golib/tui/widget/core.
 type ResizableOption = core.ResizableOption
 
 // ResizableStyle carries the two looks a resize grip has. It follows
@@ -1070,12 +1245,18 @@ type ResizableOption = core.ResizableOption
 // Only the grip is styled: the wrapper itself paints nothing, and the child
 // keeps whatever look it already had. A wrapper that restyled its child would be
 // reaching into a component that does not know it has been wrapped.
+//
+// Deprecated: use [core.ResizableStyle], from github.com/yongjohnlee80/golib/tui/widget/core.
 type ResizableStyle = core.ResizableStyle
 
 // ResizeBeginAction starts a gesture on one handle.
+//
+// Deprecated: use [core.ResizeBeginAction], from github.com/yongjohnlee80/golib/tui/widget/core.
 type ResizeBeginAction = core.ResizeBeginAction
 
 // ResizeUpdateAction reports the pointer's new position during a gesture.
+//
+// Deprecated: use [core.ResizeUpdateAction], from github.com/yongjohnlee80/golib/tui/widget/core.
 type ResizeUpdateAction = core.ResizeUpdateAction
 
 // ResizeStepAction moves by a discrete amount on each axis.
@@ -1083,18 +1264,26 @@ type ResizeUpdateAction = core.ResizeUpdateAction
 // The UNIT is part of the action rather than read from the widget, so a
 // consumer binding a key can ask for a percentage step on a widget configured
 // in cells without reconfiguring it. A zero step on both axes is not an action.
+//
+// Deprecated: use [core.ResizeStepAction], from github.com/yongjohnlee80/golib/tui/widget/core.
 type ResizeStepAction = core.ResizeStepAction
 
 // ResizeSetAction asks for an exact size, routed through the same request path
 // as the setter — so a programmatic size and a dragged one are clamped by one
 // rule rather than two.
+//
+// Deprecated: use [core.ResizeSetAction], from github.com/yongjohnlee80/golib/tui/widget/core.
 type ResizeSetAction = core.ResizeSetAction
 
 // ResizeEndAction finishes a gesture at the current size.
+//
+// Deprecated: use [core.ResizeEndAction], from github.com/yongjohnlee80/golib/tui/widget/core.
 type ResizeEndAction = core.ResizeEndAction
 
 // ResizeCancelAction abandons a gesture and restores the REQUEST in force when
 // it began. Bound to Escape by default.
+//
+// Deprecated: use [core.ResizeCancelAction], from github.com/yongjohnlee80/golib/tui/widget/core.
 type ResizeCancelAction = core.ResizeCancelAction
 
 // ScrollView shows a vertical window onto one child taller than itself. The child
@@ -1110,9 +1299,13 @@ type ResizeCancelAction = core.ResizeCancelAction
 // The child's own layout is unchanged: a widget that fills whatever height it is given (BufferView,
 // HTMLView) answers about a row under the unbounded height a ScrollView offers, so a ScrollView
 // holds sized content: forms, frames, lists of fields.
+//
+// Deprecated: use [core.ScrollView], from github.com/yongjohnlee80/golib/tui/widget/core.
 type ScrollView = core.ScrollView
 
 // SelectItem pairs a display label with a typed value.
+//
+// Deprecated: use [core.SelectItem], from github.com/yongjohnlee80/golib/tui/widget/core.
 type SelectItem[T any] = core.SelectItem[T]
 
 // Dropdown Select & Overlay Option Picker Architecture
@@ -1199,12 +1392,18 @@ type SelectItem[T any] = core.SelectItem[T]
 //			log.Printf("Selected engine: %s (index %d)", ev.Label, ev.Index)
 //		}
 //	})
+//
+// Deprecated: use [core.Select], from github.com/yongjohnlee80/golib/tui/widget/core.
 type Select[T any] = core.Select[T]
 
 // SelectOption customizes a Select under construction.
+//
+// Deprecated: use [core.SelectOption], from github.com/yongjohnlee80/golib/tui/widget/core.
 type SelectOption[T any] = core.SelectOption[T]
 
 // Orientation selects a Split's main axis.
+//
+// Deprecated: use [core.Orientation], from github.com/yongjohnlee80/golib/tui/widget/core.
 type Orientation = core.Orientation
 
 // Split is an interactive two-pane divider container supporting both horizontal
@@ -1302,20 +1501,30 @@ type Orientation = core.Orientation
 //
 //	// Restore dual-pane view:
 //	split.Unzoom()
+//
+// Deprecated: use [core.Split], from github.com/yongjohnlee80/golib/tui/widget/core.
 type Split = core.Split
 
 // SplitOption customizes a Split under construction.
+//
+// Deprecated: use [core.SplitOption], from github.com/yongjohnlee80/golib/tui/widget/core.
 type SplitOption = core.SplitOption
 
 // SplitPane identifies a Split pane for Zoom.
+//
+// Deprecated: use [core.SplitPane], from github.com/yongjohnlee80/golib/tui/widget/core.
 type SplitPane = core.SplitPane
 
 // SplitZoomEvent is published on every Zoom transition.
+//
+// Deprecated: use [core.SplitZoomEvent], from github.com/yongjohnlee80/golib/tui/widget/core.
 type SplitZoomEvent = core.SplitZoomEvent
 
 // StandardButton is one of a dialog's conventional buttons, as Qt's
 // QDialogButtonBox::StandardButton names them: its label comes from golib's catalogs, so it
 // reads in the App's language, and its role says what choosing it means.
+//
+// Deprecated: use [core.StandardButton], from github.com/yongjohnlee80/golib/tui/widget/core.
 type StandardButton = core.StandardButton
 
 // Status Bar & Triple-Segment Dock Chrome Architecture
@@ -1365,12 +1574,18 @@ type StandardButton = core.StandardButton
 //	bar.SetLeft("main*")
 //	bar.SetCenter("Ready")
 //	bar.SetRight("q: Quit | ?: Help", style.New().Bold(true))
+//
+// Deprecated: use [core.StatusBar], from github.com/yongjohnlee80/golib/tui/widget/core.
 type StatusBar = core.StatusBar
 
 // StatusBarOption customizes a StatusBar under construction.
+//
+// Deprecated: use [core.StatusBarOption], from github.com/yongjohnlee80/golib/tui/widget/core.
 type StatusBarOption = core.StatusBarOption
 
 // StripTab is one of a TabStrip's tabs: the host's id for it, and its label.
+//
+// Deprecated: use [core.StripTab], from github.com/yongjohnlee80/golib/tui/widget/core.
 type StripTab = core.StripTab
 
 // TabStrip is a row of tabs over nothing of its own: the host keeps what the tabs stand for (an
@@ -1381,31 +1596,45 @@ type StripTab = core.StripTab
 //
 // It takes no focus and no keys: it sits in a title bar, and the host's own keys switch what it
 // shows.
+//
+// Deprecated: use [core.TabStrip], from github.com/yongjohnlee80/golib/tui/widget/core.
 type TabStrip = core.TabStrip
 
 // StripOwner is a strip's owner (TabStrip, TerminalTabs, Tabs): it keeps the tabs, says which is
 // active, and is told which one the user chose. golib's components draw through it; a widget outside golib rarely needs it.
+//
+// Deprecated: use [core.StripOwner], from github.com/yongjohnlee80/golib/tui/widget/core.
 type StripOwner = core.StripOwner
 
 // StripCore is the strip Tabs, TabStrip and TerminalTabs share: its state, and its drawing and
 // input. golib's components draw through it; a widget outside golib rarely needs it. It is exported while TerminalTabs, a widget of the terminal's,
 // draws through it; once that draws through the public TabStrip it is unexported again, so a
 // widget outside golib should not build on it.
+//
+// Deprecated: use [core.StripCore], from github.com/yongjohnlee80/golib/tui/widget/core.
 type StripCore = core.StripCore
 
 // StripCell is a stretch of the row as drawn: what it is, the tab's id, its text, where it starts
 // and its width, in cells. StripCore's Row answers them; golib's components draw through it; a widget outside golib rarely needs it.
+//
+// Deprecated: use [core.StripCell], from github.com/yongjohnlee80/golib/tui/widget/core.
 type StripCell = core.StripCell
 
 // StripAction is a strip menu row's action: what runs, with the tab the menu opened for; nil for a
 // row that runs nothing. golib's components draw through it; a widget outside golib rarely needs it.
+//
+// Deprecated: use [core.StripAction], from github.com/yongjohnlee80/golib/tui/widget/core.
 type StripAction = core.StripAction
 
 // TabStripMenuAction is a row of a TabStrip's menus: when the row is chosen, Run runs with the tab
 // the menu was opened for (SetMenu), or with "" (SetAddMenu's +).
+//
+// Deprecated: use [core.TabStripMenuAction], from github.com/yongjohnlee80/golib/tui/widget/core.
 type TabStripMenuAction = core.TabStripMenuAction
 
 // TableField is one column as a source names it.
+//
+// Deprecated: use [core.TableField], from github.com/yongjohnlee80/golib/tui/widget/core.
 type TableField = core.TableField
 
 // Multi-Tab Bar & Content Switcher Architecture
@@ -1484,17 +1713,25 @@ type TableField = core.TableField
 //
 //	// Switch to "Logs" view (tab index 1):
 //	tabs.Select(1)
+//
+// Deprecated: use [core.Tabs], from github.com/yongjohnlee80/golib/tui/widget/core.
 type Tabs = core.Tabs
 
 // TabsOption customizes a Tabs under construction.
+//
+// Deprecated: use [core.TabsOption], from github.com/yongjohnlee80/golib/tui/widget/core.
 type TabsOption = core.TabsOption
 
 // TabsMenuAction is a row of the bar's menu: when the row is chosen, Run runs with the index of the
 // tab the menu was opened for (SetMenu).
+//
+// Deprecated: use [core.TabsMenuAction], from github.com/yongjohnlee80/golib/tui/widget/core.
 type TabsMenuAction = core.TabsMenuAction
 
 // WrapMode selects how text-bearing widgets treat overflow. Text accepts
 // Truncate (default) and Wrap; TextArea accepts WrapNone and WrapSoft.
+//
+// Deprecated: use [core.WrapMode], from github.com/yongjohnlee80/golib/tui/widget/core.
 type WrapMode = core.WrapMode
 
 // Text provides a lightweight, styled static text label supporting both single-line
@@ -1556,9 +1793,13 @@ type WrapMode = core.WrapMode
 //		widget.WithTextStyle(style.New().Faint(true)),
 //		widget.WithWrapMode(widget.Wrap),
 //	)
+//
+// Deprecated: use [core.Text], from github.com/yongjohnlee80/golib/tui/widget/core.
 type Text = core.Text
 
 // TextOption customizes a Text under construction.
+//
+// Deprecated: use [core.TextOption], from github.com/yongjohnlee80/golib/tui/widget/core.
 type TextOption = core.TextOption
 
 // TextArea provides an interactive multi-line text editor suitable for commit messages,
@@ -1623,9 +1864,13 @@ type TextOption = core.TextOption
 //		widget.WithWrap(widget.WrapNone),
 //	)
 //	queryInput.SetValue("SELECT id, name, created_at\nFROM users\nWHERE active = true;")
+//
+// Deprecated: use [core.TextArea], from github.com/yongjohnlee80/golib/tui/widget/core.
 type TextArea = core.TextArea
 
 // TextAreaOption customizes a TextArea under construction.
+//
+// Deprecated: use [core.TextAreaOption], from github.com/yongjohnlee80/golib/tui/widget/core.
 type TextAreaOption = core.TextAreaOption
 
 // Single-Line Text Input & Form Field Architecture
@@ -1710,19 +1955,27 @@ type TextAreaOption = core.TextAreaOption
 //		widget.WithPlaceholder("Password..."),
 //		widget.WithMask('*'),
 //	)
+//
+// Deprecated: use [core.TextInput], from github.com/yongjohnlee80/golib/tui/widget/core.
 type TextInput = core.TextInput
 
 // TextCompleter offers completions for text with the cursor at byte cursor: start is the byte
 // where the word being completed begins (at most cursor), and each item replaces
 // text[start:cursor]. No items is nothing to offer. It runs on the loop on each Tab and each paint
 // while the field has the keys, so it must be cheap.
+//
+// Deprecated: use [core.TextCompleter], from github.com/yongjohnlee80/golib/tui/widget/core.
 type TextCompleter = core.TextCompleter
 
 // TextInputOption customizes a TextInput under construction.
+//
+// Deprecated: use [core.TextInputOption], from github.com/yongjohnlee80/golib/tui/widget/core.
 type TextInputOption = core.TextInputOption
 
 // TextInputStyles are the TextInput style hooks. Zero
 // fields inherit the defaults.
+//
+// Deprecated: use [core.TextInputStyles], from github.com/yongjohnlee80/golib/tui/widget/core.
 type TextInputStyles = core.TextInputStyles
 
 // Elide is where a text too wide for its cell loses what does not fit, as Qt's
@@ -1731,29 +1984,43 @@ type TextInputStyles = core.TextInputStyles
 // ellipsis). ElidePath is golib's, for a path: the start, at a "/" so the
 // cut never falls inside a name (…/dao/name.go), and as ElideLeft when even
 // the last name does not fit.
+//
+// Deprecated: use [core.Elide], from github.com/yongjohnlee80/golib/tui/widget/core.
 type Elide = core.Elide
 
 // GovernedWindow is a window a tile manager places without owning its node. Govern anchors it over
 // rect (widget.AtLive, with a docked fallback: the tile's edge, or a corner for the fill member) and
 // gives its core the tile's target (WindowCore.Retarget); Release gives both back. Its own state
 // (open, minimized, its float rect, content) stays its own.
+//
+// Deprecated: use [core.GovernedWindow], from github.com/yongjohnlee80/golib/tui/widget/core.
 type GovernedWindow = core.GovernedWindow
 
 // TilePlace is where a tile starts and where it may go.
+//
+// Deprecated: use [core.TilePlace], from github.com/yongjohnlee80/golib/tui/widget/core.
 type TilePlace = core.TilePlace
 
 // TilesChangedEvent is published once per completed operation, never per drag motion. Key is the
 // tile whose state changed: for a border drag, the strip that owns the border, whichever tile the
 // drag began in (By). A swap publishes one per tile.
+//
+// Deprecated: use [core.TilesChangedEvent], from github.com/yongjohnlee80/golib/tui/widget/core.
 type TilesChangedEvent = core.TilesChangedEvent
 
 // TilesOption configures a Tiles under construction.
+//
+// Deprecated: use [core.TilesOption], from github.com/yongjohnlee80/golib/tui/widget/core.
 type TilesOption = core.TilesOption
 
 // Tiles is the tile manager. Its methods are owned by the application loop.
+//
+// Deprecated: use [core.Tiles], from github.com/yongjohnlee80/golib/tui/widget/core.
 type Tiles = core.Tiles
 
 // Tile is one tile: its content in a WindowMod over the manager.
+//
+// Deprecated: use [core.Tile], from github.com/yongjohnlee80/golib/tui/widget/core.
 type Tile = core.Tile
 
 // Toasts shows notifications stacked in a corner of the screen, as a desktop's toasts do: each a
@@ -1790,94 +2057,146 @@ type Tile = core.Tile
 // # Concurrency
 //
 // Loop-goroutine-owned, like every widget: Post and Done run on the App's loop (App.Update).
+//
+// Deprecated: use [core.Toasts], from github.com/yongjohnlee80/golib/tui/widget/core.
 type Toasts = core.Toasts
 
 // Toast is one notification.
+//
+// Deprecated: use [core.Toast], from github.com/yongjohnlee80/golib/tui/widget/core.
 type Toast = core.Toast
 
 // ToastsOption configures Toasts under construction.
+//
+// Deprecated: use [core.ToastsOption], from github.com/yongjohnlee80/golib/tui/widget/core.
 type ToastsOption = core.ToastsOption
 
 // WidgetState is the look a widget should paint, after precedence is applied.
 // Exactly one applies at a time.
+//
+// Deprecated: use [core.WidgetState], from github.com/yongjohnlee80/golib/tui/widget/core.
 type WidgetState = core.WidgetState
 
 // WindowOperation identifies the completed operation, independent of its control.
+//
+// Deprecated: use [core.WindowOperation], from github.com/yongjohnlee80/golib/tui/widget/core.
 type WindowOperation = core.WindowOperation
 
 // WindowChangedEvent reports one completed operation, not intermediate motion.
 // Bounds is the normalized request; Owner is per mount and Key is consumer-owned.
+//
+// Deprecated: use [core.WindowChangedEvent], from github.com/yongjohnlee80/golib/tui/widget/core.
 type WindowChangedEvent = core.WindowChangedEvent
 
 // WindowDragBeginAction starts a gesture at At in the receiver's local cells. Handle, when
 // HasHandle, is the handle the resize drags (a WindowHandles target chose it at the press); without
 // it the core's configured handle is used.
+//
+// Deprecated: use [core.WindowDragBeginAction], from github.com/yongjohnlee80/golib/tui/widget/core.
 type WindowDragBeginAction = core.WindowDragBeginAction
 
 // WindowDragCancelAction restores the drag's original placement policy.
+//
+// Deprecated: use [core.WindowDragCancelAction], from github.com/yongjohnlee80/golib/tui/widget/core.
 type WindowDragCancelAction = core.WindowDragCancelAction
 
 // WindowMoveByAction requests a cell translation through the target policy.
+//
+// Deprecated: use [core.WindowMoveByAction], from github.com/yongjohnlee80/golib/tui/widget/core.
 type WindowMoveByAction = core.WindowMoveByAction
 
 // WindowResizeByAction requests a cell size delta through the target policy.
+//
+// Deprecated: use [core.WindowResizeByAction], from github.com/yongjohnlee80/golib/tui/widget/core.
 type WindowResizeByAction = core.WindowResizeByAction
 
 // WindowMaximizeAction toggles the window or pane's owning zoom policy.
+//
+// Deprecated: use [core.WindowMaximizeAction], from github.com/yongjohnlee80/golib/tui/widget/core.
 type WindowMaximizeAction = core.WindowMaximizeAction
 
 // WindowMinimizeAction requests non-modal retained conceal into the collector.
+//
+// Deprecated: use [core.WindowMinimizeAction], from github.com/yongjohnlee80/golib/tui/widget/core.
 type WindowMinimizeAction = core.WindowMinimizeAction
 
 // WindowRestoreAction reveals a minimized window through its owner.
+//
+// Deprecated: use [core.WindowRestoreAction], from github.com/yongjohnlee80/golib/tui/widget/core.
 type WindowRestoreAction = core.WindowRestoreAction
 
 // WindowCloseAction requests the configured owner dismissal policy.
+//
+// Deprecated: use [core.WindowCloseAction], from github.com/yongjohnlee80/golib/tui/widget/core.
 type WindowCloseAction = core.WindowCloseAction
 
 // WindowButtons is an optional right-aligned row of ordinary close, maximize,
 // and minimize Buttons. A WindowMod never creates it. No move/resize UI is added.
+//
+// Deprecated: use [core.WindowButtons], from github.com/yongjohnlee80/golib/tui/widget/core.
 type WindowButtons = core.WindowButtons
 
 // WindowControl is one of WindowButtons' buttons and the operation it invokes.
+//
+// Deprecated: use [core.WindowControl], from github.com/yongjohnlee80/golib/tui/widget/core.
 type WindowControl = core.WindowControl
 
 // WindowButtonsOption configures appearance independently of window behavior.
+//
+// Deprecated: use [core.WindowButtonsOption], from github.com/yongjohnlee80/golib/tui/widget/core.
 type WindowButtonsOption = core.WindowButtonsOption
 
 // MinimizedWindow is a value descriptor for one originating window mount.
 // Applications use Restore/Close; controls use InvokeInput to preserve confinement.
+//
+// Deprecated: use [core.MinimizedWindow], from github.com/yongjohnlee80/golib/tui/widget/core.
 type MinimizedWindow = core.MinimizedWindow
 
 // WindowCollector is a loop-owned model seam; Put replaces a mount and Remove is
 // idempotent. Implementations do not fail or perform window/UI operations inline.
+//
+// Deprecated: use [core.WindowCollector], from github.com/yongjohnlee80/golib/tui/widget/core.
 type WindowCollector = core.WindowCollector
 
 // WindowEntries is the read side of a collector: what a presentation of the minimized windows (a
 // WindowTaskbar, a consumer's own) shows, and how it learns of changes. Entries is a detached
 // snapshot in order; Observe calls fn on each change, on the loop, until the returned func cancels.
+//
+// Deprecated: use [core.WindowEntries], from github.com/yongjohnlee80/golib/tui/widget/core.
 type WindowEntries = core.WindowEntries
 
 // MinimizedWindows is an ordered, presentation-free collector. Its zero value
 // is usable. All model access and observations belong to the application loop.
+//
+// Deprecated: use [core.MinimizedWindows], from github.com/yongjohnlee80/golib/tui/widget/core.
 type MinimizedWindows = core.MinimizedWindows
 
 // WindowGeometry is the placement owner's geometry, in one owner-local frame.
 // Checkpoint restores the requested policy, including anchors and proportions.
+//
+// Deprecated: use [core.WindowGeometry], from github.com/yongjohnlee80/golib/tui/widget/core.
 type WindowGeometry = core.WindowGeometry
 
 // WindowZoom is the owner's existing maximize/restore or pane-zoom operation.
+//
+// Deprecated: use [core.WindowZoom], from github.com/yongjohnlee80/golib/tui/widget/core.
 type WindowZoom = core.WindowZoom
 
 // WindowVisibility conceals content without ending its mounted lifetime.
+//
+// Deprecated: use [core.WindowVisibility], from github.com/yongjohnlee80/golib/tui/widget/core.
 type WindowVisibility = core.WindowVisibility
 
 // WindowDismissal supplies a target's explicitly chosen close policy.
+//
+// Deprecated: use [core.WindowDismissal], from github.com/yongjohnlee80/golib/tui/widget/core.
 type WindowDismissal = core.WindowDismissal
 
 // WindowHandles lets a target choose, per gesture, which handle a resize drags. A target without it
 // resizes from the configured handle (WithWindowResizeHandle), as before. A tile has up to four
 // sides it shares with its neighbours, and the one a resize moves depends on where it starts.
+//
+// Deprecated: use [core.WindowHandles], from github.com/yongjohnlee80/golib/tui/widget/core.
 type WindowHandles = core.WindowHandles
 
 // WindowGesture lets a target own a gesture's start and completion. A target without it keeps the
@@ -1886,95 +2205,155 @@ type WindowHandles = core.WindowHandles
 //
 // A target needs it when an operation can change its policy without changing a cell: a tile
 // re-docked in a manager too small for its minimum lands in the rect it started in.
+//
+// Deprecated: use [core.WindowGesture], from github.com/yongjohnlee80/golib/tui/widget/core.
 type WindowGesture = core.WindowGesture
 
 // WindowChangeHandler is a target told each operation its window completes, the WindowChangedEvent
 // the core publishes: after the owner's WithWindowChanged and before the bus. A target that commits
 // what a gesture staged (a tile manager's) commits here, whoever built the window's core.
+//
+// Deprecated: use [core.WindowChangeHandler], from github.com/yongjohnlee80/golib/tui/widget/core.
 type WindowChangeHandler = core.WindowChangeHandler
 
 // WindowState is a value snapshot of configuration and live state, not config.
+//
+// Deprecated: use [core.WindowState], from github.com/yongjohnlee80/golib/tui/widget/core.
 type WindowState = core.WindowState
 
 // WindowCore holds window behavior apart from any view. Bind it to the component
 // that receives its actions and captured events. Methods are loop-owned.
+//
+// Deprecated: use [core.WindowCore], from github.com/yongjohnlee80/golib/tui/widget/core.
 type WindowCore = core.WindowCore
 
 // WindowMod gives unchanged content optional window operations without supplying
 // any appearance. Its default target is its enclosing Float; docked layouts can
 // supply their own target. All methods are owned by the application loop.
+//
+// Deprecated: use [core.WindowMod], from github.com/yongjohnlee80/golib/tui/widget/core.
 type WindowMod = core.WindowMod
 
 // WindowModOption configures a capability widget or its shared behavior core.
+//
+// Deprecated: use [core.WindowModOption], from github.com/yongjohnlee80/golib/tui/widget/core.
 type WindowModOption = core.WindowModOption
 
 // WindowTargetProvider is a container that places a WindowMod inside it: a WindowCore given no
 // target of its own (WithWindowTarget) asks the nearest ancestor implementing it, at Bind. Float is
 // one; a docked panel or a declarative drawer may be another, with no WindowMod option to pass.
+//
+// Deprecated: use [core.WindowTargetProvider], from github.com/yongjohnlee80/golib/tui/widget/core.
 type WindowTargetProvider = core.WindowTargetProvider
 
 // WindowTaskbar is an optional keyboard/pointer restore UI over MinimizedWindows.
 // Model observation schedules an owner-bound update; it never removes the activating
 // Button inline or mutates children during Layout.
+//
+// Deprecated: use [core.WindowTaskbar], from github.com/yongjohnlee80/golib/tui/widget/core.
 type WindowTaskbar = core.WindowTaskbar
 
 // WindowTaskbarOption configures the default collector's separate presentation.
+//
+// Deprecated: use [core.WindowTaskbarOption], from github.com/yongjohnlee80/golib/tui/widget/core.
 type WindowTaskbarOption = core.WindowTaskbarOption
 
 const (
 	// ButtonRoleAction: no answer — the button's own callback only, and the
 	// dialog stays. The zero value.
+	//
+	// Deprecated: use [core.ButtonRoleAction], from github.com/yongjohnlee80/golib/tui/widget/core.
 	ButtonRoleAction = core.ButtonRoleAction
 	// ButtonRoleAccept: accepts the dialog (Ok, Save, Yes).
+	//
+	// Deprecated: use [core.ButtonRoleAccept], from github.com/yongjohnlee80/golib/tui/widget/core.
 	ButtonRoleAccept = core.ButtonRoleAccept
 	// ButtonRoleReject: rejects it (Cancel, No, Close) — and Escape presses it.
+	//
+	// Deprecated: use [core.ButtonRoleReject], from github.com/yongjohnlee80/golib/tui/widget/core.
 	ButtonRoleReject = core.ButtonRoleReject
 	// ButtonRoleDestructive: a destructive answer (Discard); the dialog closes
 	// with neither accepting nor rejecting.
+	//
+	// Deprecated: use [core.ButtonRoleDestructive], from github.com/yongjohnlee80/golib/tui/widget/core.
 	ButtonRoleDestructive = core.ButtonRoleDestructive
 	// ListScope is a List's keys.
+	//
+	// Deprecated: use [core.ListScope], from github.com/yongjohnlee80/golib/tui/widget/core.
 	ListScope = core.ListScope
 	// InputScope is a TextInput's keys.
+	//
+	// Deprecated: use [core.InputScope], from github.com/yongjohnlee80/golib/tui/widget/core.
 	InputScope = core.InputScope
 	// MenuScope is a menu's keys: a menu bar's and a popup menu's. Arrows follow the layout: a bar walks
 	// with Left/Right, a column with Up/Down. A row's mnemonic is not a command: it is its label's.
+	//
+	// Deprecated: use [core.MenuScope], from github.com/yongjohnlee80/golib/tui/widget/core.
 	MenuScope = core.MenuScope
 	// ButtonScope is a leaf control's activation (a Button, a standalone MenuItem).
+	//
+	// Deprecated: use [core.ButtonScope], from github.com/yongjohnlee80/golib/tui/widget/core.
 	ButtonScope = core.ButtonScope
 	// ModalScope is a Modal's keys. A button's mnemonic is not a command, and neither are a host's
 	// WithModalDismissKeys, which are its code.
+	//
+	// Deprecated: use [core.ModalScope], from github.com/yongjohnlee80/golib/tui/widget/core.
 	ModalScope = core.ModalScope
 	// TabsScope is a Tabs container's keys. The arrows and brackets choose a tab while the bar itself has
 	// focus; Ctrl+PgUp and Ctrl+PgDn while focus is anywhere in it.
+	//
+	// Deprecated: use [core.TabsScope], from github.com/yongjohnlee80/golib/tui/widget/core.
 	TabsScope = core.TabsScope
 	// TabStripScope is a TabStrip's and a TerminalTabs' strip keys. Ctrl+PgUp and Ctrl+PgDn choose a tab
 	// while focus is anywhere in the owner; the rest while the strip itself has focus.
+	//
+	// Deprecated: use [core.TabStripScope], from github.com/yongjohnlee80/golib/tui/widget/core.
 	TabStripScope = core.TabStripScope
 	// SplitScope is a Split's divider keys: Alt and an arrow along the split's axis step the divider, and
 	// Esc cancels a drag. Off its axis an arrow is not the split's.
+	//
+	// Deprecated: use [core.SplitScope], from github.com/yongjohnlee80/golib/tui/widget/core.
 	SplitScope = core.SplitScope
 	// ResizableScope is a Resizable's keys: Shift and an arrow step its box, leaving the bare arrows to
 	// its content, and Esc cancels a drag.
+	//
+	// Deprecated: use [core.ResizableScope], from github.com/yongjohnlee80/golib/tui/widget/core.
 	ResizableScope = core.ResizableScope
 	// SelectScope is a closed Select's keys.
+	//
+	// Deprecated: use [core.SelectScope], from github.com/yongjohnlee80/golib/tui/widget/core.
 	SelectScope = core.SelectScope
 	// SelectPopupScope is an open Select's options. Its keys take any modifier, as its handler did. j and
 	// k move only where the select does not filter: a filter spends every letter on its query.
+	//
+	// Deprecated: use [core.SelectPopupScope], from github.com/yongjohnlee80/golib/tui/widget/core.
 	SelectPopupScope = core.SelectPopupScope
 	// TextAreaScope is a TextArea's keys. Shift extends the selection, Ctrl or Alt moves by word, and Ctrl
 	// on Home and End goes to the text's start and end; typed text is not a command.
+	//
+	// Deprecated: use [core.TextAreaScope], from github.com/yongjohnlee80/golib/tui/widget/core.
 	TextAreaScope = core.TextAreaScope
 	// BufferViewScope is a BufferView's keys. The arrows, PgUp, PgDn, Home and End take any modifier, as
 	// its handler did; Y takes none.
+	//
+	// Deprecated: use [core.BufferViewScope], from github.com/yongjohnlee80/golib/tui/widget/core.
 	BufferViewScope = core.BufferViewScope
 	// FloatScope is a modal Float's keys: Esc hides it.
+	//
+	// Deprecated: use [core.FloatScope], from github.com/yongjohnlee80/golib/tui/widget/core.
 	FloatScope = core.FloatScope
 	// PopupScope is an anchored popup's keys (a menu's, a select's, a strip's): Esc dismisses it.
+	//
+	// Deprecated: use [core.PopupScope], from github.com/yongjohnlee80/golib/tui/widget/core.
 	PopupScope = core.PopupScope
 	// DrawerScope is a declarative Drawer's own keys, after its Shortcuts: Esc closes it, and q too where
 	// it says closeOnQ.
+	//
+	// Deprecated: use [core.DrawerScope], from github.com/yongjohnlee80/golib/tui/widget/core.
 	DrawerScope = core.DrawerScope
 	// DismissProgrammatic: the program called Dismiss.
+	//
+	// Deprecated: use [core.DismissProgrammatic], from github.com/yongjohnlee80/golib/tui/widget/core.
 	DismissProgrammatic = core.DismissProgrammatic
 	// DismissEscape: the user asked to leave without choosing — physically
 	// Escape, or a host-configured escape-equivalent key.
@@ -1985,147 +2364,277 @@ const (
 	// force every listener to learn a second constant for one intention, and
 	// the ones that did not would treat a `q` dismissal as an unrecognised
 	// event. What the operator MEANT is the same; only the key differs.
+	//
+	// Deprecated: use [core.DismissEscape], from github.com/yongjohnlee80/golib/tui/widget/core.
 	DismissEscape = core.DismissEscape
 	// DismissAccept: an affirmative control was activated.
+	//
+	// Deprecated: use [core.DismissAccept], from github.com/yongjohnlee80/golib/tui/widget/core.
 	DismissAccept = core.DismissAccept
 	// DismissCancel: a cancelling control was activated.
+	//
+	// Deprecated: use [core.DismissCancel], from github.com/yongjohnlee80/golib/tui/widget/core.
 	DismissCancel = core.DismissCancel
 	// DismissAnchorLost: what the overlay was anchored to is gone.
+	//
+	// Deprecated: use [core.DismissAnchorLost], from github.com/yongjohnlee80/golib/tui/widget/core.
 	DismissAnchorLost = core.DismissAnchorLost
 	// DismissReplaced: another overlay took this one's place.
+	//
+	// Deprecated: use [core.DismissReplaced], from github.com/yongjohnlee80/golib/tui/widget/core.
 	DismissReplaced = core.DismissReplaced
 	// DismissDiscard: a destructive control was activated (Discard) — the
 	// dialog closed with neither accepting nor rejecting.
+	//
+	// Deprecated: use [core.DismissDiscard], from github.com/yongjohnlee80/golib/tui/widget/core.
 	DismissDiscard = core.DismissDiscard
 	// PlacementCenter is the default, and what a dialog almost always wants.
-	PlacementCenter      = core.PlacementCenter
-	PlacementTopLeft     = core.PlacementTopLeft
-	PlacementTopRight    = core.PlacementTopRight
-	PlacementBottomLeft  = core.PlacementBottomLeft
+	//
+	// Deprecated: use [core.PlacementCenter], from github.com/yongjohnlee80/golib/tui/widget/core.
+	PlacementCenter = core.PlacementCenter
+	// Deprecated: use [core.PlacementTopLeft], from github.com/yongjohnlee80/golib/tui/widget/core.
+	PlacementTopLeft = core.PlacementTopLeft
+	// Deprecated: use [core.PlacementTopRight], from github.com/yongjohnlee80/golib/tui/widget/core.
+	PlacementTopRight = core.PlacementTopRight
+	// Deprecated: use [core.PlacementBottomLeft], from github.com/yongjohnlee80/golib/tui/widget/core.
+	PlacementBottomLeft = core.PlacementBottomLeft
+	// Deprecated: use [core.PlacementBottomRight], from github.com/yongjohnlee80/golib/tui/widget/core.
 	PlacementBottomRight = core.PlacementBottomRight
 	// PlacementBelow is the default: a menu opens downward.
+	//
+	// Deprecated: use [core.PlacementBelow], from github.com/yongjohnlee80/golib/tui/widget/core.
 	PlacementBelow = core.PlacementBelow
+	// Deprecated: use [core.PlacementAbove], from github.com/yongjohnlee80/golib/tui/widget/core.
 	PlacementAbove = core.PlacementAbove
+	// Deprecated: use [core.PlacementRight], from github.com/yongjohnlee80/golib/tui/widget/core.
 	PlacementRight = core.PlacementRight
-	PlacementLeft  = core.PlacementLeft
+	// Deprecated: use [core.PlacementLeft], from github.com/yongjohnlee80/golib/tui/widget/core.
+	PlacementLeft = core.PlacementLeft
 	// PlacementAlignStart is the default: left-aligned below, top-aligned beside.
-	PlacementAlignStart  = core.PlacementAlignStart
+	//
+	// Deprecated: use [core.PlacementAlignStart], from github.com/yongjohnlee80/golib/tui/widget/core.
+	PlacementAlignStart = core.PlacementAlignStart
+	// Deprecated: use [core.PlacementAlignCenter], from github.com/yongjohnlee80/golib/tui/widget/core.
 	PlacementAlignCenter = core.PlacementAlignCenter
-	PlacementAlignEnd    = core.PlacementAlignEnd
+	// Deprecated: use [core.PlacementAlignEnd], from github.com/yongjohnlee80/golib/tui/widget/core.
+	PlacementAlignEnd = core.PlacementAlignEnd
 	// BarPlacementTop is the default and the conventional place for a menu bar.
-	BarPlacementTop    = core.BarPlacementTop
+	//
+	// Deprecated: use [core.BarPlacementTop], from github.com/yongjohnlee80/golib/tui/widget/core.
+	BarPlacementTop = core.BarPlacementTop
+	// Deprecated: use [core.BarPlacementBottom], from github.com/yongjohnlee80/golib/tui/widget/core.
 	BarPlacementBottom = core.BarPlacementBottom
-	BarPlacementLeft   = core.BarPlacementLeft
-	BarPlacementRight  = core.BarPlacementRight
+	// Deprecated: use [core.BarPlacementLeft], from github.com/yongjohnlee80/golib/tui/widget/core.
+	BarPlacementLeft = core.BarPlacementLeft
+	// Deprecated: use [core.BarPlacementRight], from github.com/yongjohnlee80/golib/tui/widget/core.
+	BarPlacementRight = core.BarPlacementRight
 	// ItemKindCommand runs its Action and closes the menu. The zero value, so a
 	// zero MenuItemModel is an inert command rather than something surprising.
+	//
+	// Deprecated: use [core.ItemKindCommand], from github.com/yongjohnlee80/golib/tui/widget/core.
 	ItemKindCommand = core.ItemKindCommand
 	// ItemKindSubmenu opens a nested level; it has children and no action.
+	//
+	// Deprecated: use [core.ItemKindSubmenu], from github.com/yongjohnlee80/golib/tui/widget/core.
 	ItemKindSubmenu = core.ItemKindSubmenu
 	// ItemKindSeparator is a visual rule. It cannot be selected or activated.
+	//
+	// Deprecated: use [core.ItemKindSeparator], from github.com/yongjohnlee80/golib/tui/widget/core.
 	ItemKindSeparator = core.ItemKindSeparator
 	// ItemKindCheck toggles its own Checked state, then runs its Action.
+	//
+	// Deprecated: use [core.ItemKindCheck], from github.com/yongjohnlee80/golib/tui/widget/core.
 	ItemKindCheck = core.ItemKindCheck
 	// ItemKindRadio sets itself and clears every other member of its Group, then
 	// runs its Action.
+	//
+	// Deprecated: use [core.ItemKindRadio], from github.com/yongjohnlee80/golib/tui/widget/core.
 	ItemKindRadio = core.ItemKindRadio
 	// ButtonsCenter centres the row. The default.
+	//
+	// Deprecated: use [core.ButtonsCenter], from github.com/yongjohnlee80/golib/tui/widget/core.
 	ButtonsCenter = core.ButtonsCenter
 	// ButtonsLeft packs the row against the leading edge.
+	//
+	// Deprecated: use [core.ButtonsLeft], from github.com/yongjohnlee80/golib/tui/widget/core.
 	ButtonsLeft = core.ButtonsLeft
 	// ButtonsRight packs it against the trailing edge, the placement a form-like
 	// dialog with a wide body usually wants.
+	//
+	// Deprecated: use [core.ButtonsRight], from github.com/yongjohnlee80/golib/tui/widget/core.
 	ButtonsRight = core.ButtonsRight
 	// SizeAuto tracks the child's intrinsic size, re-measured EVERY pass, so
 	// later growth or shrinkage tracks. The default: a zero tui.Size run through
 	// the sizing algorithm collapses the child to the parent minimum, often
 	// 0x0, so "no configuration" has to mean intrinsic rather than zero.
+	//
+	// Deprecated: use [core.SizeAuto], from github.com/yongjohnlee80/golib/tui/widget/core.
 	SizeAuto = core.SizeAuto
 	// SizeExplicit holds a caller-supplied size, from WithInitialSize, SetSize
 	// or a drag.
+	//
+	// Deprecated: use [core.SizeExplicit], from github.com/yongjohnlee80/golib/tui/widget/core.
 	SizeExplicit = core.SizeExplicit
 	// HandleLeft drags the left edge: moving leftwards grows the box.
-	HandleLeft        = core.HandleLeft
-	HandleRight       = core.HandleRight
-	HandleTop         = core.HandleTop
-	HandleBottom      = core.HandleBottom
-	HandleTopLeft     = core.HandleTopLeft
-	HandleTopRight    = core.HandleTopRight
-	HandleBottomLeft  = core.HandleBottomLeft
+	//
+	// Deprecated: use [core.HandleLeft], from github.com/yongjohnlee80/golib/tui/widget/core.
+	HandleLeft = core.HandleLeft
+	// Deprecated: use [core.HandleRight], from github.com/yongjohnlee80/golib/tui/widget/core.
+	HandleRight = core.HandleRight
+	// Deprecated: use [core.HandleTop], from github.com/yongjohnlee80/golib/tui/widget/core.
+	HandleTop = core.HandleTop
+	// Deprecated: use [core.HandleBottom], from github.com/yongjohnlee80/golib/tui/widget/core.
+	HandleBottom = core.HandleBottom
+	// Deprecated: use [core.HandleTopLeft], from github.com/yongjohnlee80/golib/tui/widget/core.
+	HandleTopLeft = core.HandleTopLeft
+	// Deprecated: use [core.HandleTopRight], from github.com/yongjohnlee80/golib/tui/widget/core.
+	HandleTopRight = core.HandleTopRight
+	// Deprecated: use [core.HandleBottomLeft], from github.com/yongjohnlee80/golib/tui/widget/core.
+	HandleBottomLeft = core.HandleBottomLeft
+	// Deprecated: use [core.HandleBottomRight], from github.com/yongjohnlee80/golib/tui/widget/core.
 	HandleBottomRight = core.HandleBottomRight
 	// HandleVerticalDivider is the divider of a HORIZONTAL split — the panes
 	// sit side by side, so the line between them runs down the screen.
+	//
+	// Deprecated: use [core.HandleVerticalDivider], from github.com/yongjohnlee80/golib/tui/widget/core.
 	HandleVerticalDivider = core.HandleVerticalDivider
 	// HandleHorizontalDivider is the divider of a VERTICAL split.
+	//
+	// Deprecated: use [core.HandleHorizontalDivider], from github.com/yongjohnlee80/golib/tui/widget/core.
 	HandleHorizontalDivider = core.HandleHorizontalDivider
 	// PlacementOverlay draws the grip over the child's corner cell, changing no
 	// geometry. The default: a resize affordance should not resize the thing it
 	// is attached to merely by existing.
+	//
+	// Deprecated: use [core.PlacementOverlay], from github.com/yongjohnlee80/golib/tui/widget/core.
 	PlacementOverlay = core.PlacementOverlay
 	// PlacementReserve shrinks the child by the handle's cells, so nothing is
 	// occluded.
+	//
+	// Deprecated: use [core.PlacementReserve], from github.com/yongjohnlee80/golib/tui/widget/core.
 	PlacementReserve = core.PlacementReserve
 	// StepCells moves a fixed number of cells.
+	//
+	// Deprecated: use [core.StepCells], from github.com/yongjohnlee80/golib/tui/widget/core.
 	StepCells = core.StepCells
 	// StepPercent moves a percentage of the current size.
+	//
+	// Deprecated: use [core.StepPercent], from github.com/yongjohnlee80/golib/tui/widget/core.
 	StepPercent = core.StepPercent
 	// ScrollScope is a ScrollView's keys: they reach it only when the focused child declines them.
+	//
+	// Deprecated: use [core.ScrollScope], from github.com/yongjohnlee80/golib/tui/widget/core.
 	ScrollScope = core.ScrollScope
 	// Horizontal places the panes side by side (vertical divider).
+	//
+	// Deprecated: use [core.Horizontal], from github.com/yongjohnlee80/golib/tui/widget/core.
 	Horizontal = core.Horizontal
 	// Vertical stacks the panes (horizontal divider).
+	//
+	// Deprecated: use [core.Vertical], from github.com/yongjohnlee80/golib/tui/widget/core.
 	Vertical = core.Vertical
 	// PaneNone restores the two-pane layout.
+	//
+	// Deprecated: use [core.PaneNone], from github.com/yongjohnlee80/golib/tui/widget/core.
 	PaneNone = core.PaneNone
 	// PaneA zooms the first pane.
+	//
+	// Deprecated: use [core.PaneA], from github.com/yongjohnlee80/golib/tui/widget/core.
 	PaneA = core.PaneA
 	// PaneB zooms the second pane.
+	//
+	// Deprecated: use [core.PaneB], from github.com/yongjohnlee80/golib/tui/widget/core.
 	PaneB = core.PaneB
 	// StandardOk is "OK": it accepts.
+	//
+	// Deprecated: use [core.StandardOk], from github.com/yongjohnlee80/golib/tui/widget/core.
 	StandardOk = core.StandardOk
 	// StandardSave is "Save": it accepts.
+	//
+	// Deprecated: use [core.StandardSave], from github.com/yongjohnlee80/golib/tui/widget/core.
 	StandardSave = core.StandardSave
 	// StandardYes is "Yes": it accepts.
+	//
+	// Deprecated: use [core.StandardYes], from github.com/yongjohnlee80/golib/tui/widget/core.
 	StandardYes = core.StandardYes
 	// StandardNo is "No": it rejects.
+	//
+	// Deprecated: use [core.StandardNo], from github.com/yongjohnlee80/golib/tui/widget/core.
 	StandardNo = core.StandardNo
 	// StandardCancel is "Cancel": it rejects.
+	//
+	// Deprecated: use [core.StandardCancel], from github.com/yongjohnlee80/golib/tui/widget/core.
 	StandardCancel = core.StandardCancel
 	// StandardClose is "Close": it rejects.
+	//
+	// Deprecated: use [core.StandardClose], from github.com/yongjohnlee80/golib/tui/widget/core.
 	StandardClose = core.StandardClose
 	// Truncate reports one line and paints an ellipsis at overflow (Text).
+	//
+	// Deprecated: use [core.Truncate], from github.com/yongjohnlee80/golib/tui/widget/core.
 	Truncate = core.Truncate
 	// Wrap reports the wrapped height (Text).
+	//
+	// Deprecated: use [core.Wrap], from github.com/yongjohnlee80/golib/tui/widget/core.
 	Wrap = core.Wrap
 	// WrapNone scrolls horizontally instead of wrapping (TextArea).
+	//
+	// Deprecated: use [core.WrapNone], from github.com/yongjohnlee80/golib/tui/widget/core.
 	WrapNone = core.WrapNone
 	// WrapSoft wraps visually at the viewport width (TextArea).
-	WrapSoft    = core.WrapSoft
-	ElideRight  = core.ElideRight
-	ElideLeft   = core.ElideLeft
+	//
+	// Deprecated: use [core.WrapSoft], from github.com/yongjohnlee80/golib/tui/widget/core.
+	WrapSoft = core.WrapSoft
+	// Deprecated: use [core.ElideRight], from github.com/yongjohnlee80/golib/tui/widget/core.
+	ElideRight = core.ElideRight
+	// Deprecated: use [core.ElideLeft], from github.com/yongjohnlee80/golib/tui/widget/core.
+	ElideLeft = core.ElideLeft
+	// Deprecated: use [core.ElideMiddle], from github.com/yongjohnlee80/golib/tui/widget/core.
 	ElideMiddle = core.ElideMiddle
-	ElideNone   = core.ElideNone
-	ElidePath   = core.ElidePath
+	// Deprecated: use [core.ElideNone], from github.com/yongjohnlee80/golib/tui/widget/core.
+	ElideNone = core.ElideNone
+	// Deprecated: use [core.ElidePath], from github.com/yongjohnlee80/golib/tui/widget/core.
+	ElidePath = core.ElidePath
 	// WidgetStateNormal: interactive, not focused, not pressed.
+	//
+	// Deprecated: use [core.WidgetStateNormal], from github.com/yongjohnlee80/golib/tui/widget/core.
 	WidgetStateNormal = core.WidgetStateNormal
 	// WidgetStateFocused: holds the keyboard focus.
+	//
+	// Deprecated: use [core.WidgetStateFocused], from github.com/yongjohnlee80/golib/tui/widget/core.
 	WidgetStateFocused = core.WidgetStateFocused
 	// WidgetStateArmed: pressed and not yet released — the runtime drives this
 	// through Activatable.SetArmed.
+	//
+	// Deprecated: use [core.WidgetStateArmed], from github.com/yongjohnlee80/golib/tui/widget/core.
 	WidgetStateArmed = core.WidgetStateArmed
 	// WidgetStateDisabled: not interactive. Nothing activates it.
+	//
+	// Deprecated: use [core.WidgetStateDisabled], from github.com/yongjohnlee80/golib/tui/widget/core.
 	WidgetStateDisabled = core.WidgetStateDisabled
 	// WindowMove is a completed placement translation.
+	//
+	// Deprecated: use [core.WindowMove], from github.com/yongjohnlee80/golib/tui/widget/core.
 	WindowMove = core.WindowMove
 	// WindowResize is a completed size request.
+	//
+	// Deprecated: use [core.WindowResize], from github.com/yongjohnlee80/golib/tui/widget/core.
 	WindowResize = core.WindowResize
 	// WindowMaximize is a maximize/restore or docked-pane zoom toggle.
+	//
+	// Deprecated: use [core.WindowMaximize], from github.com/yongjohnlee80/golib/tui/widget/core.
 	WindowMaximize = core.WindowMaximize
 	// WindowMinimize is retained conceal into a collector.
+	//
+	// Deprecated: use [core.WindowMinimize], from github.com/yongjohnlee80/golib/tui/widget/core.
 	WindowMinimize = core.WindowMinimize
 	// WindowRestore reveals a collector entry without remounting content.
+	//
+	// Deprecated: use [core.WindowRestore], from github.com/yongjohnlee80/golib/tui/widget/core.
 	WindowRestore = core.WindowRestore
 	// WindowClose is an accepted owner dismissal.
+	//
+	// Deprecated: use [core.WindowClose], from github.com/yongjohnlee80/golib/tui/widget/core.
 	WindowClose = core.WindowClose
 )
 
@@ -2133,231 +2642,424 @@ const (
 // core's widgets read core's.
 var (
 	// ErrEmptyLayerID is returned when an anchored layer is opened under no id.
+	//
+	// Deprecated: use [core.ErrEmptyLayerID], from github.com/yongjohnlee80/golib/tui/widget/core.
 	ErrEmptyLayerID = core.ErrEmptyLayerID
 	// ErrLayerAlreadyRegistered is returned when the same layer instance is already
 	// open under a different id.
+	//
+	// Deprecated: use [core.ErrLayerAlreadyRegistered], from github.com/yongjohnlee80/golib/tui/widget/core.
 	ErrLayerAlreadyRegistered = core.ErrLayerAlreadyRegistered
 	// ErrAnchorUnusable is returned when an AnchorSpec names an anchor this host
 	// cannot use: the zero ref, or one whose owner lies outside the host's content.
+	//
+	// Deprecated: use [core.ErrAnchorUnusable], from github.com/yongjohnlee80/golib/tui/widget/core.
 	ErrAnchorUnusable = core.ErrAnchorUnusable
 	// ErrClosed is returned by writes to a Writer whose BufferView has been
 	// unmounted (or never mounted).
+	//
+	// Deprecated: use [core.ErrClosed], from github.com/yongjohnlee80/golib/tui/widget/core.
 	ErrClosed = core.ErrClosed
 	// ErrInvalidButtonList reports a button list this container cannot accept. It
 	// is the UMBRELLA: every rejection matches it, so a caller that only wants to
 	// know the list was bad writes one comparison.
+	//
+	// Deprecated: use [core.ErrInvalidButtonList], from github.com/yongjohnlee80/golib/tui/widget/core.
 	ErrInvalidButtonList = core.ErrInvalidButtonList
 	// ErrDuplicateButtonRole reports a list carrying two Reject-role buttons —
 	// Escape presses the one.
+	//
+	// Deprecated: use [core.ErrDuplicateButtonRole], from github.com/yongjohnlee80/golib/tui/widget/core.
 	ErrDuplicateButtonRole = core.ErrDuplicateButtonRole
 	// ErrDuplicateDefault reports a list carrying two default buttons — Enter
 	// presses the one.
+	//
+	// Deprecated: use [core.ErrDuplicateDefault], from github.com/yongjohnlee80/golib/tui/widget/core.
 	ErrDuplicateDefault = core.ErrDuplicateDefault
 	// ErrNilButton reports a nil entry in a button list.
+	//
+	// Deprecated: use [core.ErrNilButton], from github.com/yongjohnlee80/golib/tui/widget/core.
 	ErrNilButton = core.ErrNilButton
 	// ErrRepeatedButton reports the same *Button appearing twice in one list.
+	//
+	// Deprecated: use [core.ErrRepeatedButton], from github.com/yongjohnlee80/golib/tui/widget/core.
 	ErrRepeatedButton = core.ErrRepeatedButton
 	// ErrForeignButton reports a button already mounted somewhere else in the tree.
+	//
+	// Deprecated: use [core.ErrForeignButton], from github.com/yongjohnlee80/golib/tui/widget/core.
 	ErrForeignButton = core.ErrForeignButton
 	// ErrDuplicateMnemonic reports two ENABLED buttons claiming the same key.
+	//
+	// Deprecated: use [core.ErrDuplicateMnemonic], from github.com/yongjohnlee80/golib/tui/widget/core.
 	ErrDuplicateMnemonic = core.ErrDuplicateMnemonic
-	ListUp               = core.ListUp
-	ListDown             = core.ListDown
-	ListTop              = core.ListTop
-	ListBottom           = core.ListBottom
-	ListPageUp           = core.ListPageUp
-	ListPageDown         = core.ListPageDown
-	ListHome             = core.ListHome
-	ListEnd              = core.ListEnd
-	ListActivate         = core.ListActivate
-	ListToggle           = core.ListToggle
-	ListMenu             = core.ListMenu
-	InputLeft            = core.InputLeft
-	InputSelectLeft      = core.InputSelectLeft
-	InputWordLeft        = core.InputWordLeft
-	InputSelectWordLeft  = core.InputSelectWordLeft
-	InputRight           = core.InputRight
-	InputSelectRight     = core.InputSelectRight
-	InputWordRight       = core.InputWordRight
+	// Deprecated: use [core.ListUp], from github.com/yongjohnlee80/golib/tui/widget/core.
+	ListUp = core.ListUp
+	// Deprecated: use [core.ListDown], from github.com/yongjohnlee80/golib/tui/widget/core.
+	ListDown = core.ListDown
+	// Deprecated: use [core.ListTop], from github.com/yongjohnlee80/golib/tui/widget/core.
+	ListTop = core.ListTop
+	// Deprecated: use [core.ListBottom], from github.com/yongjohnlee80/golib/tui/widget/core.
+	ListBottom = core.ListBottom
+	// Deprecated: use [core.ListPageUp], from github.com/yongjohnlee80/golib/tui/widget/core.
+	ListPageUp = core.ListPageUp
+	// Deprecated: use [core.ListPageDown], from github.com/yongjohnlee80/golib/tui/widget/core.
+	ListPageDown = core.ListPageDown
+	// Deprecated: use [core.ListHome], from github.com/yongjohnlee80/golib/tui/widget/core.
+	ListHome = core.ListHome
+	// Deprecated: use [core.ListEnd], from github.com/yongjohnlee80/golib/tui/widget/core.
+	ListEnd = core.ListEnd
+	// Deprecated: use [core.ListActivate], from github.com/yongjohnlee80/golib/tui/widget/core.
+	ListActivate = core.ListActivate
+	// Deprecated: use [core.ListToggle], from github.com/yongjohnlee80/golib/tui/widget/core.
+	ListToggle = core.ListToggle
+	// Deprecated: use [core.ListMenu], from github.com/yongjohnlee80/golib/tui/widget/core.
+	ListMenu = core.ListMenu
+	// Deprecated: use [core.InputLeft], from github.com/yongjohnlee80/golib/tui/widget/core.
+	InputLeft = core.InputLeft
+	// Deprecated: use [core.InputSelectLeft], from github.com/yongjohnlee80/golib/tui/widget/core.
+	InputSelectLeft = core.InputSelectLeft
+	// Deprecated: use [core.InputWordLeft], from github.com/yongjohnlee80/golib/tui/widget/core.
+	InputWordLeft = core.InputWordLeft
+	// Deprecated: use [core.InputSelectWordLeft], from github.com/yongjohnlee80/golib/tui/widget/core.
+	InputSelectWordLeft = core.InputSelectWordLeft
+	// Deprecated: use [core.InputRight], from github.com/yongjohnlee80/golib/tui/widget/core.
+	InputRight = core.InputRight
+	// Deprecated: use [core.InputSelectRight], from github.com/yongjohnlee80/golib/tui/widget/core.
+	InputSelectRight = core.InputSelectRight
+	// Deprecated: use [core.InputWordRight], from github.com/yongjohnlee80/golib/tui/widget/core.
+	InputWordRight = core.InputWordRight
+	// Deprecated: use [core.InputSelectWordRight], from github.com/yongjohnlee80/golib/tui/widget/core.
 	InputSelectWordRight = core.InputSelectWordRight
-	InputHome            = core.InputHome
-	InputSelectHome      = core.InputSelectHome
-	InputEnd             = core.InputEnd
-	InputSelectEnd       = core.InputSelectEnd
-	InputBackspace       = core.InputBackspace
-	InputWordBackspace   = core.InputWordBackspace
-	InputDelete          = core.InputDelete
-	InputSubmit          = core.InputSubmit
-	InputComplete        = core.InputComplete
-	InputCompletePrev    = core.InputCompletePrev
-	InputLineStart       = core.InputLineStart
-	InputLineEnd         = core.InputLineEnd
-	InputKillLine        = core.InputKillLine
-	InputKillWord        = core.InputKillWord
-	MenuLeft             = core.MenuLeft
-	MenuRight            = core.MenuRight
-	MenuUp               = core.MenuUp
-	MenuDown             = core.MenuDown
-	MenuVimLeft          = core.MenuVimLeft
-	MenuVimDown          = core.MenuVimDown
-	MenuVimUp            = core.MenuVimUp
-	MenuVimRight         = core.MenuVimRight
-	MenuActivate         = core.MenuActivate
-	MenuClose            = core.MenuClose
+	// Deprecated: use [core.InputHome], from github.com/yongjohnlee80/golib/tui/widget/core.
+	InputHome = core.InputHome
+	// Deprecated: use [core.InputSelectHome], from github.com/yongjohnlee80/golib/tui/widget/core.
+	InputSelectHome = core.InputSelectHome
+	// Deprecated: use [core.InputEnd], from github.com/yongjohnlee80/golib/tui/widget/core.
+	InputEnd = core.InputEnd
+	// Deprecated: use [core.InputSelectEnd], from github.com/yongjohnlee80/golib/tui/widget/core.
+	InputSelectEnd = core.InputSelectEnd
+	// Deprecated: use [core.InputBackspace], from github.com/yongjohnlee80/golib/tui/widget/core.
+	InputBackspace = core.InputBackspace
+	// Deprecated: use [core.InputWordBackspace], from github.com/yongjohnlee80/golib/tui/widget/core.
+	InputWordBackspace = core.InputWordBackspace
+	// Deprecated: use [core.InputDelete], from github.com/yongjohnlee80/golib/tui/widget/core.
+	InputDelete = core.InputDelete
+	// Deprecated: use [core.InputSubmit], from github.com/yongjohnlee80/golib/tui/widget/core.
+	InputSubmit = core.InputSubmit
+	// Deprecated: use [core.InputComplete], from github.com/yongjohnlee80/golib/tui/widget/core.
+	InputComplete = core.InputComplete
+	// Deprecated: use [core.InputCompletePrev], from github.com/yongjohnlee80/golib/tui/widget/core.
+	InputCompletePrev = core.InputCompletePrev
+	// Deprecated: use [core.InputLineStart], from github.com/yongjohnlee80/golib/tui/widget/core.
+	InputLineStart = core.InputLineStart
+	// Deprecated: use [core.InputLineEnd], from github.com/yongjohnlee80/golib/tui/widget/core.
+	InputLineEnd = core.InputLineEnd
+	// Deprecated: use [core.InputKillLine], from github.com/yongjohnlee80/golib/tui/widget/core.
+	InputKillLine = core.InputKillLine
+	// Deprecated: use [core.InputKillWord], from github.com/yongjohnlee80/golib/tui/widget/core.
+	InputKillWord = core.InputKillWord
+	// Deprecated: use [core.MenuLeft], from github.com/yongjohnlee80/golib/tui/widget/core.
+	MenuLeft = core.MenuLeft
+	// Deprecated: use [core.MenuRight], from github.com/yongjohnlee80/golib/tui/widget/core.
+	MenuRight = core.MenuRight
+	// Deprecated: use [core.MenuUp], from github.com/yongjohnlee80/golib/tui/widget/core.
+	MenuUp = core.MenuUp
+	// Deprecated: use [core.MenuDown], from github.com/yongjohnlee80/golib/tui/widget/core.
+	MenuDown = core.MenuDown
+	// Deprecated: use [core.MenuVimLeft], from github.com/yongjohnlee80/golib/tui/widget/core.
+	MenuVimLeft = core.MenuVimLeft
+	// Deprecated: use [core.MenuVimDown], from github.com/yongjohnlee80/golib/tui/widget/core.
+	MenuVimDown = core.MenuVimDown
+	// Deprecated: use [core.MenuVimUp], from github.com/yongjohnlee80/golib/tui/widget/core.
+	MenuVimUp = core.MenuVimUp
+	// Deprecated: use [core.MenuVimRight], from github.com/yongjohnlee80/golib/tui/widget/core.
+	MenuVimRight = core.MenuVimRight
+	// Deprecated: use [core.MenuActivate], from github.com/yongjohnlee80/golib/tui/widget/core.
+	MenuActivate = core.MenuActivate
+	// Deprecated: use [core.MenuClose], from github.com/yongjohnlee80/golib/tui/widget/core.
+	MenuClose = core.MenuClose
 	// ButtonActivate is the activation key of a Button and a standalone MenuItem: the same
 	// tui.ActivateAction the pointer gesture produces.
+	//
+	// Deprecated: use [core.ButtonActivate], from github.com/yongjohnlee80/golib/tui/widget/core.
 	ButtonActivate = core.ButtonActivate
-	ModalDismiss   = core.ModalDismiss
-	ModalAccept    = core.ModalAccept
-	ModalPrev      = core.ModalPrev
-	ModalNext      = core.ModalNext
-	ModalVimPrev   = core.ModalVimPrev
-	ModalVimNext   = core.ModalVimNext
-	TabsPrev       = core.TabsPrev
-	TabsNext       = core.TabsNext
-	TabsLeft       = core.TabsLeft
-	TabsRight      = core.TabsRight
-	TabStripPrev   = core.TabStripPrev
-	TabStripNext   = core.TabStripNext
-	TabStripLeft   = core.TabStripLeft
-	TabStripRight  = core.TabStripRight
-	TabStripAdd    = core.TabStripAdd
-	TabStripMenu   = core.TabStripMenu
+	// Deprecated: use [core.ModalDismiss], from github.com/yongjohnlee80/golib/tui/widget/core.
+	ModalDismiss = core.ModalDismiss
+	// Deprecated: use [core.ModalAccept], from github.com/yongjohnlee80/golib/tui/widget/core.
+	ModalAccept = core.ModalAccept
+	// Deprecated: use [core.ModalPrev], from github.com/yongjohnlee80/golib/tui/widget/core.
+	ModalPrev = core.ModalPrev
+	// Deprecated: use [core.ModalNext], from github.com/yongjohnlee80/golib/tui/widget/core.
+	ModalNext = core.ModalNext
+	// Deprecated: use [core.ModalVimPrev], from github.com/yongjohnlee80/golib/tui/widget/core.
+	ModalVimPrev = core.ModalVimPrev
+	// Deprecated: use [core.ModalVimNext], from github.com/yongjohnlee80/golib/tui/widget/core.
+	ModalVimNext = core.ModalVimNext
+	// Deprecated: use [core.TabsPrev], from github.com/yongjohnlee80/golib/tui/widget/core.
+	TabsPrev = core.TabsPrev
+	// Deprecated: use [core.TabsNext], from github.com/yongjohnlee80/golib/tui/widget/core.
+	TabsNext = core.TabsNext
+	// Deprecated: use [core.TabsLeft], from github.com/yongjohnlee80/golib/tui/widget/core.
+	TabsLeft = core.TabsLeft
+	// Deprecated: use [core.TabsRight], from github.com/yongjohnlee80/golib/tui/widget/core.
+	TabsRight = core.TabsRight
+	// Deprecated: use [core.TabStripPrev], from github.com/yongjohnlee80/golib/tui/widget/core.
+	TabStripPrev = core.TabStripPrev
+	// Deprecated: use [core.TabStripNext], from github.com/yongjohnlee80/golib/tui/widget/core.
+	TabStripNext = core.TabStripNext
+	// Deprecated: use [core.TabStripLeft], from github.com/yongjohnlee80/golib/tui/widget/core.
+	TabStripLeft = core.TabStripLeft
+	// Deprecated: use [core.TabStripRight], from github.com/yongjohnlee80/golib/tui/widget/core.
+	TabStripRight = core.TabStripRight
+	// Deprecated: use [core.TabStripAdd], from github.com/yongjohnlee80/golib/tui/widget/core.
+	TabStripAdd = core.TabStripAdd
+	// Deprecated: use [core.TabStripMenu], from github.com/yongjohnlee80/golib/tui/widget/core.
+	TabStripMenu = core.TabStripMenu
 	// TabStripCommands are a strip's key commands, as StripCore reads them; golib's components
 	// draw through it.
+	//
+	// Deprecated: use [core.TabStripCommands], from github.com/yongjohnlee80/golib/tui/widget/core.
 	TabStripCommands = core.TabStripCommands
-	SplitCancel      = core.SplitCancel
-	SplitLeft        = core.SplitLeft
-	SplitRight       = core.SplitRight
-	SplitUp          = core.SplitUp
-	SplitDown        = core.SplitDown
-	ResizableCancel  = core.ResizableCancel
-	ResizableLeft    = core.ResizableLeft
-	ResizableRight   = core.ResizableRight
-	ResizableUp      = core.ResizableUp
-	ResizableDown    = core.ResizableDown
+	// Deprecated: use [core.SplitCancel], from github.com/yongjohnlee80/golib/tui/widget/core.
+	SplitCancel = core.SplitCancel
+	// Deprecated: use [core.SplitLeft], from github.com/yongjohnlee80/golib/tui/widget/core.
+	SplitLeft = core.SplitLeft
+	// Deprecated: use [core.SplitRight], from github.com/yongjohnlee80/golib/tui/widget/core.
+	SplitRight = core.SplitRight
+	// Deprecated: use [core.SplitUp], from github.com/yongjohnlee80/golib/tui/widget/core.
+	SplitUp = core.SplitUp
+	// Deprecated: use [core.SplitDown], from github.com/yongjohnlee80/golib/tui/widget/core.
+	SplitDown = core.SplitDown
+	// Deprecated: use [core.ResizableCancel], from github.com/yongjohnlee80/golib/tui/widget/core.
+	ResizableCancel = core.ResizableCancel
+	// Deprecated: use [core.ResizableLeft], from github.com/yongjohnlee80/golib/tui/widget/core.
+	ResizableLeft = core.ResizableLeft
+	// Deprecated: use [core.ResizableRight], from github.com/yongjohnlee80/golib/tui/widget/core.
+	ResizableRight = core.ResizableRight
+	// Deprecated: use [core.ResizableUp], from github.com/yongjohnlee80/golib/tui/widget/core.
+	ResizableUp = core.ResizableUp
+	// Deprecated: use [core.ResizableDown], from github.com/yongjohnlee80/golib/tui/widget/core.
+	ResizableDown = core.ResizableDown
 	// SelectOpen opens a Select's options.
-	SelectOpen              = core.SelectOpen
-	SelectClose             = core.SelectClose
-	SelectCommit            = core.SelectCommit
-	SelectUp                = core.SelectUp
-	SelectDown              = core.SelectDown
-	SelectVimUp             = core.SelectVimUp
-	SelectVimDown           = core.SelectVimDown
-	SelectPageUp            = core.SelectPageUp
-	SelectPageDown          = core.SelectPageDown
-	SelectFirst             = core.SelectFirst
-	SelectLast              = core.SelectLast
-	SelectBackspace         = core.SelectBackspace
-	TextAreaNewline         = core.TextAreaNewline
-	TextAreaBackspace       = core.TextAreaBackspace
-	TextAreaDelete          = core.TextAreaDelete
-	TextAreaLeft            = core.TextAreaLeft
-	TextAreaSelectLeft      = core.TextAreaSelectLeft
-	TextAreaWordLeft        = core.TextAreaWordLeft
-	TextAreaSelectWordLeft  = core.TextAreaSelectWordLeft
-	TextAreaRight           = core.TextAreaRight
-	TextAreaSelectRight     = core.TextAreaSelectRight
-	TextAreaWordRight       = core.TextAreaWordRight
+	//
+	// Deprecated: use [core.SelectOpen], from github.com/yongjohnlee80/golib/tui/widget/core.
+	SelectOpen = core.SelectOpen
+	// Deprecated: use [core.SelectClose], from github.com/yongjohnlee80/golib/tui/widget/core.
+	SelectClose = core.SelectClose
+	// Deprecated: use [core.SelectCommit], from github.com/yongjohnlee80/golib/tui/widget/core.
+	SelectCommit = core.SelectCommit
+	// Deprecated: use [core.SelectUp], from github.com/yongjohnlee80/golib/tui/widget/core.
+	SelectUp = core.SelectUp
+	// Deprecated: use [core.SelectDown], from github.com/yongjohnlee80/golib/tui/widget/core.
+	SelectDown = core.SelectDown
+	// Deprecated: use [core.SelectVimUp], from github.com/yongjohnlee80/golib/tui/widget/core.
+	SelectVimUp = core.SelectVimUp
+	// Deprecated: use [core.SelectVimDown], from github.com/yongjohnlee80/golib/tui/widget/core.
+	SelectVimDown = core.SelectVimDown
+	// Deprecated: use [core.SelectPageUp], from github.com/yongjohnlee80/golib/tui/widget/core.
+	SelectPageUp = core.SelectPageUp
+	// Deprecated: use [core.SelectPageDown], from github.com/yongjohnlee80/golib/tui/widget/core.
+	SelectPageDown = core.SelectPageDown
+	// Deprecated: use [core.SelectFirst], from github.com/yongjohnlee80/golib/tui/widget/core.
+	SelectFirst = core.SelectFirst
+	// Deprecated: use [core.SelectLast], from github.com/yongjohnlee80/golib/tui/widget/core.
+	SelectLast = core.SelectLast
+	// Deprecated: use [core.SelectBackspace], from github.com/yongjohnlee80/golib/tui/widget/core.
+	SelectBackspace = core.SelectBackspace
+	// Deprecated: use [core.TextAreaNewline], from github.com/yongjohnlee80/golib/tui/widget/core.
+	TextAreaNewline = core.TextAreaNewline
+	// Deprecated: use [core.TextAreaBackspace], from github.com/yongjohnlee80/golib/tui/widget/core.
+	TextAreaBackspace = core.TextAreaBackspace
+	// Deprecated: use [core.TextAreaDelete], from github.com/yongjohnlee80/golib/tui/widget/core.
+	TextAreaDelete = core.TextAreaDelete
+	// Deprecated: use [core.TextAreaLeft], from github.com/yongjohnlee80/golib/tui/widget/core.
+	TextAreaLeft = core.TextAreaLeft
+	// Deprecated: use [core.TextAreaSelectLeft], from github.com/yongjohnlee80/golib/tui/widget/core.
+	TextAreaSelectLeft = core.TextAreaSelectLeft
+	// Deprecated: use [core.TextAreaWordLeft], from github.com/yongjohnlee80/golib/tui/widget/core.
+	TextAreaWordLeft = core.TextAreaWordLeft
+	// Deprecated: use [core.TextAreaSelectWordLeft], from github.com/yongjohnlee80/golib/tui/widget/core.
+	TextAreaSelectWordLeft = core.TextAreaSelectWordLeft
+	// Deprecated: use [core.TextAreaRight], from github.com/yongjohnlee80/golib/tui/widget/core.
+	TextAreaRight = core.TextAreaRight
+	// Deprecated: use [core.TextAreaSelectRight], from github.com/yongjohnlee80/golib/tui/widget/core.
+	TextAreaSelectRight = core.TextAreaSelectRight
+	// Deprecated: use [core.TextAreaWordRight], from github.com/yongjohnlee80/golib/tui/widget/core.
+	TextAreaWordRight = core.TextAreaWordRight
+	// Deprecated: use [core.TextAreaSelectWordRight], from github.com/yongjohnlee80/golib/tui/widget/core.
 	TextAreaSelectWordRight = core.TextAreaSelectWordRight
-	TextAreaUp              = core.TextAreaUp
-	TextAreaSelectUp        = core.TextAreaSelectUp
-	TextAreaDown            = core.TextAreaDown
-	TextAreaSelectDown      = core.TextAreaSelectDown
-	TextAreaPageUp          = core.TextAreaPageUp
-	TextAreaSelectPageUp    = core.TextAreaSelectPageUp
-	TextAreaPageDown        = core.TextAreaPageDown
-	TextAreaSelectPageDown  = core.TextAreaSelectPageDown
-	TextAreaHome            = core.TextAreaHome
-	TextAreaSelectHome      = core.TextAreaSelectHome
-	TextAreaStart           = core.TextAreaStart
-	TextAreaSelectStart     = core.TextAreaSelectStart
-	TextAreaEnd             = core.TextAreaEnd
-	TextAreaSelectEnd       = core.TextAreaSelectEnd
-	TextAreaFinish          = core.TextAreaFinish
-	TextAreaSelectFinish    = core.TextAreaSelectFinish
-	TextAreaLineStart       = core.TextAreaLineStart
-	TextAreaLineEnd         = core.TextAreaLineEnd
-	TextAreaKillLine        = core.TextAreaKillLine
-	TextAreaKillWord        = core.TextAreaKillWord
-	BufferViewUp            = core.BufferViewUp
-	BufferViewDown          = core.BufferViewDown
-	BufferViewPageUp        = core.BufferViewPageUp
-	BufferViewPageDown      = core.BufferViewPageDown
-	BufferViewTop           = core.BufferViewTop
-	BufferViewBottom        = core.BufferViewBottom
-	BufferViewCopy          = core.BufferViewCopy
+	// Deprecated: use [core.TextAreaUp], from github.com/yongjohnlee80/golib/tui/widget/core.
+	TextAreaUp = core.TextAreaUp
+	// Deprecated: use [core.TextAreaSelectUp], from github.com/yongjohnlee80/golib/tui/widget/core.
+	TextAreaSelectUp = core.TextAreaSelectUp
+	// Deprecated: use [core.TextAreaDown], from github.com/yongjohnlee80/golib/tui/widget/core.
+	TextAreaDown = core.TextAreaDown
+	// Deprecated: use [core.TextAreaSelectDown], from github.com/yongjohnlee80/golib/tui/widget/core.
+	TextAreaSelectDown = core.TextAreaSelectDown
+	// Deprecated: use [core.TextAreaPageUp], from github.com/yongjohnlee80/golib/tui/widget/core.
+	TextAreaPageUp = core.TextAreaPageUp
+	// Deprecated: use [core.TextAreaSelectPageUp], from github.com/yongjohnlee80/golib/tui/widget/core.
+	TextAreaSelectPageUp = core.TextAreaSelectPageUp
+	// Deprecated: use [core.TextAreaPageDown], from github.com/yongjohnlee80/golib/tui/widget/core.
+	TextAreaPageDown = core.TextAreaPageDown
+	// Deprecated: use [core.TextAreaSelectPageDown], from github.com/yongjohnlee80/golib/tui/widget/core.
+	TextAreaSelectPageDown = core.TextAreaSelectPageDown
+	// Deprecated: use [core.TextAreaHome], from github.com/yongjohnlee80/golib/tui/widget/core.
+	TextAreaHome = core.TextAreaHome
+	// Deprecated: use [core.TextAreaSelectHome], from github.com/yongjohnlee80/golib/tui/widget/core.
+	TextAreaSelectHome = core.TextAreaSelectHome
+	// Deprecated: use [core.TextAreaStart], from github.com/yongjohnlee80/golib/tui/widget/core.
+	TextAreaStart = core.TextAreaStart
+	// Deprecated: use [core.TextAreaSelectStart], from github.com/yongjohnlee80/golib/tui/widget/core.
+	TextAreaSelectStart = core.TextAreaSelectStart
+	// Deprecated: use [core.TextAreaEnd], from github.com/yongjohnlee80/golib/tui/widget/core.
+	TextAreaEnd = core.TextAreaEnd
+	// Deprecated: use [core.TextAreaSelectEnd], from github.com/yongjohnlee80/golib/tui/widget/core.
+	TextAreaSelectEnd = core.TextAreaSelectEnd
+	// Deprecated: use [core.TextAreaFinish], from github.com/yongjohnlee80/golib/tui/widget/core.
+	TextAreaFinish = core.TextAreaFinish
+	// Deprecated: use [core.TextAreaSelectFinish], from github.com/yongjohnlee80/golib/tui/widget/core.
+	TextAreaSelectFinish = core.TextAreaSelectFinish
+	// Deprecated: use [core.TextAreaLineStart], from github.com/yongjohnlee80/golib/tui/widget/core.
+	TextAreaLineStart = core.TextAreaLineStart
+	// Deprecated: use [core.TextAreaLineEnd], from github.com/yongjohnlee80/golib/tui/widget/core.
+	TextAreaLineEnd = core.TextAreaLineEnd
+	// Deprecated: use [core.TextAreaKillLine], from github.com/yongjohnlee80/golib/tui/widget/core.
+	TextAreaKillLine = core.TextAreaKillLine
+	// Deprecated: use [core.TextAreaKillWord], from github.com/yongjohnlee80/golib/tui/widget/core.
+	TextAreaKillWord = core.TextAreaKillWord
+	// Deprecated: use [core.BufferViewUp], from github.com/yongjohnlee80/golib/tui/widget/core.
+	BufferViewUp = core.BufferViewUp
+	// Deprecated: use [core.BufferViewDown], from github.com/yongjohnlee80/golib/tui/widget/core.
+	BufferViewDown = core.BufferViewDown
+	// Deprecated: use [core.BufferViewPageUp], from github.com/yongjohnlee80/golib/tui/widget/core.
+	BufferViewPageUp = core.BufferViewPageUp
+	// Deprecated: use [core.BufferViewPageDown], from github.com/yongjohnlee80/golib/tui/widget/core.
+	BufferViewPageDown = core.BufferViewPageDown
+	// Deprecated: use [core.BufferViewTop], from github.com/yongjohnlee80/golib/tui/widget/core.
+	BufferViewTop = core.BufferViewTop
+	// Deprecated: use [core.BufferViewBottom], from github.com/yongjohnlee80/golib/tui/widget/core.
+	BufferViewBottom = core.BufferViewBottom
+	// Deprecated: use [core.BufferViewCopy], from github.com/yongjohnlee80/golib/tui/widget/core.
+	BufferViewCopy = core.BufferViewCopy
 	// FloatClose hides a modal Float.
+	//
+	// Deprecated: use [core.FloatClose], from github.com/yongjohnlee80/golib/tui/widget/core.
 	FloatClose = core.FloatClose
 	// PopupClose dismisses an anchored popup.
+	//
+	// Deprecated: use [core.PopupClose], from github.com/yongjohnlee80/golib/tui/widget/core.
 	PopupClose = core.PopupClose
 	// WindowMenu opens and leaves the window's menu bar (a declarative Window's): F10, as a desktop's
 	// toolkit binds it. It is not a mnemonic; a category's Alt+letter is.
-	WindowMenu     = core.WindowMenu
-	DrawerClose    = core.DrawerClose
+	//
+	// Deprecated: use [core.WindowMenu], from github.com/yongjohnlee80/golib/tui/widget/core.
+	WindowMenu = core.WindowMenu
+	// Deprecated: use [core.DrawerClose], from github.com/yongjohnlee80/golib/tui/widget/core.
+	DrawerClose = core.DrawerClose
+	// Deprecated: use [core.DrawerCloseOnQ], from github.com/yongjohnlee80/golib/tui/widget/core.
 	DrawerCloseOnQ = core.DrawerCloseOnQ
-	Center         = core.Center
-	TopLeft        = core.TopLeft
-	Top            = core.Top
-	TopRight       = core.TopRight
-	Left           = core.Left
-	Right          = core.Right
-	BottomLeft     = core.BottomLeft
-	Bottom         = core.Bottom
-	BottomRight    = core.BottomRight
+	// Deprecated: use [core.Center], from github.com/yongjohnlee80/golib/tui/widget/core.
+	Center = core.Center
+	// Deprecated: use [core.TopLeft], from github.com/yongjohnlee80/golib/tui/widget/core.
+	TopLeft = core.TopLeft
+	// Deprecated: use [core.Top], from github.com/yongjohnlee80/golib/tui/widget/core.
+	Top = core.Top
+	// Deprecated: use [core.TopRight], from github.com/yongjohnlee80/golib/tui/widget/core.
+	TopRight = core.TopRight
+	// Deprecated: use [core.Left], from github.com/yongjohnlee80/golib/tui/widget/core.
+	Left = core.Left
+	// Deprecated: use [core.Right], from github.com/yongjohnlee80/golib/tui/widget/core.
+	Right = core.Right
+	// Deprecated: use [core.BottomLeft], from github.com/yongjohnlee80/golib/tui/widget/core.
+	BottomLeft = core.BottomLeft
+	// Deprecated: use [core.Bottom], from github.com/yongjohnlee80/golib/tui/widget/core.
+	Bottom = core.Bottom
+	// Deprecated: use [core.BottomRight], from github.com/yongjohnlee80/golib/tui/widget/core.
+	BottomRight = core.BottomRight
 	// ErrInvalidMenuModel is the umbrella every model rejection matches. It is an
 	// errs.ErrInvalidArgument, as each of the specific rejections below is.
+	//
+	// Deprecated: use [core.ErrInvalidMenuModel], from github.com/yongjohnlee80/golib/tui/widget/core.
 	ErrInvalidMenuModel = core.ErrInvalidMenuModel
 	// ErrEmptyItemID reports a row with no ID.
+	//
+	// Deprecated: use [core.ErrEmptyItemID], from github.com/yongjohnlee80/golib/tui/widget/core.
 	ErrEmptyItemID = core.ErrEmptyItemID
 	// ErrDuplicateItemID reports the same ItemID twice anywhere in the model.
+	//
+	// Deprecated: use [core.ErrDuplicateItemID], from github.com/yongjohnlee80/golib/tui/widget/core.
 	ErrDuplicateItemID = core.ErrDuplicateItemID
 	// ErrUnknownItemKind reports a row carrying a value outside the closed set.
+	//
+	// Deprecated: use [core.ErrUnknownItemKind], from github.com/yongjohnlee80/golib/tui/widget/core.
 	ErrUnknownItemKind = core.ErrUnknownItemKind
 	// ErrModalAlreadyOpen is returned by Open on a Modal that is already open.
+	//
+	// Deprecated: use [core.ErrModalAlreadyOpen], from github.com/yongjohnlee80/golib/tui/widget/core.
 	ErrModalAlreadyOpen = core.ErrModalAlreadyOpen
 	// ErrNilOverlayHost is returned by Open when given no host.
+	//
+	// Deprecated: use [core.ErrNilOverlayHost], from github.com/yongjohnlee80/golib/tui/widget/core.
 	ErrNilOverlayHost = core.ErrNilOverlayHost
 	// ErrModalNotMountable is returned by Open when the dialog's own tree cannot be
 	// mounted — most often a descendant that is already mounted somewhere else. The
 	// host is left exactly as it was.
+	//
+	// Deprecated: use [core.ErrModalNotMountable], from github.com/yongjohnlee80/golib/tui/widget/core.
 	ErrModalNotMountable = core.ErrModalNotMountable
-	ScrollPageUp         = core.ScrollPageUp
-	ScrollPageDown       = core.ScrollPageDown
-	ScrollHome           = core.ScrollHome
-	ScrollEnd            = core.ScrollEnd
+	// Deprecated: use [core.ScrollPageUp], from github.com/yongjohnlee80/golib/tui/widget/core.
+	ScrollPageUp = core.ScrollPageUp
+	// Deprecated: use [core.ScrollPageDown], from github.com/yongjohnlee80/golib/tui/widget/core.
+	ScrollPageDown = core.ScrollPageDown
+	// Deprecated: use [core.ScrollHome], from github.com/yongjohnlee80/golib/tui/widget/core.
+	ScrollHome = core.ScrollHome
+	// Deprecated: use [core.ScrollEnd], from github.com/yongjohnlee80/golib/tui/widget/core.
+	ScrollEnd = core.ScrollEnd
 )
 
 // PublishChange publishes a ChangeEvent for owner on ctx's bus, building its value only when a
 // ChangeEvent subscriber exists (see ChangeEvent); it reports whether it built it. A text widget of
 // your own publishes its ChangeEvent with it, so a value is built only for a subscriber.
+//
+// Deprecated: use [core.PublishChange], from github.com/yongjohnlee80/golib/tui/widget/core.
 func PublishChange(a0 *tui.Context, a1 tui.NodeID, a2 func() string) bool {
 	return core.PublishChange(a0, a1, a2)
 }
 
 // WithTitle sets the title rendered inside the top border row.
+//
+// Deprecated: use [core.WithTitle], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithTitle(a0 string) BoxOption {
 	return core.WithTitle(a0)
 }
 
 // WithTitleAlign sets the title alignment: style.AlignLeft (default),
 // style.AlignCenter, or style.AlignRight. Anything else panics.
+//
+// Deprecated: use [core.WithTitleAlign], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithTitleAlign(a0 style.Align) BoxOption {
 	return core.WithTitleAlign(a0)
 }
 
 // WithStatus sets the status line rendered inside the bottom border row.
+//
+// Deprecated: use [core.WithStatus], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithStatus(a0 string) BoxOption {
 	return core.WithStatus(a0)
 }
 
 // WithStatusAlign sets the status alignment: style.AlignRight (default),
 // style.AlignLeft, or style.AlignCenter. Anything else panics.
+//
+// Deprecated: use [core.WithStatusAlign], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithStatusAlign(a0 style.Align) BoxOption {
 	return core.WithStatusAlign(a0)
 }
 
 // WithBorder sets the border prefab (default style.BorderNormal).
+//
+// Deprecated: use [core.WithBorder], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithBorder(a0 style.BorderStyle) BoxOption {
 	return core.WithBorder(a0)
 }
@@ -2365,6 +3067,8 @@ func WithBorder(a0 style.BorderStyle) BoxOption {
 // WithStyle sets the base style (padding, colors). Properties it leaves
 // unset inherit the Box defaults (BorderNormal border, TokenBorder border
 // foreground).
+//
+// Deprecated: use [core.WithStyle], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithStyle(a0 style.Style) BoxOption {
 	return core.WithStyle(a0)
 }
@@ -2372,55 +3076,75 @@ func WithStyle(a0 style.Style) BoxOption {
 // WithFocusedStyle replaces the style merged over the base while the Box or
 // a descendant holds focus (default: border foreground
 // style.TokenBorderFocused).
+//
+// Deprecated: use [core.WithFocusedStyle], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithFocusedStyle(a0 style.Style) BoxOption {
 	return core.WithFocusedStyle(a0)
 }
 
 // WithTitleElide sets where a title too wide for its row loses text (SetTitleElide).
+//
+// Deprecated: use [core.WithTitleElide], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithTitleElide(a0 Elide) BoxOption {
 	return core.WithTitleElide(a0)
 }
 
 // WithTitleSlot puts c on the box's title row (SetTitleSlot).
+//
+// Deprecated: use [core.WithTitleSlot], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithTitleSlot(a0 tui.Component) BoxOption {
 	return core.WithTitleSlot(a0)
 }
 
 // WithBottomSlot puts c on the box's bottom border row (SetBottomSlot).
+//
+// Deprecated: use [core.WithBottomSlot], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithBottomSlot(a0 tui.Component) BoxOption {
 	return core.WithBottomSlot(a0)
 }
 
 // WithFocusable opts the Box itself into the focus chain (child-less
 // panes). Default false: focus belongs to the child.
+//
+// Deprecated: use [core.WithFocusable], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithFocusable(a0 bool) BoxOption {
 	return core.WithFocusable(a0)
 }
 
 // NewBox builds a bordered container around child (which may be nil for a
 // chrome-only pane).
+//
+// Deprecated: use [core.NewBox], from github.com/yongjohnlee80/golib/tui/widget/core.
 func NewBox(a0 tui.Component, a1 ...BoxOption) *Box {
 	return core.NewBox(a0, a1...)
 }
 
 // WithMaxLines bounds the ring (default 10_000); beyond it the oldest
 // lines drop.
+//
+// Deprecated: use [core.WithMaxLines], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithMaxLines(a0 int) BufferViewOption {
 	return core.WithMaxLines(a0)
 }
 
 // WithFollowTail sets the initial follow-tail state (default true).
+//
+// Deprecated: use [core.WithFollowTail], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithFollowTail(a0 bool) BufferViewOption {
 	return core.WithFollowTail(a0)
 }
 
 // WithANSIPassthrough toggles the SGR interpreter (default true). Off,
 // escapes are stripped instead — for untrusted or plain streams.
+//
+// Deprecated: use [core.WithANSIPassthrough], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithANSIPassthrough(a0 bool) BufferViewOption {
 	return core.WithANSIPassthrough(a0)
 }
 
 // NewBufferView builds an empty view.
+//
+// Deprecated: use [core.NewBufferView], from github.com/yongjohnlee80/golib/tui/widget/core.
 func NewBufferView(a0 ...BufferViewOption) *BufferView {
 	return core.NewBufferView(a0...)
 }
@@ -2428,11 +3152,15 @@ func NewBufferView(a0 ...BufferViewOption) *BufferView {
 // NewBufferWriter returns a closed handle that, once bound, delivers each chunk
 // to sink on the loop goroutine. golib's components draw through it; a widget outside golib rarely
 // needs it.
+//
+// Deprecated: use [core.NewBufferWriter], from github.com/yongjohnlee80/golib/tui/widget/core.
 func NewBufferWriter(a0 func([]byte)) *BufferWriter {
 	return core.NewBufferWriter(a0)
 }
 
 // NewButton builds a button with the given label.
+//
+// Deprecated: use [core.NewButton], from github.com/yongjohnlee80/golib/tui/widget/core.
 func NewButton(a0 string, a1 ...ButtonOption) *Button {
 	return core.NewButton(a0, a1...)
 }
@@ -2440,6 +3168,8 @@ func NewButton(a0 string, a1 ...ButtonOption) *Button {
 // WithLabelMessage labels the button with a catalog message instead of text: the label and
 // its mnemonic come from the translation, in the App's language, each time the button is laid
 // out. Until it is mounted it shows golib's English for one of golib's own ids.
+//
+// Deprecated: use [core.WithLabelMessage], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithLabelMessage(a0 tui.Message) ButtonOption {
 	return core.WithLabelMessage(a0)
 }
@@ -2447,6 +3177,8 @@ func WithLabelMessage(a0 tui.Message) ButtonOption {
 // WithDefault makes the button its dialog's DEFAULT — QPushButton.default:
 // the one Enter presses when the focused control leaves it unclaimed. A
 // focused button still answers Enter itself. At most one default per dialog.
+//
+// Deprecated: use [core.WithDefault], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithDefault(a0 bool) ButtonOption {
 	return core.WithDefault(a0)
 }
@@ -2465,6 +3197,8 @@ func WithDefault(a0 bool) ButtonOption {
 //
 // An explicit mnemonic outlives a message label's translations: the translation's & marker then
 // changes the label but not the key, and the underline marks the first letter matching it.
+//
+// Deprecated: use [core.WithMnemonic], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithMnemonic(a0 rune) ButtonOption {
 	return core.WithMnemonic(a0)
 }
@@ -2472,6 +3206,8 @@ func WithMnemonic(a0 rune) ButtonOption {
 // WithButtonDecoration replaces the pair a button is wrapped in. Two empty
 // strings remove it, leaving the bare label for a caller framing the control
 // some other way.
+//
+// Deprecated: use [core.WithButtonDecoration], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithButtonDecoration(a0, a1 string) ButtonOption {
 	return core.WithButtonDecoration(a0, a1)
 }
@@ -2482,12 +3218,16 @@ func WithButtonDecoration(a0, a1 string) ButtonOption {
 // containers that do not recognise it. Application-specific roles are therefore
 // additive: an app can define its own and carry it through the toolkit without
 // the toolkit needing to know what it means.
+//
+// Deprecated: use [core.WithRole], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithRole(a0 ButtonRole) ButtonOption {
 	return core.WithRole(a0)
 }
 
 // WithButtonStyle associates a style at construction. The Button does not own
 // it; several buttons may share one.
+//
+// Deprecated: use [core.WithButtonStyle], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithButtonStyle(a0 *ButtonStyle) ButtonOption {
 	return core.WithButtonStyle(a0)
 }
@@ -2497,6 +3237,8 @@ func WithButtonStyle(a0 *ButtonStyle) ButtonOption {
 // It runs synchronously inside the activation, before the activation event
 // reaches the bus, so anything observing that event sees state the callback has
 // already settled.
+//
+// Deprecated: use [core.WithOnActivate], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithOnActivate(a0 func()) ButtonOption {
 	return core.WithOnActivate(a0)
 }
@@ -2509,12 +3251,16 @@ func WithOnActivate(a0 func()) ButtonOption {
 // an author who has not considered the pressed look still gets one that reads as
 // pressed rather than one that looks broken. Use [NewButtonStyleFull] to state
 // all four.
+//
+// Deprecated: use [core.NewButtonStyle], from github.com/yongjohnlee80/golib/tui/widget/core.
 func NewButtonStyle(a0, a1 style.Style) *ButtonStyle {
 	return core.NewButtonStyle(a0, a1)
 }
 
 // NewButtonStyleFull states all four looks explicitly, overriding the
 // derivations.
+//
+// Deprecated: use [core.NewButtonStyleFull], from github.com/yongjohnlee80/golib/tui/widget/core.
 func NewButtonStyleFull(a0, a1, a2, a3 style.Style) *ButtonStyle {
 	return core.NewButtonStyleFull(a0, a1, a2, a3)
 }
@@ -2523,12 +3269,16 @@ func NewButtonStyleFull(a0, a1, a2, a3 style.Style) *ButtonStyle {
 //
 // Token-valued throughout, so it follows the App's theme rather than pinning
 // colours a dark theme would then have to fight.
+//
+// Deprecated: use [core.DefaultButtonStyle], from github.com/yongjohnlee80/golib/tui/widget/core.
 func DefaultButtonStyle() *ButtonStyle {
 	return core.DefaultButtonStyle()
 }
 
 // OwnerContext is o's Context; nil for a nil o, or before it is mounted. golib's components draw
 // through it; a widget outside golib rarely needs it.
+//
+// Deprecated: use [core.OwnerContext], from github.com/yongjohnlee80/golib/tui/widget/core.
 func OwnerContext(a0 ContextOwner) *tui.Context {
 	return core.OwnerContext(a0)
 }
@@ -2537,6 +3287,8 @@ func OwnerContext(a0 ContextOwner) *tui.Context {
 // width, as wide as avail allows, the narrower keeping theirs, and the cells the cap leaves over go
 // to the capped columns, one each from the left. nil when the columns can't narrow to
 // tableMinColumn.
+//
+// Deprecated: use [core.FitColumns], from github.com/yongjohnlee80/golib/tui/widget/core.
 func FitColumns(a0 []int, a1 int) []int {
 	return core.FitColumns(a0, a1)
 }
@@ -2544,6 +3296,8 @@ func FitColumns(a0 []int, a1 int) []int {
 // PaintPanMarks draws a wide block's marks at row mid of its edge columns left and right, in st: a «
 // when it is panned (off > 0), a » when more of it lies past its room (off < over). The HTML page's
 // wide blocks and the Editor's Rendered view's mark their pans alike.
+//
+// Deprecated: use [core.PaintPanMarks], from github.com/yongjohnlee80/golib/tui/widget/core.
 func PaintPanMarks(a0 tui.Surface, a1, a2, a3, a4, a5 int, a6 style.Style) {
 	core.PaintPanMarks(a0, a1, a2, a3, a4, a5, a6)
 }
@@ -2552,22 +3306,30 @@ func PaintPanMarks(a0 tui.Surface, a1, a2, a3, a4, a5 int, a6 style.Style) {
 // comparability (a named slice satisfies it), so the values are compared only when they are of one
 // type and comparable as they stand; any other pair is two menus, never a panic. golib's components
 // draw through it; a widget outside golib rarely needs it.
+//
+// Deprecated: use [core.SameMenu], from github.com/yongjohnlee80/golib/tui/widget/core.
 func SameMenu(a0, a1 MenuOpener) bool {
 	return core.SameMenu(a0, a1)
 }
 
 // MenuWouldOpen reports whether m would open: a menu that reports Enabled is asked, any other is on. A
 // view of your own that opens a MenuOpener asks it before it takes the right press.
+//
+// Deprecated: use [core.MenuWouldOpen], from github.com/yongjohnlee80/golib/tui/widget/core.
 func MenuWouldOpen(a0 MenuOpener) bool {
 	return core.MenuWouldOpen(a0)
 }
 
 // WithAnchor positions the content (default Center).
+//
+// Deprecated: use [core.WithAnchor], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithAnchor(a0 Anchor) FloatOption {
 	return core.WithAnchor(a0)
 }
 
 // WithModal makes the float a focus trap with Esc-dismiss.
+//
+// Deprecated: use [core.WithModal], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithModal(a0 bool) FloatOption {
 	return core.WithModal(a0)
 }
@@ -2584,11 +3346,15 @@ func WithModal(a0 bool) FloatOption {
 //
 // The fraction covers the float's whole box, border included, so two
 // stacked floats at 90% and 80% read as a detail ON a list.
+//
+// Deprecated: use [core.WithSizeFraction], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithSizeFraction(a0, a1 int) FloatOption {
 	return core.WithSizeFraction(a0, a1)
 }
 
 // WithDimBackground dims (scrims) the cells beneath while shown.
+//
+// Deprecated: use [core.WithDimBackground], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithDimBackground(a0 bool) FloatOption {
 	return core.WithDimBackground(a0)
 }
@@ -2596,11 +3362,15 @@ func WithDimBackground(a0 bool) FloatOption {
 // NewFloat builds a floating window around child — usually a Box, so title
 // and border come along: NewFloat(NewBox(form, WithTitle("Confirm")),
 // WithModal(true)).
+//
+// Deprecated: use [core.NewFloat], from github.com/yongjohnlee80/golib/tui/widget/core.
 func NewFloat(a0 tui.Component, a1 ...FloatOption) *Float {
 	return core.NewFloat(a0, a1...)
 }
 
 // AtRect anchors the float at an explicit overlay-relative rectangle.
+//
+// Deprecated: use [core.AtRect], from github.com/yongjohnlee80/golib/tui/widget/core.
 func AtRect(a0 tui.Rect) Anchor {
 	return core.AtRect(a0)
 }
@@ -2612,6 +3382,8 @@ func AtRect(a0 tui.Rect) Anchor {
 // (an edge, AtRect, AtFraction). A rectangle rect reports wins over otherwise wherever the float is
 // placed or asked where it is. A live-anchored float floats as otherwise does (Float.Floating): over
 // a reserved strip, with an edge for otherwise, it is docked.
+//
+// Deprecated: use [core.AtLive], from github.com/yongjohnlee80/golib/tui/widget/core.
 func AtLive(a0 func() (tui.Rect, bool), a1 Anchor) Anchor {
 	return core.AtLive(a0, a1)
 }
@@ -2619,6 +3391,8 @@ func AtLive(a0 func() (tui.Rect, bool), a1 Anchor) Anchor {
 // AtLiveIn is AtLive whose rect is given the area the float is placed in, this pass's: a rectangle
 // that is a function of the area (a FloatWindow's percentages, held to its maximum) is reckoned in
 // the area it is placed in, not the one the float last laid out in (Area, committed after layout).
+//
+// Deprecated: use [core.AtLiveIn], from github.com/yongjohnlee80/golib/tui/widget/core.
 func AtLiveIn(a0 func(area tui.Rect) (tui.Rect, bool), a1 Anchor) Anchor {
 	return core.AtLiveIn(a0, a1)
 }
@@ -2627,12 +3401,16 @@ func AtLiveIn(a0 func(area tui.Rect) (tui.Rect, bool), a1 Anchor) Anchor {
 // top-left corner, w and h its size, each 0 to 100, fractions of a percent included. Unlike AtRect
 // it follows a resize of the area: a panel a user placed at the right third stays at the right
 // third.
+//
+// Deprecated: use [core.AtFraction], from github.com/yongjohnlee80/golib/tui/widget/core.
 func AtFraction(a0, a1, a2, a3 float64) Anchor {
 	return core.AtFraction(a0, a1, a2, a3)
 }
 
 // FractionRect is where AtFraction(x, y, w, h) puts a float in area: rounded to the nearest cell, at
 // least three cells each way, and inside area.
+//
+// Deprecated: use [core.FractionRect], from github.com/yongjohnlee80/golib/tui/widget/core.
 func FractionRect(a0, a1, a2, a3 float64, a4 tui.Rect) tui.Rect {
 	return core.FractionRect(a0, a1, a2, a3, a4)
 }
@@ -2640,6 +3418,8 @@ func FractionRect(a0, a1, a2, a3 float64, a4 tui.Rect) tui.Rect {
 // FractionOf is r as AtFraction's percentages of area, to a hundredth of a percent: the inverse of
 // where AtFraction puts it, so a rectangle read back and placed again lands on the same cells in an
 // area under 10 000 cells across. A one-cell move is never rounded away. Zero when area is empty.
+//
+// Deprecated: use [core.FractionOf], from github.com/yongjohnlee80/golib/tui/widget/core.
 func FractionOf(a0, a1 tui.Rect) (float64, float64, float64, float64) {
 	return core.FractionOf(a0, a1)
 }
@@ -2652,22 +3432,30 @@ func FractionOf(a0, a1 tui.Rect) (float64, float64, float64, float64) {
 // SliceSource ALIASES items; it does not copy. Mutating the slice afterwards is
 // therefore an in-place source change, and the notification contract above
 // applies: call List.RefreshSource on the loop before anything else observes it.
+//
+// Deprecated: use [core.SliceSource], from github.com/yongjohnlee80/golib/tui/widget/core.
 func SliceSource[T any](a0 []T) ListSource[T] {
 	return core.SliceSource[T](a0)
 }
 
 // WithSource sets the data source and the row renderer.
+//
+// Deprecated: use [core.WithSource], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithSource[T any](a0 ListSource[T], a1 func(T) string) ListOption[T] {
 	return core.WithSource[T](a0, a1)
 }
 
 // WithItems is sugar for WithSource(SliceSource(items), render).
+//
+// Deprecated: use [core.WithItems], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithItems[T any](a0 []T, a1 func(T) string) ListOption[T] {
 	return core.WithItems[T](a0, a1)
 }
 
 // WithMultiSelect enables the multi-select mode (Space toggles;
 // SelectedAll reports).
+//
+// Deprecated: use [core.WithMultiSelect], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithMultiSelect[T any](a0 bool) ListOption[T] {
 	return core.WithMultiSelect[T](a0)
 }
@@ -2675,12 +3463,16 @@ func WithMultiSelect[T any](a0 bool) ListOption[T] {
 // WithEmptyText sets a muted placeholder rendered in the list's first row when
 // the source has no items (e.g. "No results yet"). Empty by default: an empty
 // list paints nothing.
+//
+// Deprecated: use [core.WithEmptyText], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithEmptyText[T any](a0 string) ListOption[T] {
 	return core.WithEmptyText[T](a0)
 }
 
 // WithEmptyTextMessage sets the placeholder to a catalog message, shown in the App's
 // language.
+//
+// Deprecated: use [core.WithEmptyTextMessage], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithEmptyTextMessage[T any](a0 tui.Message) ListOption[T] {
 	return core.WithEmptyTextMessage[T](a0)
 }
@@ -2688,52 +3480,70 @@ func WithEmptyTextMessage[T any](a0 tui.Message) ListOption[T] {
 // WithListOnCursor sets what runs, at once, when the cursor moves to row i: the bus's
 // SelectionChangedEvent reaches other subscribers a loop turn later. fn may replace the rows. An owner composing a List
 // uses it rather than subscribing app-wide and filtering by Owner.
+//
+// Deprecated: use [core.WithListOnCursor], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithListOnCursor[T any](a0 func(i int)) ListOption[T] {
 	return core.WithListOnCursor[T](a0)
 }
 
 // WithListRowPointer is the pointer's shape over the list's rows, such as the hand for rows that
 // open something: see SetRowPointerShape.
+//
+// Deprecated: use [core.WithListRowPointer], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithListRowPointer[T any](a0 tui.PointerShape) ListOption[T] {
 	return core.WithListRowPointer[T](a0)
 }
 
 // WithListOnActivate sets what runs, at once, when row i is activated (Enter, a double click): the
 // bus's ActivateEvent reaches other subscribers a loop turn later. fn may replace the rows.
+//
+// Deprecated: use [core.WithListOnActivate], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithListOnActivate[T any](a0 func(i int)) ListOption[T] {
 	return core.WithListOnActivate[T](a0)
 }
 
 // WithListOnContextMenu sets what runs, at once, when a row's menu is asked for (SetContextMenu): row
 // i (-1 below the rows) and the point, in the list's cells, as ContextMenuEvent carries them.
+//
+// Deprecated: use [core.WithListOnContextMenu], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithListOnContextMenu[T any](a0 func(i int, at tui.Point)) ListOption[T] {
 	return core.WithListOnContextMenu[T](a0)
 }
 
 // WithListStyles overrides the style hooks; zero fields keep defaults.
+//
+// Deprecated: use [core.WithListStyles], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithListStyles[T any](a0 ListStyles) ListOption[T] {
 	return core.WithListStyles[T](a0)
 }
 
 // NewList builds a List. A source (WithSource or WithItems) is required —
 // misconfiguration panics at construction (golib convention).
+//
+// Deprecated: use [core.NewList], from github.com/yongjohnlee80/golib/tui/widget/core.
 func NewList[T any](a0 ...ListOption[T]) *List[T] {
 	return core.NewList[T](a0...)
 }
 
 // NewMenu builds an empty menu. Supply a model with SetModel.
+//
+// Deprecated: use [core.NewMenu], from github.com/yongjohnlee80/golib/tui/widget/core.
 func NewMenu(a0 ...MenuOption) *Menu {
 	return core.NewMenu(a0...)
 }
 
 // WithMenuStyle associates a style. The Menu does not own it; several menus may
 // share one.
+//
+// Deprecated: use [core.WithMenuStyle], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithMenuStyle(a0 *MenuStyle) MenuOption {
 	return core.WithMenuStyle(a0)
 }
 
 // WithAnchorPolicy sets how submenu levels are placed when the preferred side
 // does not fit. nil selects FlipClipPolicy.
+//
+// Deprecated: use [core.WithAnchorPolicy], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithAnchorPolicy(a0 AnchorPolicy) MenuOption {
 	return core.WithAnchorPolicy(a0)
 }
@@ -2744,6 +3554,8 @@ func WithAnchorPolicy(a0 AnchorPolicy) MenuOption {
 // The alternative — one width shared by every level, taken from the widest —
 // is NOT what this does: a single long row in one submenu would then stretch
 // every other dropdown in the menu to match it.
+//
+// Deprecated: use [core.WithLevelMinWidth], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithLevelMinWidth(a0 int) MenuOption {
 	return core.WithLevelMinWidth(a0)
 }
@@ -2762,12 +3574,16 @@ func WithLevelMinWidth(a0 int) MenuOption {
 // become navigation. Without that precedence, turning this on would silently
 // make some rows unreachable, and the author who declared the hotkey would have
 // no way to see why.
+//
+// Deprecated: use [core.WithMenuVimNavigation], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithMenuVimNavigation(a0 bool) MenuOption {
 	return core.WithMenuVimNavigation(a0)
 }
 
 // WithLevelTitle decides whether a dropdown names the row that opened it in
 // its top border. On by default.
+//
+// Deprecated: use [core.WithLevelTitle], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithLevelTitle(a0 bool) MenuOption {
 	return core.WithLevelTitle(a0)
 }
@@ -2779,6 +3595,8 @@ func WithLevelTitle(a0 bool) MenuOption {
 // exceptional one, so marking every entry says nothing and costs two cells
 // each. It is an option rather than a fixed rule because a bar mixing entries
 // that open with entries that act directly does need the distinction.
+//
+// Deprecated: use [core.WithBarSubmenuMarker], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithBarSubmenuMarker(a0 bool) MenuOption {
 	return core.WithBarSubmenuMarker(a0)
 }
@@ -2789,6 +3607,8 @@ func WithBarSubmenuMarker(a0 bool) MenuOption {
 // A nil OR TYPED-NIL renderer is stored as absent, so the built-in painter runs.
 // Normalising here rather than at the paint site means one stored value can be
 // trusted everywhere it is read, instead of every reader repeating the check.
+//
+// Deprecated: use [core.WithRowRenderer], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithRowRenderer(a0 RowRenderer) MenuOption {
 	return core.WithRowRenderer(a0)
 }
@@ -2796,6 +3616,8 @@ func WithRowRenderer(a0 RowRenderer) MenuOption {
 // WithOnSelectionChanged registers a callback for selection movement. It runs
 // synchronously; the bus also carries MenuSelectionChangedEvent for observers
 // that would rather not be coupled to construction.
+//
+// Deprecated: use [core.WithOnSelectionChanged], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithOnSelectionChanged(a0 func(ItemID)) MenuOption {
 	return core.WithOnSelectionChanged(a0)
 }
@@ -2811,6 +3633,8 @@ func WithOnSelectionChanged(a0 func(ItemID)) MenuOption {
 // synchronously and never after the Menu unmounts. A closure may still capture
 // arbitrary application values and the consumer owns their lifetime — prefer a
 // long-lived controller or store to capturing another component's Context.
+//
+// Deprecated: use [core.WithActionExecutor], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithActionExecutor(a0 func(tui.ActionInvocation) bool) MenuOption {
 	return core.WithActionExecutor(a0)
 }
@@ -2827,18 +3651,24 @@ func WithActionExecutor(a0 func(tui.ActionInvocation) bool) MenuOption {
 // menu from inside fn: it is NEVER RE-ENTERED — that change is reported after
 // fn returns — and it hears only real changes, never a stale value, so it ends
 // holding exactly what the menu holds (see report).
+//
+// Deprecated: use [core.WithMenuOnToggled], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithMenuOnToggled(a0 func(id ItemID, checked, byUser bool)) MenuOption {
 	return core.WithMenuOnToggled(a0)
 }
 
 // NewMenuBar wraps a Menu as a bar. The Menu keeps ownership of everything
 // except layout.
+//
+// Deprecated: use [core.NewMenuBar], from github.com/yongjohnlee80/golib/tui/widget/core.
 func NewMenuBar(a0 *Menu, a1 ...MenuBarOption) *MenuBar {
 	return core.NewMenuBar(a0, a1...)
 }
 
 // WithBarPlacement sets which edge the bar occupies. An invalid value is refused
 // at construction rather than stored.
+//
+// Deprecated: use [core.WithBarPlacement], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithBarPlacement(a0 BarPlacement) MenuBarOption {
 	return core.WithBarPlacement(a0)
 }
@@ -2846,54 +3676,74 @@ func WithBarPlacement(a0 BarPlacement) MenuBarOption {
 // WithCornerWidget puts c at the bar's end, its right on a horizontal bar and its foot on a vertical
 // one (Qt's QMenuBar::setCornerWidget, TopRightCorner). The menus lay out in what is left, so
 // PegRight menus sit beside it. A bar too short for both keeps its menus whole and cuts the corner.
+//
+// Deprecated: use [core.WithCornerWidget], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithCornerWidget(a0 tui.Component) MenuBarOption {
 	return core.WithCornerWidget(a0)
 }
 
 // NewMenuItem builds a standalone, enabled menu entry.
+//
+// Deprecated: use [core.NewMenuItem], from github.com/yongjohnlee80/golib/tui/widget/core.
 func NewMenuItem(a0 string, a1 ...MenuItemOption) *MenuItem {
 	return core.NewMenuItem(a0, a1...)
 }
 
 // WithItemKind sets whether the item is a command, a check or a radio.
+//
+// Deprecated: use [core.WithItemKind], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithItemKind(a0 ItemKind) MenuItemOption {
 	return core.WithItemKind(a0)
 }
 
 // WithItemAccel sets the accelerator text shown at the right edge. Display only:
 // this widget never binds it.
+//
+// Deprecated: use [core.WithItemAccel], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithItemAccel(a0 string) MenuItemOption {
 	return core.WithItemAccel(a0)
 }
 
 // WithItemChecked sets the initial checked state of a check or radio item.
+//
+// Deprecated: use [core.WithItemChecked], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithItemChecked(a0 bool) MenuItemOption {
 	return core.WithItemChecked(a0)
 }
 
 // WithItemEnabled sets the initial availability.
+//
+// Deprecated: use [core.WithItemEnabled], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithItemEnabled(a0 bool) MenuItemOption {
 	return core.WithItemEnabled(a0)
 }
 
 // WithOnRun registers the callback run on activation.
+//
+// Deprecated: use [core.WithOnRun], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithOnRun(a0 func()) MenuItemOption {
 	return core.WithOnRun(a0)
 }
 
 // WithItemStyle associates a style. Items share MenuStyle with Menu, so one
 // value dresses both and an inline item matches the menu it belongs with.
+//
+// Deprecated: use [core.WithItemStyle], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithItemStyle(a0 *MenuStyle) MenuItemOption {
 	return core.WithItemStyle(a0)
 }
 
 // NewCommand builds an enabled, visible command row.
+//
+// Deprecated: use [core.NewCommand], from github.com/yongjohnlee80/golib/tui/widget/core.
 func NewCommand(a0 ItemID, a1 string, a2 tui.Action) MenuItemModel {
 	return core.NewCommand(a0, a1, a2)
 }
 
 // NewSubmenu builds an enabled, visible submenu row over a deep copy of
 // children, so the caller's slice and the returned value cannot alias.
+//
+// Deprecated: use [core.NewSubmenu], from github.com/yongjohnlee80/golib/tui/widget/core.
 func NewSubmenu(a0 ItemID, a1 string, a2 []MenuItemModel) MenuItemModel {
 	return core.NewSubmenu(a0, a1, a2)
 }
@@ -2901,17 +3751,23 @@ func NewSubmenu(a0 ItemID, a1 string, a2 []MenuItemModel) MenuItemModel {
 // NewSeparator builds a visible separator. It is deliberately NOT enabled:
 // a separator is never selectable, and marking it enabled would invite code to
 // treat "enabled" as the only selectability test.
+//
+// Deprecated: use [core.NewSeparator], from github.com/yongjohnlee80/golib/tui/widget/core.
 func NewSeparator(a0 ItemID) MenuItemModel {
 	return core.NewSeparator(a0)
 }
 
 // NewCheck builds an enabled, visible, UNCHECKED check row. A caller wanting it
 // checked sets Checked on the returned value.
+//
+// Deprecated: use [core.NewCheck], from github.com/yongjohnlee80/golib/tui/widget/core.
 func NewCheck(a0 ItemID, a1 string, a2 tui.Action) MenuItemModel {
 	return core.NewCheck(a0, a1, a2)
 }
 
 // NewRadio builds an enabled, visible, unchecked radio row in group.
+//
+// Deprecated: use [core.NewRadio], from github.com/yongjohnlee80/golib/tui/widget/core.
 func NewRadio(a0 ItemID, a1, a2 string, a3 tui.Action) MenuItemModel {
 	return core.NewRadio(a0, a1, a2, a3)
 }
@@ -2920,12 +3776,16 @@ func NewRadio(a0 ItemID, a1, a2 string, a3 tui.Action) MenuItemModel {
 // about, deriving the rest: disabled is the surface faded, armed is the
 // selection reversed, the accelerator is muted, and the border follows the
 // surface.
+//
+// Deprecated: use [core.NewMenuStyle], from github.com/yongjohnlee80/golib/tui/widget/core.
 func NewMenuStyle(a0, a1 style.Style) *MenuStyle {
 	return core.NewMenuStyle(a0, a1)
 }
 
 // DefaultMenuStyle is the look a menu has when its author has said nothing.
 // colours are.
+//
+// Deprecated: use [core.DefaultMenuStyle], from github.com/yongjohnlee80/golib/tui/widget/core.
 func DefaultMenuStyle() *MenuStyle {
 	return core.DefaultMenuStyle()
 }
@@ -2938,12 +3798,16 @@ func DefaultMenuStyle() *MenuStyle {
 // source, so any of those is an authoring error. The runtime setter returns an
 // error for the same rules instead, and both go through one validator so they
 // cannot come to disagree.
+//
+// Deprecated: use [core.NewModal], from github.com/yongjohnlee80/golib/tui/widget/core.
 func NewModal(a0 tui.Component, a1 ...ModalOption) *Modal {
 	return core.NewModal(a0, a1...)
 }
 
 // WithButtons supplies the dialog's buttons. The list is validated at
 // construction; see [NewModal] for what is refused.
+//
+// Deprecated: use [core.WithButtons], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithButtons(a0 ...*Button) ModalOption {
 	return core.WithButtons(a0...)
 }
@@ -2951,12 +3815,16 @@ func WithButtons(a0 ...*Button) ModalOption {
 // WithAcceptGate says whether an Accept answer may accept NOW: a file dialog
 // with nothing chosen yet. A refused accept leaves the dialog open. The button's
 // own callback has run either way.
+//
+// Deprecated: use [core.WithAcceptGate], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithAcceptGate(a0 func() bool) ModalOption {
 	return core.WithAcceptGate(a0)
 }
 
 // WithOnDismiss sets the callback run when the dialog closes. It runs before
 // the dismissal event reaches the bus, so an observer sees settled state.
+//
+// Deprecated: use [core.WithOnDismiss], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithOnDismiss(a0 func(DismissReason)) ModalOption {
 	return core.WithOnDismiss(a0)
 }
@@ -2966,12 +3834,16 @@ func WithOnDismiss(a0 func(DismissReason)) ModalOption {
 // Named WithModalTitle rather than WithTitle because the package already has a
 // WithTitle for Box; this one is qualified, and ModalStyle.WithTitle — a method
 // — sets the title's LOOK rather than its text.
+//
+// Deprecated: use [core.WithModalTitle], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithModalTitle(a0 string) ModalOption {
 	return core.WithModalTitle(a0)
 }
 
 // WithModalTitleMessage sets the card's title to a catalog message, shown in the App's
 // language.
+//
+// Deprecated: use [core.WithModalTitleMessage], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithModalTitleMessage(a0 tui.Message) ModalOption {
 	return core.WithModalTitleMessage(a0)
 }
@@ -2979,6 +3851,8 @@ func WithModalTitleMessage(a0 tui.Message) ModalOption {
 // WithModalRule draws a line across the card between the body and the buttons,
 // joined to the frame at both ends: the message above it, the decision below.
 // Without it the two are separated by a blank line.
+//
+// Deprecated: use [core.WithModalRule], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithModalRule(a0 bool) ModalOption {
 	return core.WithModalRule(a0)
 }
@@ -2986,6 +3860,8 @@ func WithModalRule(a0 bool) ModalOption {
 // WithModalKeys gives the dialog keys of its own: fn sees every key press the
 // controls inside it leave unconsumed, while it is open, and reports whether it
 // took it — a viewer's `y` copying, say.
+//
+// Deprecated: use [core.WithModalKeys], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithModalKeys(a0 func(tui.KeyEvent) bool) ModalOption {
 	return core.WithModalKeys(a0)
 }
@@ -2993,6 +3869,8 @@ func WithModalKeys(a0 func(tui.KeyEvent) bool) ModalOption {
 // WithModalWidth sets the card's width in cells, frame included, where it
 // would otherwise take its content's: a prompt whose field would fill the
 // screen. Clamped to the host; 0 is the content's width.
+//
+// Deprecated: use [core.WithModalWidth], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithModalWidth(a0 int) ModalOption {
 	return core.WithModalWidth(a0)
 }
@@ -3000,6 +3878,8 @@ func WithModalWidth(a0 int) ModalOption {
 // WithModalMaxSizePercent caps the card's available width and height as a
 // percentage of the host. Zero on either axis leaves that axis uncapped.
 // The card remains centered and can still shrink with the terminal.
+//
+// Deprecated: use [core.WithModalMaxSizePercent], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithModalMaxSizePercent(a0, a1 int) ModalOption {
 	return core.WithModalMaxSizePercent(a0, a1)
 }
@@ -3009,12 +3889,16 @@ func WithModalMaxSizePercent(a0, a1 int) ModalOption {
 // stay the card's and keep their mnemonics: a body cannot resolve a bare
 // letter, which is what moving the buttons into one to get a footer below
 // them would cost.
+//
+// Deprecated: use [core.WithModalFooter], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithModalFooter(a0 string) ModalOption {
 	return core.WithModalFooter(a0)
 }
 
 // WithModalStyle associates a style. The Modal does not own it; several dialogs
 // may share one.
+//
+// Deprecated: use [core.WithModalStyle], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithModalStyle(a0 *ModalStyle) ModalOption {
 	return core.WithModalStyle(a0)
 }
@@ -3027,6 +3911,8 @@ func WithModalStyle(a0 *ModalStyle) ModalOption {
 // a Vim-shaped application should not have two of its letters quietly taken.
 // An explicit mnemonic still wins over an alias, so enabling this cannot make
 // a declared key unreachable.
+//
+// Deprecated: use [core.WithModalVimNavigation], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithModalVimNavigation(a0 bool) ModalOption {
 	return core.WithModalVimNavigation(a0)
 }
@@ -3053,12 +3939,16 @@ func WithModalVimNavigation(a0 bool) ModalOption {
 // activating Cancel, and a dialog containing a text input keeps typing `q`.
 //
 // Modified keys are never dismiss keys — Ctrl-Q is not `q`.
+//
+// Deprecated: use [core.WithModalDismissKeys], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithModalDismissKeys(a0 ...rune) ModalOption {
 	return core.WithModalDismissKeys(a0...)
 }
 
 // WithButtonAlign sets where the button row sits. An invalid value is refused
 // at construction rather than stored, like every other closed set here.
+//
+// Deprecated: use [core.WithButtonAlign], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithButtonAlign(a0 ButtonAlign) ModalOption {
 	return core.WithButtonAlign(a0)
 }
@@ -3068,6 +3958,8 @@ func WithButtonAlign(a0 ButtonAlign) ModalOption {
 // does NOT do on its own, since a stack places an unaligned layer top-left.
 //
 // An invalid value is refused at construction rather than stored.
+//
+// Deprecated: use [core.WithPlacement], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithPlacement(a0 ModalPlacement) ModalOption {
 	return core.WithPlacement(a0)
 }
@@ -3075,34 +3967,46 @@ func WithPlacement(a0 ModalPlacement) ModalOption {
 // WithScrim sets whether the background is dimmed behind this dialog. Default
 // is true. This decides WHETHER; ModalStyle.WithScrim decides what it looks
 // like.
+//
+// Deprecated: use [core.WithScrim], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithScrim(a0 bool) ModalOption {
 	return core.WithScrim(a0)
 }
 
 // WithModalKeyBinder says what a WithModalKeys handler binds, so App.KeyBindings lists it after the
 // Modal's own commands, in the order the Modal consults them.
+//
+// Deprecated: use [core.WithModalKeyBinder], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithModalKeyBinder(a0 func(*keymap.Map) []keymap.Binding) ModalOption {
 	return core.WithModalKeyBinder(a0)
 }
 
 // NewModalStyle builds a style from the card and title looks, deriving the
 // border from the card and the scrim from a dimmed background.
+//
+// Deprecated: use [core.NewModalStyle], from github.com/yongjohnlee80/golib/tui/widget/core.
 func NewModalStyle(a0, a1 style.Style) *ModalStyle {
 	return core.NewModalStyle(a0, a1)
 }
 
 // NewModalStyleFull states all four surfaces explicitly.
+//
+// Deprecated: use [core.NewModalStyleFull], from github.com/yongjohnlee80/golib/tui/widget/core.
 func NewModalStyleFull(a0, a1, a2, a3 style.Style) *ModalStyle {
 	return core.NewModalStyleFull(a0, a1, a2, a3)
 }
 
 // DefaultModalStyle is the look a Modal has when its author has said nothing.
 // Token-valued throughout, so it follows the App's theme.
+//
+// Deprecated: use [core.DefaultModalStyle], from github.com/yongjohnlee80/golib/tui/widget/core.
 func DefaultModalStyle() *ModalStyle {
 	return core.DefaultModalStyle()
 }
 
 // NewOverlayHost wraps the application UI as the bottom overlay layer.
+//
+// Deprecated: use [core.NewOverlayHost], from github.com/yongjohnlee80/golib/tui/widget/core.
 func NewOverlayHost(a0 tui.Component) *OverlayHost {
 	return core.NewOverlayHost(a0)
 }
@@ -3110,22 +4014,30 @@ func NewOverlayHost(a0 tui.Component) *OverlayHost {
 // WithSpinner switches the indeterminate rendering to a one-cell spinner
 // cycling frames every interval. Empty frames or a non-positive interval
 // panic.
+//
+// Deprecated: use [core.WithSpinner], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithSpinner(a0 []string, a1 time.Duration) ProgressBarOption {
 	return core.WithSpinner(a0, a1)
 }
 
 // WithProgressStyles sets the filled and empty cell styles (defaults:
 // filled style.TokenForeground, empty style.TokenTextMuted faint).
+//
+// Deprecated: use [core.WithProgressStyles], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithProgressStyles(a0, a1 style.Style) ProgressBarOption {
 	return core.WithProgressStyles(a0, a1)
 }
 
 // NewProgressBar builds a determinate bar at 0.
+//
+// Deprecated: use [core.NewProgressBar], from github.com/yongjohnlee80/golib/tui/widget/core.
 func NewProgressBar(a0 ...ProgressBarOption) *ProgressBar {
 	return core.NewProgressBar(a0...)
 }
 
 // NewResizable wraps child in a resizable box.
+//
+// Deprecated: use [core.NewResizable], from github.com/yongjohnlee80/golib/tui/widget/core.
 func NewResizable(a0 tui.Component, a1 ...ResizableOption) *Resizable {
 	return core.NewResizable(a0, a1...)
 }
@@ -3135,6 +4047,8 @@ func NewResizable(a0 tui.Component, a1 ...ResizableOption) *Resizable {
 // A non-positive dimension is a construction panic: "resizable, zero cells wide"
 // is not a state a caller can have meant, and adopting it would render nothing
 // while looking configured.
+//
+// Deprecated: use [core.WithInitialSize], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithInitialSize(a0 tui.Size) ResizableOption {
 	return core.WithInitialSize(a0)
 }
@@ -3147,12 +4061,16 @@ func WithInitialSize(a0 tui.Size) ResizableOption {
 // and quietly normalised away later, which turns an author's mistake into a
 // layout that is merely surprising: the wrapper stops honouring a minimum it
 // was told to honour, and nothing anywhere says why.
+//
+// Deprecated: use [core.WithMinSize], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithMinSize(a0 tui.Size) ResizableOption {
 	return core.WithMinSize(a0)
 }
 
 // WithMaxSize sets the largest. Unbounded on an axis is the default and is
 // legal for a maximum only.
+//
+// Deprecated: use [core.WithMaxSize], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithMaxSize(a0 tui.Size) ResizableOption {
 	return core.WithMaxSize(a0)
 }
@@ -3166,6 +4084,8 @@ func WithMaxSize(a0 tui.Size) ResizableOption {
 // given one could neither draw it nor decide what dragging it should mean, so
 // the mistake is caught where it is written rather than becoming a grip that
 // silently does nothing.
+//
+// Deprecated: use [core.WithHandles], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithHandles(a0 ...Handle) ResizableOption {
 	return core.WithHandles(a0...)
 }
@@ -3173,6 +4093,8 @@ func WithHandles(a0 ...Handle) ResizableOption {
 // WithResizeEnd calls fn when a drag of a grip ends, with the size the drag asked for last: the
 // moment a host keeps the size, once per drag rather than once per motion. A cancelled drag (Escape)
 // calls nothing, as it changed nothing.
+//
+// Deprecated: use [core.WithResizeEnd], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithResizeEnd(a0 func(tui.Size)) ResizableOption {
 	return core.WithResizeEnd(a0)
 }
@@ -3188,44 +4110,60 @@ func WithResizeEnd(a0 func(tui.Size)) ResizableOption {
 // Width two is allowed rather than banned because plenty of natural resize
 // glyphs are wide; what is not allowed is a width the geometry does not know
 // about, so the measured width travels with the glyph into every rect and inset.
+//
+// Deprecated: use [core.WithHandleGlyph], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithHandleGlyph(a0 string) ResizableOption {
 	return core.WithHandleGlyph(a0)
 }
 
 // WithHandlePlacement chooses whether the grip overlays the child or reserves
 // cells from it.
+//
+// Deprecated: use [core.WithHandlePlacement], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithHandlePlacement(a0 PlacementMode) ResizableOption {
 	return core.WithHandlePlacement(a0)
 }
 
 // WithResizeStep sets how far one keyboard step moves an edge.
+//
+// Deprecated: use [core.WithResizeStep], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithResizeStep(a0 int, a1 StepUnit) ResizableOption {
 	return core.WithResizeStep(a0, a1)
 }
 
 // WithResizableStyle associates a style at construction.
+//
+// Deprecated: use [core.WithResizableStyle], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithResizableStyle(a0 *ResizableStyle) ResizableOption {
 	return core.WithResizableStyle(a0)
 }
 
 // NewResizableStyle builds a style from the resting look, deriving the active
 // one by reversing it.
+//
+// Deprecated: use [core.NewResizableStyle], from github.com/yongjohnlee80/golib/tui/widget/core.
 func NewResizableStyle(a0 style.Style) *ResizableStyle {
 	return core.NewResizableStyle(a0)
 }
 
 // DefaultResizableStyle is the look a wrapper has when its author has said
 // nothing. Token-valued, so it follows the App's theme.
+//
+// Deprecated: use [core.DefaultResizableStyle], from github.com/yongjohnlee80/golib/tui/widget/core.
 func DefaultResizableStyle() *ResizableStyle {
 	return core.DefaultResizableStyle()
 }
 
 // NewScrollView makes a ScrollView over child.
+//
+// Deprecated: use [core.NewScrollView], from github.com/yongjohnlee80/golib/tui/widget/core.
 func NewScrollView(a0 tui.Component) *ScrollView {
 	return core.NewScrollView(a0)
 }
 
 // WithOptions sets the initial option items.
+//
+// Deprecated: use [core.WithOptions], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithOptions[T any](a0 []SelectItem[T]) SelectOption[T] {
 	return core.WithOptions[T](a0)
 }
@@ -3233,11 +4171,15 @@ func WithOptions[T any](a0 []SelectItem[T]) SelectOption[T] {
 // WithSelectOnChange sets what runs, at once, when option i is chosen, after the popup closes: the
 // bus's SelectionChangedEvent reaches other subscribers a loop turn later. An owner composing a
 // Select uses it rather than subscribing app-wide and filtering by Owner. fn may replace the options.
+//
+// Deprecated: use [core.WithSelectOnChange], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithSelectOnChange[T any](a0 func(i int)) SelectOption[T] {
 	return core.WithSelectOnChange[T](a0)
 }
 
 // WithFilter enables filter-as-you-type in the open state.
+//
+// Deprecated: use [core.WithFilter], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithFilter[T any](a0 bool) SelectOption[T] {
 	return core.WithFilter[T](a0)
 }
@@ -3247,6 +4189,8 @@ func WithFilter[T any](a0 bool) SelectOption[T] {
 //
 // Withholding it is for a host that already marks the focused row itself, where
 // the triangle is a second indicator of the same thing in a different place.
+//
+// Deprecated: use [core.WithAffordance], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithAffordance[T any](a0 bool) SelectOption[T] {
 	return core.WithAffordance[T](a0)
 }
@@ -3256,6 +4200,8 @@ func WithAffordance[T any](a0 bool) SelectOption[T] {
 // Default empty, which is the behaviour this widget always had: a blank field.
 // Blank cannot be told apart from a field still loading its options, or one
 // whose selection has an empty label, so a host that cares says the words.
+//
+// Deprecated: use [core.WithSelectPlaceholder], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithSelectPlaceholder[T any](a0 string) SelectOption[T] {
 	return core.WithSelectPlaceholder[T](a0)
 }
@@ -3269,38 +4215,52 @@ func WithSelectPlaceholder[T any](a0 string) SelectOption[T] {
 // "default" and the emphasis disappears. Reverse is an attribute the terminal
 // applies to whatever the cell actually holds, so it inverts under every
 // theme, including none.
+//
+// Deprecated: use [core.WithSelectFocusedStyle], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithSelectFocusedStyle[T any](a0 style.Style) SelectOption[T] {
 	return core.WithSelectFocusedStyle[T](a0)
 }
 
 // WithWidth fixes the closed field width (default: content-sized).
+//
+// Deprecated: use [core.WithWidth], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithWidth[T any](a0 int) SelectOption[T] {
 	return core.WithWidth[T](a0)
 }
 
 // WithSelectMaxWidth caps the content-sized field; the default is 40 cells.
 // WithWidth, when supplied, remains an explicit fixed-width override.
+//
+// Deprecated: use [core.WithSelectMaxWidth], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithSelectMaxWidth[T any](a0 int) SelectOption[T] {
 	return core.WithSelectMaxWidth[T](a0)
 }
 
 // NewSelect builds a dropdown with no selection.
+//
+// Deprecated: use [core.NewSelect], from github.com/yongjohnlee80/golib/tui/widget/core.
 func NewSelect[T any](a0 ...SelectOption[T]) *Select[T] {
 	return core.NewSelect[T](a0...)
 }
 
 // WithRatio sets the initial division (0 < r < 1; default 0.5).
+//
+// Deprecated: use [core.WithRatio], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithRatio(a0 float64) SplitOption {
 	return core.WithRatio(a0)
 }
 
 // WithMinSizes clamps each pane's main-axis extent during resize.
+//
+// Deprecated: use [core.WithMinSizes], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithMinSizes(a0, a1 int) SplitOption {
 	return core.WithMinSizes(a0, a1)
 }
 
 // WithDividerStyle replaces the divider line style (default
 // style.TokenBorder foreground).
+//
+// Deprecated: use [core.WithDividerStyle], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithDividerStyle(a0 style.Style) SplitOption {
 	return core.WithDividerStyle(a0)
 }
@@ -3321,17 +4281,23 @@ func WithDividerStyle(a0 style.Style) SplitOption {
 // Ambiguous and therefore two cells wide under WidthPolicyAmbiguousWide. That
 // is a visible downgrade for every application on the default policy in order
 // to serve the legacy one, which is the wrong way round.
+//
+// Deprecated: use [core.WithSplitDividerGlyphs], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithSplitDividerGlyphs(a0, a1 string) SplitOption {
 	return core.WithSplitDividerGlyphs(a0, a1)
 }
 
 // WithSplitResizeStep sets how far one keyboard step moves the divider, and in
 // what unit. Split-qualified because Resizable already owns the generic name.
+//
+// Deprecated: use [core.WithSplitResizeStep], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithSplitResizeStep(a0 int, a1 StepUnit) SplitOption {
 	return core.WithSplitResizeStep(a0, a1)
 }
 
 // NewSplit builds a splitter around two panes.
+//
+// Deprecated: use [core.NewSplit], from github.com/yongjohnlee80/golib/tui/widget/core.
 func NewSplit(a0 Orientation, a1, a2 tui.Component, a3 ...SplitOption) *Split {
 	return core.NewSplit(a0, a1, a2, a3...)
 }
@@ -3340,27 +4306,37 @@ func NewSplit(a0 Orientation, a1, a2 tui.Component, a3 ...SplitOption) *Split {
 // mnemonic follow the App's language, and the mnemonic stays on English's letter in every
 // one ("&Yes" is "예(&y)" in Korean). opts apply after, so a caller may still make it the
 // default or disable it.
+//
+// Deprecated: use [core.NewStandardButton], from github.com/yongjohnlee80/golib/tui/widget/core.
 func NewStandardButton(a0 StandardButton, a1 ...ButtonOption) *Button {
 	return core.NewStandardButton(a0, a1...)
 }
 
 // WithBarStyle replaces the bar's base style (default background
 // style.TokenPanel).
+//
+// Deprecated: use [core.WithBarStyle], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithBarStyle(a0 style.Style) StatusBarOption {
 	return core.WithBarStyle(a0)
 }
 
 // NewStatusBar builds an empty status bar.
+//
+// Deprecated: use [core.NewStatusBar], from github.com/yongjohnlee80/golib/tui/widget/core.
 func NewStatusBar(a0 ...StatusBarOption) *StatusBar {
 	return core.NewStatusBar(a0...)
 }
 
 // NewTabStrip is an empty strip.
+//
+// Deprecated: use [core.NewTabStrip], from github.com/yongjohnlee80/golib/tui/widget/core.
 func NewTabStrip() *TabStrip {
 	return core.NewTabStrip()
 }
 
 // WithTab appends one tab (declaration order == bar order).
+//
+// Deprecated: use [core.WithTab], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithTab(a0 string, a1 tui.Component) TabsOption {
 	return core.WithTab(a0, a1)
 }
@@ -3368,12 +4344,16 @@ func WithTab(a0 string, a1 tui.Component) TabsOption {
 // WithTabsOnChange sets what runs, at once, when tab i becomes active: the bus's TabChangedEvent
 // reaches other subscribers a loop turn later. An owner composing a Tabs uses it rather than
 // subscribing app-wide and filtering by Owner.
+//
+// Deprecated: use [core.WithTabsOnChange], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithTabsOnChange(a0 func(i int)) TabsOption {
 	return core.WithTabsOnChange(a0)
 }
 
 // WithKeepMounted keeps deactivated tab content mounted (state and
 // subscriptions live) instead of unmounting it on switch.
+//
+// Deprecated: use [core.WithKeepMounted], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithKeepMounted(a0 bool) TabsOption {
 	return core.WithKeepMounted(a0)
 }
@@ -3382,6 +4362,8 @@ func WithKeepMounted(a0 bool) TabsOption {
 // used as a top-level menu is keyboard-navigable (←/→, [ / ]) immediately —
 // without the user first pressing Tab to move focus onto it. Off by default:
 // a Tabs nested among other focusables should not steal the initial focus.
+//
+// Deprecated: use [core.WithAutoFocus], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithAutoFocus(a0 bool) TabsOption {
 	return core.WithAutoFocus(a0)
 }
@@ -3389,70 +4371,96 @@ func WithAutoFocus(a0 bool) TabsOption {
 // WithoutBar hides the tab bar: Layout gives the active content the full height
 // and Render paints no bar. Use when a separate widget (e.g. a dedicated menu
 // panel) drives Select and the Tabs acts purely as a content switcher.
+//
+// Deprecated: use [core.WithoutBar], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithoutBar() TabsOption {
 	return core.WithoutBar()
 }
 
 // WithTabsStyles overrides the bar, tab, and active-tab styles.
+//
+// Deprecated: use [core.WithTabsStyles], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithTabsStyles(a0, a1, a2 style.Style) TabsOption {
 	return core.WithTabsStyles(a0, a1, a2)
 }
 
 // NewTabs builds a tab switcher. At least one tab is required.
+//
+// Deprecated: use [core.NewTabs], from github.com/yongjohnlee80/golib/tui/widget/core.
 func NewTabs(a0 ...TabsOption) *Tabs {
 	return core.NewTabs(a0...)
 }
 
 // WithTextStyle sets the text style.
+//
+// Deprecated: use [core.WithTextStyle], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithTextStyle(a0 style.Style) TextOption {
 	return core.WithTextStyle(a0)
 }
 
 // WithWrapMode sets Truncate (default, with ellipsis) or Wrap. Any other
 // mode panics.
+//
+// Deprecated: use [core.WithWrapMode], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithWrapMode(a0 WrapMode) TextOption {
 	return core.WithWrapMode(a0)
 }
 
 // NewText builds a label.
+//
+// Deprecated: use [core.NewText], from github.com/yongjohnlee80/golib/tui/widget/core.
 func NewText(a0 string, a1 ...TextOption) *Text {
 	return core.NewText(a0, a1...)
 }
 
 // WithWrap selects WrapNone (default; horizontal scroll) or WrapSoft
 // (visual wrap at the viewport width). Any other mode panics.
+//
+// Deprecated: use [core.WithWrap], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithWrap(a0 WrapMode) TextAreaOption {
 	return core.WithWrap(a0)
 }
 
 // WithTextAreaPlaceholder sets the text drawn (muted) while the value is empty.
+//
+// Deprecated: use [core.WithTextAreaPlaceholder], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithTextAreaPlaceholder(a0 string) TextAreaOption {
 	return core.WithTextAreaPlaceholder(a0)
 }
 
 // WithTextAreaPlaceholderMessage sets the placeholder to a catalog message, shown in the App's
 // language.
+//
+// Deprecated: use [core.WithTextAreaPlaceholderMessage], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithTextAreaPlaceholderMessage(a0 tui.Message) TextAreaOption {
 	return core.WithTextAreaPlaceholderMessage(a0)
 }
 
 // WithTextAreaStyles overrides the style hooks (same slots as TextInput;
 // zero fields keep defaults).
+//
+// Deprecated: use [core.WithTextAreaStyles], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithTextAreaStyles(a0 TextInputStyles) TextAreaOption {
 	return core.WithTextAreaStyles(a0)
 }
 
 // NewTextArea builds an empty editor.
+//
+// Deprecated: use [core.NewTextArea], from github.com/yongjohnlee80/golib/tui/widget/core.
 func NewTextArea(a0 ...TextAreaOption) *TextArea {
 	return core.NewTextArea(a0...)
 }
 
 // NewTextInput builds an empty single-line editor.
+//
+// Deprecated: use [core.NewTextInput], from github.com/yongjohnlee80/golib/tui/widget/core.
 func NewTextInput(a0 ...TextInputOption) *TextInput {
 	return core.NewTextInput(a0...)
 }
 
 // WithCompleter installs a completer (SetCompleter).
+//
+// Deprecated: use [core.WithCompleter], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithCompleter(a0 TextCompleter) TextInputOption {
 	return core.WithCompleter(a0)
 }
@@ -3461,28 +4469,38 @@ func WithCompleter(a0 TextCompleter) TextInputOption {
 // case-insensitively, a leading double quote of an item ignored, so `tot` offers `"total sum"`.
 // A word runs back to a space, a parenthesis, a comma, an operator or a single quote; one opened
 // with a double quote and not closed runs back to it. An empty word offers nothing.
+//
+// Deprecated: use [core.WordCompleter], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WordCompleter(a0 func() []string) TextCompleter {
 	return core.WordCompleter(a0)
 }
 
 // WithPlaceholder sets the text rendered (muted) while the value is empty.
+//
+// Deprecated: use [core.WithPlaceholder], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithPlaceholder(a0 string) TextInputOption {
 	return core.WithPlaceholder(a0)
 }
 
 // WithPlaceholderMessage sets the placeholder to a catalog message, shown in the App's
 // language.
+//
+// Deprecated: use [core.WithPlaceholderMessage], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithPlaceholderMessage(a0 tui.Message) TextInputOption {
 	return core.WithPlaceholderMessage(a0)
 }
 
 // WithMask enables password masking: the given rune paints in place of
 // every cluster while Value() returns the raw string.
+//
+// Deprecated: use [core.WithMask], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithMask(a0 rune) TextInputOption {
 	return core.WithMask(a0)
 }
 
 // WithValidate installs the validation hook consulted on Enter.
+//
+// Deprecated: use [core.WithValidate], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithValidate(a0 func(string) error) TextInputOption {
 	return core.WithValidate(a0)
 }
@@ -3507,6 +4525,8 @@ func WithValidate(a0 func(string) error) TextInputOption {
 // unaffected. Use this hook only for work that must complete before the next
 // key is dispatched -- moving focus, closing the surface -- and the event for
 // everything else.
+//
+// Deprecated: use [core.WithOnSubmit], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithOnSubmit(a0 func(string)) TextInputOption {
 	return core.WithOnSubmit(a0)
 }
@@ -3514,22 +4534,30 @@ func WithOnSubmit(a0 func(string)) TextInputOption {
 // WithOnEdit calls fn with the value after every EDIT — the moment the widget
 // publishes a ChangeEvent, synchronously, inside the key handler. It is not
 // called by SetValue: a program replacing the value has made no edit.
+//
+// Deprecated: use [core.WithOnEdit], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithOnEdit(a0 func(string)) TextInputOption {
 	return core.WithOnEdit(a0)
 }
 
 // WithInitialValue sets the starting value (cursor at the end).
+//
+// Deprecated: use [core.WithInitialValue], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithInitialValue(a0 string) TextInputOption {
 	return core.WithInitialValue(a0)
 }
 
 // WithTextInputStyles overrides the style hooks; zero fields keep defaults.
+//
+// Deprecated: use [core.WithTextInputStyles], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithTextInputStyles(a0 TextInputStyles) TextInputOption {
 	return core.WithTextInputStyles(a0)
 }
 
 // DefaultTextInputStyles are a text widget's looks before any option: TextInput's, TextArea's and
 // the Editor's alike. A text field of your own starts from them, to look like golib's.
+//
+// Deprecated: use [core.DefaultTextInputStyles], from github.com/yongjohnlee80/golib/tui/widget/core.
 func DefaultTextInputStyles() TextInputStyles {
 	return core.DefaultTextInputStyles()
 }
@@ -3537,12 +4565,16 @@ func DefaultTextInputStyles() TextInputStyles {
 // ElideText fits s into w cells, dropping what does not fit where mode says (Elide): an ellipsis
 // (…) takes the place of the end, the start, the middle, or a path's start up to a "/"; ElideNone
 // cuts at the edge with none. A widget of your own fits a label into its cells with it.
+//
+// Deprecated: use [core.ElideText], from github.com/yongjohnlee80/golib/tui/widget/core.
 func ElideText(a0 string, a1 int, a2 Elide, a3 func(string) int) string {
 	return core.ElideText(a0, a1, a2, a3)
 }
 
 // WithTilesCollector is where a minimizable tile goes while hidden: a program's dock lists it
 // there. Without it the manager keeps a private one.
+//
+// Deprecated: use [core.WithTilesCollector], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithTilesCollector(a0 WindowCollector) TilesOption {
 	return core.WithTilesCollector(a0)
 }
@@ -3551,174 +4583,240 @@ func WithTilesCollector(a0 WindowCollector) TilesOption {
 // placed: a member is anchored at its tile's rect offset by it. The default is the zero point, a
 // manager at the overlay's origin. A program whose manager sits below other docked content (a decl
 // Window's centre) reports where its layout placed it.
+//
+// Deprecated: use [core.WithTilesOrigin], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithTilesOrigin(a0 func() tui.Point) TilesOption {
 	return core.WithTilesOrigin(a0)
 }
 
 // WithTilesChanged has fn told each TilesChangedEvent, as well as the bus.
+//
+// Deprecated: use [core.WithTilesChanged], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithTilesChanged(a0 func(TilesChangedEvent)) TilesOption {
 	return core.WithTilesChanged(a0)
 }
 
 // NewTiles builds an empty manager.
+//
+// Deprecated: use [core.NewTiles], from github.com/yongjohnlee80/golib/tui/widget/core.
 func NewTiles(a0 ...TilesOption) *Tiles {
 	return core.NewTiles(a0...)
 }
 
 // WithToastCorner is the corner the toasts stack in: TopLeft, TopRight, BottomLeft or BottomRight.
+//
+// Deprecated: use [core.WithToastCorner], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithToastCorner(a0 Anchor) ToastsOption {
 	return core.WithToastCorner(a0)
 }
 
 // WithToastLinger is how long a finished toast stays; at least a second.
+//
+// Deprecated: use [core.WithToastLinger], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithToastLinger(a0 time.Duration) ToastsOption {
 	return core.WithToastLinger(a0)
 }
 
 // WithToastMax is how many toasts show at once; the others wait. At least one.
+//
+// Deprecated: use [core.WithToastMax], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithToastMax(a0 int) ToastsOption {
 	return core.WithToastMax(a0)
 }
 
 // WithToastMargin keeps rows clear at the corner's edge: a status line's.
+//
+// Deprecated: use [core.WithToastMargin], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithToastMargin(a0 int) ToastsOption {
 	return core.WithToastMargin(a0)
 }
 
 // WithToastWidth is a toast's widest, border included (default 48 columns); it is never wider than
 // the screen.
+//
+// Deprecated: use [core.WithToastWidth], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithToastWidth(a0 int) ToastsOption {
 	return core.WithToastWidth(a0)
 }
 
 // WithToastClock replaces the clock (tests).
+//
+// Deprecated: use [core.WithToastClock], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithToastClock(a0 func() time.Time) ToastsOption {
 	return core.WithToastClock(a0)
 }
 
 // WithToastStyle sets a toast's look, and the muted look of its border and age.
+//
+// Deprecated: use [core.WithToastStyle], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithToastStyle(a0, a1 style.Style) ToastsOption {
 	return core.WithToastStyle(a0, a1)
 }
 
 // NewToasts builds the stack and the Float it shows in; Float is what an OverlayHost attaches.
+//
+// Deprecated: use [core.NewToasts], from github.com/yongjohnlee80/golib/tui/widget/core.
 func NewToasts(a0 ...ToastsOption) *Toasts {
 	return core.NewToasts(a0...)
 }
 
 // WithWindowButtonLabels replaces the close, maximize and minimize labels.
+//
+// Deprecated: use [core.WithWindowButtonLabels], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithWindowButtonLabels(a0, a1, a2 string) WindowButtonsOption {
 	return core.WithWindowButtonLabels(a0, a1, a2)
 }
 
 // WithWindowButtonStyle replaces one control's semantic default style.
+//
+// Deprecated: use [core.WithWindowButtonStyle], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithWindowButtonStyle(a0 WindowOperation, a1 *ButtonStyle) WindowButtonsOption {
 	return core.WithWindowButtonStyle(a0, a1)
 }
 
 // NewWindowButtons constructs only the enabled presentation controls. The caller
 // places the row in its frame; behavior and its bindings remain in core.
+//
+// Deprecated: use [core.NewWindowButtons], from github.com/yongjohnlee80/golib/tui/widget/core.
 func NewWindowButtons(a0 *WindowCore, a1 ...WindowButtonsOption) *WindowButtons {
 	return core.NewWindowButtons(a0, a1...)
 }
 
 // NewMinimizedWindows creates a collector; it creates no taskbar or global state.
+//
+// Deprecated: use [core.NewMinimizedWindows], from github.com/yongjohnlee80/golib/tui/widget/core.
 func NewMinimizedWindows() *MinimizedWindows {
 	return core.NewMinimizedWindows()
 }
 
 // NewWindowCore creates presentation-independent behavior for a WindowMod or GUI
 // view. It allocates no controls, collector, taskbar, goroutine or global registry.
+//
+// Deprecated: use [core.NewWindowCore], from github.com/yongjohnlee80/golib/tui/widget/core.
 func NewWindowCore(a0 ...WindowModOption) *WindowCore {
 	return core.NewWindowCore(a0...)
 }
 
 // NewWindowMod wraps content in independently optional window capabilities.
+//
+// Deprecated: use [core.NewWindowMod], from github.com/yongjohnlee80/golib/tui/widget/core.
 func NewWindowMod(a0 tui.Component, a1 ...WindowModOption) *WindowMod {
 	return core.NewWindowMod(a0, a1...)
 }
 
 // WithWindowMove enables movement through the target's geometry policy.
+//
+// Deprecated: use [core.WithWindowMove], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithWindowMove() WindowModOption {
 	return core.WithWindowMove()
 }
 
 // WithWindowResize enables resize without adding a grip or button.
+//
+// Deprecated: use [core.WithWindowResize], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithWindowResize() WindowModOption {
 	return core.WithWindowResize()
 }
 
 // WithWindowMaximize enables the target's maximize/restore or pane-zoom toggle.
+//
+// Deprecated: use [core.WithWindowMaximize], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithWindowMaximize() WindowModOption {
 	return core.WithWindowMaximize()
 }
 
 // WithWindowMinimize enables retained, non-modal conceal into collector.
+//
+// Deprecated: use [core.WithWindowMinimize], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithWindowMinimize(a0 WindowCollector) WindowModOption {
 	return core.WithWindowMinimize(a0)
 }
 
 // WithWindowClose enables the target's default close policy, when it has one.
+//
+// Deprecated: use [core.WithWindowClose], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithWindowClose() WindowModOption {
 	return core.WithWindowClose()
 }
 
 // WithWindowCloseHandler enables close with an owner-defined policy. Returning
 // false vetoes dismissal; the handler may unmount its owner synchronously.
+//
+// Deprecated: use [core.WithWindowCloseHandler], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithWindowCloseHandler(a0 func() bool) WindowModOption {
 	return core.WithWindowCloseHandler(a0)
 }
 
 // WithWindowTarget supplies an owner's geometry, zoom, visibility or dismissal
 // facets. Only the interfaces required by enabled capabilities are bound.
+//
+// Deprecated: use [core.WithWindowTarget], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithWindowTarget(a0 any) WindowModOption {
 	return core.WithWindowTarget(a0)
 }
 
 // WithWindowLabel supplies collector and accessibility text, not a title bar.
+//
+// Deprecated: use [core.WithWindowLabel], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithWindowLabel(a0 string) WindowModOption {
 	return core.WithWindowLabel(a0)
 }
 
 // WithWindowKey supplies an optional stable identity for application persistence.
+//
+// Deprecated: use [core.WithWindowKey], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithWindowKey(a0 string) WindowModOption {
 	return core.WithWindowKey(a0)
 }
 
 // WithWindowChanged receives a completed change once, never for drag motion.
+//
+// Deprecated: use [core.WithWindowChanged], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithWindowChanged(a0 func(WindowChangedEvent)) WindowModOption {
 	return core.WithWindowChanged(a0)
 }
 
 // WithWindowMinimizedFocus optionally chooses focus after the runtime repairs it.
+//
+// Deprecated: use [core.WithWindowMinimizedFocus], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithWindowMinimizedFocus(a0 func(*tui.Context)) WindowModOption {
 	return core.WithWindowMinimizedFocus(a0)
 }
 
 // WithWindowWorkArea reserves part of a default Float's viewport. fn is pure and
 // its result is clipped to the viewport; it does not create or place a taskbar.
+//
+// Deprecated: use [core.WithWindowWorkArea], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithWindowWorkArea(a0 func(tui.Rect) tui.Rect) WindowModOption {
 	return core.WithWindowWorkArea(a0)
 }
 
 // WithWindowMoveBinding replaces Alt/Option plus left-button drag.
+//
+// Deprecated: use [core.WithWindowMoveBinding], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithWindowMoveBinding(a0 tui.Mods, a1 tui.MouseButton) WindowModOption {
 	return core.WithWindowMoveBinding(a0, a1)
 }
 
 // WithWindowResizeBinding replaces Alt/Option plus right-button drag.
+//
+// Deprecated: use [core.WithWindowResizeBinding], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithWindowResizeBinding(a0 tui.Mods, a1 tui.MouseButton) WindowModOption {
 	return core.WithWindowResizeBinding(a0, a1)
 }
 
 // WithWindowResizeHandle chooses the logical edge/corner changed by a resize drag.
 // This configures geometry only and does not mount a visible resize grip.
+//
+// Deprecated: use [core.WithWindowResizeHandle], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithWindowResizeHandle(a0 Handle) WindowModOption {
 	return core.WithWindowResizeHandle(a0)
 }
 
 // WithWindowMinSize sets the resize minimum before the placement owner's ceiling.
 // The containing area still wins when it is smaller than this requested minimum.
+//
+// Deprecated: use [core.WithWindowMinSize], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithWindowMinSize(a0 tui.Size) WindowModOption {
 	return core.WithWindowMinSize(a0)
 }
@@ -3726,22 +4824,30 @@ func WithWindowMinSize(a0 tui.Size) WindowModOption {
 // WithWindowMaxSize sets the resize maximum, as WithWindowMinSize sets the minimum: a resize stops
 // there. A zero dimension has no maximum; the containing area still wins when it is smaller. A
 // retargeted core's target owns its geometry, so a resize then is not held to it (Retarget).
+//
+// Deprecated: use [core.WithWindowMaxSize], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithWindowMaxSize(a0 tui.Size) WindowModOption {
 	return core.WithWindowMaxSize(a0)
 }
 
 // WithWindowTaskbarCaption replaces the entry label without altering its identity.
+//
+// Deprecated: use [core.WithWindowTaskbarCaption], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithWindowTaskbarCaption(a0 func(MinimizedWindow) string) WindowTaskbarOption {
 	return core.WithWindowTaskbarCaption(a0)
 }
 
 // WithWindowTaskbarStyle associates an ordinary Button style with restore controls.
+//
+// Deprecated: use [core.WithWindowTaskbarStyle], from github.com/yongjohnlee80/golib/tui/widget/core.
 func WithWindowTaskbarStyle(a0 *ButtonStyle) WindowTaskbarOption {
 	return core.WithWindowTaskbarStyle(a0)
 }
 
 // NewWindowTaskbar constructs a presentation over an explicitly supplied model: a
 // *MinimizedWindows, or any collector's read side (WindowEntries).
+//
+// Deprecated: use [core.NewWindowTaskbar], from github.com/yongjohnlee80/golib/tui/widget/core.
 func NewWindowTaskbar(a0 WindowEntries, a1 ...WindowTaskbarOption) *WindowTaskbar {
 	return core.NewWindowTaskbar(a0, a1...)
 }
