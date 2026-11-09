@@ -14,7 +14,8 @@ import (
 	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/parse/markdown"
 	"github.com/yongjohnlee80/golib/tui"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // nativeTB is a TestBackend that hosts native views: it records each frame's placements.
@@ -202,10 +203,10 @@ func TestKeyScriptMatchesTheTuiEditor(t *testing.T) {
 	script = append(script, text("ok")...)
 	script = append(script, code(tui.KeyEscape))
 
-	g := startEditor(t, 60, 12, WithCore(tuiwidget.CoreInitialText(initial), tuiwidget.CoreSelection(true), tuiwidget.CoreYank(true), tuiwidget.CoreUndo(true)))
+	g := startEditor(t, 60, 12, WithCore(editor.CoreInitialText(initial), editor.CoreSelection(true), editor.CoreYank(true), editor.CoreUndo(true)))
 	g.keys(script...)
 
-	te := tuiwidget.NewEditor(tuiwidget.WithCore(tuiwidget.CoreInitialText(initial)), tuiwidget.WithCore(tuiwidget.CoreSelection(true)), tuiwidget.WithCore(tuiwidget.CoreYank(true)), tuiwidget.WithCore(tuiwidget.CoreUndo(true)))
+	te := editor.NewEditor(editor.WithCore(editor.CoreInitialText(initial)), editor.WithCore(editor.CoreSelection(true)), editor.WithCore(editor.CoreYank(true)), editor.WithCore(editor.CoreUndo(true)))
 	tb := tui.NewTestBackend(60, 12)
 	tsh := &shell{child: te}
 	app := tui.NewApp(tsh, tui.WithBackend(tb))
@@ -220,7 +221,7 @@ func TestKeyScriptMatchesTheTuiEditor(t *testing.T) {
 
 	var gv, tv string
 	var gl, gc, tl, tc int
-	var gm, tm tuiwidget.EditorMode
+	var gm, tm editor.EditorMode
 	g.onLoop(func() { gv, gm = g.e.core.Value(), g.e.core.Mode(); gl, gc = g.e.core.Line() })
 	th.onLoop(func() { tv, tm = te.Core().Value(), te.Core().Mode(); tl, tc = te.Core().Line() })
 	if gv == initial {
@@ -235,7 +236,7 @@ func TestKeyScriptMatchesTheTuiEditor(t *testing.T) {
 // A click lands on the cluster under it, in pixels: mid-line, at a line's end, on a wrapped row.
 func TestClicksLandOnTheirClustersInRaw(t *testing.T) {
 	long := strings.Repeat("word ", 30)
-	h := startEditor(t, 40, 12, WithWrap(tuiwidget.WrapSoft), WithCore(tuiwidget.CoreInitialText("hello world\n"+long+"\nend")))
+	h := startEditor(t, 40, 12, WithWrap(core.WrapSoft), WithCore(editor.CoreInitialText("hello world\n"+long+"\nend")))
 	// In Normal mode a click past a line's end lands on its last cluster, as the tui Editor's does.
 	for _, c := range []struct{ line, col, want int }{{0, 3, 3}, {0, 11, 10}, {1, 0, 0}, {2, 1, 1}, {2, 3, 2}} {
 		x, y := h.caretPoint(c.line, c.col)
@@ -276,8 +277,8 @@ func spansOfLine(h *edHarness, ln int) []flow.Span {
 }
 
 func TestRenderedHidesMarksOffTheCursorAndRevealsThemOnIt(t *testing.T) {
-	h := startEditor(t, 60, 14, WithRenderer(NewMarkdownRenderer()), WithView(tuiwidget.ViewRendered),
-		WithCore(tuiwidget.CoreInitialText("first\n## Title here\nplain *em* **strong** `code` [link](x)\n```go\nx := 1\n```\nlast")))
+	h := startEditor(t, 60, 14, WithRenderer(NewMarkdownRenderer()), WithView(editor.ViewRendered),
+		WithCore(editor.CoreInitialText("first\n## Title here\nplain *em* **strong** `code` [link](x)\n```go\nx := 1\n```\nlast")))
 	h.paint()
 
 	head := spansOfLine(h, 1)
@@ -342,17 +343,17 @@ func TestRenderedHidesMarksOffTheCursorAndRevealsThemOnIt(t *testing.T) {
 }
 
 func TestModeSwitching(t *testing.T) {
-	h := startEditor(t, 60, 8, WithRenderer(NewMarkdownRenderer()), WithCore(tuiwidget.CoreInitialText("# hi")))
-	mode := func() tuiwidget.EditorView {
-		var m tuiwidget.EditorView
+	h := startEditor(t, 60, 8, WithRenderer(NewMarkdownRenderer()), WithCore(editor.CoreInitialText("# hi")))
+	mode := func() editor.EditorView {
+		var m editor.EditorView
 		h.onLoop(func() { m = h.e.View() })
 		return m
 	}
-	if mode() != tuiwidget.ViewRaw {
+	if mode() != editor.ViewRaw {
 		t.Fatal("the default mode is not Raw")
 	}
 	h.keys(ctrl('t'))
-	if mode() != tuiwidget.ViewRendered {
+	if mode() != editor.ViewRendered {
 		t.Fatal("Ctrl+T did not switch to Rendered")
 	}
 	// the title bar's switch, at its right: "[ Raw " starts where the switch's cells do
@@ -362,25 +363,25 @@ func TestModeSwitching(t *testing.T) {
 		h.barrier()
 	}
 	click(at + 2)
-	if mode() != tuiwidget.ViewRaw {
+	if mode() != editor.ViewRaw {
 		t.Fatal("a click on Raw did not switch")
 	}
 	click(at + len(switchRaw) + 3)
-	if mode() != tuiwidget.ViewRendered {
+	if mode() != editor.ViewRendered {
 		t.Fatal("a click on Rendered did not switch")
 	}
 
-	plain := startEditor(t, 60, 8, WithCore(tuiwidget.CoreInitialText("x")))
+	plain := startEditor(t, 60, 8, WithCore(editor.CoreInitialText("x")))
 	plain.keys(ctrl('t'))
-	var m tuiwidget.EditorView
+	var m editor.EditorView
 	plain.onLoop(func() { m = plain.e.View() })
-	if m != tuiwidget.ViewRaw {
+	if m != editor.ViewRaw {
 		t.Fatal("Rendered without a renderer: the mode must stay Raw")
 	}
 }
 
 func TestNativePaintReportsTheCaret(t *testing.T) {
-	h := startEditor(t, 40, 6, WithCore(tuiwidget.CoreInitialText("abc\ndef")))
+	h := startEditor(t, 40, 6, WithCore(editor.CoreInitialText("abc\ndef")))
 	h.keys(key('j'), key('l'))
 	rc := h.paint()
 	texts := 0
@@ -404,13 +405,13 @@ func TestNativePaintReportsTheCaret(t *testing.T) {
 func TestNativeCaretAdvancesAfterSpaces(t *testing.T) {
 	for _, tc := range []struct {
 		name string
-		mode tuiwidget.EditorView
-	}{{"raw", tuiwidget.ViewRaw}, {"rendered", tuiwidget.ViewRendered}} {
+		mode editor.EditorView
+	}{{"raw", editor.ViewRaw}, {"rendered", editor.ViewRendered}} {
 		t.Run(tc.name, func(t *testing.T) {
 			d := markdown.Definition()
 			h := startEditor(t, 40, 6, WithView(tc.mode), WithRenderer(NewMarkdownRenderer()),
-				WithCore(tuiwidget.CoreInitialText(""), tuiwidget.CoreAutoIndent(true),
-					tuiwidget.CoreSourceFactory(func() highlight.Source { return d.NewSource(nil) })))
+				WithCore(editor.CoreInitialText(""), editor.CoreAutoIndent(true),
+					editor.CoreSourceFactory(func() highlight.Source { return d.NewSource(nil) })))
 			h.keys(key('i'))
 			var previousX float32
 			for step := 0; step < 3; step++ {
@@ -432,8 +433,8 @@ func TestNativeCaretAdvancesAfterSpaces(t *testing.T) {
 // under it: the Rendered layout maps its frags one to one back to source clusters.
 func TestClickOnAWrappedRenderedRow(t *testing.T) {
 	long := "*lead* " + strings.Repeat("word ", 30)
-	h := startEditor(t, 40, 12, WithRenderer(NewMarkdownRenderer()), WithView(tuiwidget.ViewRendered),
-		WithCore(tuiwidget.CoreInitialText("top\n"+long+"\nend")))
+	h := startEditor(t, 40, 12, WithRenderer(NewMarkdownRenderer()), WithView(editor.ViewRendered),
+		WithCore(editor.CoreInitialText("top\n"+long+"\nend")))
 	h.paint()
 	if s := spansOfLine(h, 1); len(s) == 0 || !s[0].Hidden {
 		t.Fatalf("line 1 is not Rendered off the cursor: %+v", s)
@@ -459,17 +460,17 @@ func TestClickOnAWrappedRenderedRow(t *testing.T) {
 func TestToggleRenderedIsTheKeymapsAndRebindable(t *testing.T) {
 	ctrlKey := func(r rune) tui.KeyEvent { return tui.KeyEvent{Code: r, Mods: tui.ModCtrl} }
 	e := NewEditor(WithRenderer(NewMarkdownRenderer()))
-	if !e.Core().HandleKey(ctrlKey('t')) || e.View() != tuiwidget.ViewRendered {
+	if !e.Core().HandleKey(ctrlKey('t')) || e.View() != editor.ViewRendered {
 		t.Fatalf("Ctrl+T: mode %v, want Rendered", e.View())
 	}
-	moved := NewEditor(WithRenderer(NewMarkdownRenderer()), WithCore(tuiwidget.CoreKeymap(tuiwidget.Keymap{
-		{Mode: tuiwidget.ModeNormal, Code: 'g', Ctrl: true}: tuiwidget.ActToggleRendered,
-		{Mode: tuiwidget.ModeNormal, Code: 't', Ctrl: true}: tuiwidget.ActUnbound,
+	moved := NewEditor(WithRenderer(NewMarkdownRenderer()), WithCore(editor.CoreKeymap(editor.Keymap{
+		{Mode: editor.ModeNormal, Code: 'g', Ctrl: true}: editor.ActToggleRendered,
+		{Mode: editor.ModeNormal, Code: 't', Ctrl: true}: editor.ActUnbound,
 	})))
-	if moved.Core().HandleKey(ctrlKey('t')) || moved.View() != tuiwidget.ViewRaw {
+	if moved.Core().HandleKey(ctrlKey('t')) || moved.View() != editor.ViewRaw {
 		t.Errorf("Ctrl+T unbound still toggled: mode %v", moved.View())
 	}
-	if !moved.Core().HandleKey(ctrlKey('g')) || moved.View() != tuiwidget.ViewRendered {
+	if !moved.Core().HandleKey(ctrlKey('g')) || moved.View() != editor.ViewRendered {
 		t.Errorf("Ctrl+G rebound: mode %v, want Rendered", moved.View())
 	}
 	if NewEditor().Core().HandleKey(ctrlKey('t')) {
@@ -482,44 +483,44 @@ func TestToggleRenderedIsTheKeymapsAndRebindable(t *testing.T) {
 // the choice and Ctrl+T is not consumed; on again, Rendered is drawn with no key; the renderer is
 // kept. Raw chosen while off stays Raw when it comes back on.
 func TestRenderedEnabledSwitch(t *testing.T) {
-	h := startEditor(t, 60, 12, WithRenderer(NewMarkdownRenderer()), WithView(tuiwidget.ViewRendered),
-		WithCore(tuiwidget.CoreInitialText("# Title\nbody")))
-	views := func() (tuiwidget.EditorView, tuiwidget.EditorView) {
-		var m, sh tuiwidget.EditorView
+	h := startEditor(t, 60, 12, WithRenderer(NewMarkdownRenderer()), WithView(editor.ViewRendered),
+		WithCore(editor.CoreInitialText("# Title\nbody")))
+	views := func() (editor.EditorView, editor.EditorView) {
+		var m, sh editor.EditorView
 		h.onLoop(func() { m, sh = h.e.View(), h.e.ShownView() })
 		return m, sh
 	}
-	if m, sh := views(); m != tuiwidget.ViewRendered || sh != tuiwidget.ViewRendered {
+	if m, sh := views(); m != editor.ViewRendered || sh != editor.ViewRendered {
 		t.Fatalf("did not start Rendered: chosen %v, drawn %v", m, sh)
 	}
 	h.onLoop(func() { h.e.SetRenderedEnabled(false) })
-	if m, sh := views(); m != tuiwidget.ViewRendered || sh != tuiwidget.ViewRaw {
+	if m, sh := views(); m != editor.ViewRendered || sh != editor.ViewRaw {
 		t.Fatalf("turned off: chosen %v, drawn %v; want Rendered kept, Raw drawn", m, sh)
 	}
 	h.keys(ctrl('t'))
-	if m, sh := views(); m != tuiwidget.ViewRendered || sh != tuiwidget.ViewRaw {
+	if m, sh := views(); m != editor.ViewRendered || sh != editor.ViewRaw {
 		t.Fatalf("Ctrl+T with the view off: chosen %v, drawn %v; want it not consumed", m, sh)
 	}
 	var on bool
 	h.onLoop(func() { h.e.SetRenderedEnabled(true); on = h.e.RenderedEnabled() })
-	if m, sh := views(); !on || m != tuiwidget.ViewRendered || sh != tuiwidget.ViewRendered {
+	if m, sh := views(); !on || m != editor.ViewRendered || sh != editor.ViewRendered {
 		t.Fatalf("turned back on (enabled %v): chosen %v, drawn %v; want Rendered with no key", on, m, sh)
 	}
 
 	h.onLoop(func() {
 		h.e.SetRenderedEnabled(false)
-		h.e.SetView(tuiwidget.ViewRaw)
-		h.e.SetView(tuiwidget.ViewRendered)
+		h.e.SetView(editor.ViewRaw)
+		h.e.SetView(editor.ViewRendered)
 	})
-	if m, sh := views(); m != tuiwidget.ViewRendered || sh != tuiwidget.ViewRaw {
+	if m, sh := views(); m != editor.ViewRendered || sh != editor.ViewRaw {
 		t.Fatalf("SetMode(Rendered) with the view off: chosen %v, drawn %v", m, sh)
 	}
-	h.onLoop(func() { h.e.SetView(tuiwidget.ViewRaw); h.e.SetRenderedEnabled(true) })
-	if m, sh := views(); m != tuiwidget.ViewRaw || sh != tuiwidget.ViewRaw {
+	h.onLoop(func() { h.e.SetView(editor.ViewRaw); h.e.SetRenderedEnabled(true) })
+	if m, sh := views(); m != editor.ViewRaw || sh != editor.ViewRaw {
 		t.Fatalf("Raw chosen while off, then on: chosen %v, drawn %v; want Raw", m, sh)
 	}
 	h.keys(ctrl('t'))
-	if m, _ := views(); m != tuiwidget.ViewRendered {
+	if m, _ := views(); m != editor.ViewRendered {
 		t.Fatalf("Ctrl+T turned back on: %v, want Rendered", m)
 	}
 }
@@ -529,8 +530,8 @@ func TestRenderedEnabledSwitch(t *testing.T) {
 // them still renders, and an indented line under a paragraph stays the paragraph's.
 func TestHashInACodeBlockIsNotAHeading(t *testing.T) {
 	doc := "# Real heading\n```\n# fenced hash\n```\n\n    # indented hash\n\n~~~\n## tilde hash\n~~~\npara\n    # not code\nend"
-	h := startEditor(t, 60, 20, WithRenderer(NewMarkdownRenderer()), WithView(tuiwidget.ViewRendered),
-		WithCore(tuiwidget.CoreInitialText(doc)))
+	h := startEditor(t, 60, 20, WithRenderer(NewMarkdownRenderer()), WithView(editor.ViewRendered),
+		WithCore(editor.CoreInitialText(doc)))
 	h.keys(key('G')) // the cursor on the last line, so every block above lays out rendered
 	h.paint()
 	if s := spansOfLine(h, 0); len(s) < 2 || !s[0].Hidden || !s[1].Font.Bold {
@@ -558,8 +559,8 @@ func TestHashInACodeBlockIsNotAHeading(t *testing.T) {
 // Off the cursor a fence's characters are hidden and its language kept, muted; the closing fence
 // is hidden whole. The lines keep their rows.
 func TestFencesHideOffTheCursor(t *testing.T) {
-	h := startEditor(t, 60, 20, WithRenderer(NewMarkdownRenderer()), WithView(tuiwidget.ViewRendered),
-		WithCore(tuiwidget.CoreInitialText("```go\nx :=\t1\n```\nend")))
+	h := startEditor(t, 60, 20, WithRenderer(NewMarkdownRenderer()), WithView(editor.ViewRendered),
+		WithCore(editor.CoreInitialText("```go\nx :=\t1\n```\nend")))
 	h.keys(key('G'))
 	h.paint()
 	open := spansOfLine(h, 0)
@@ -589,8 +590,8 @@ func TestFencesHideOffTheCursor(t *testing.T) {
 // and an indented item after a blank line inside a list is an item, not code.
 func TestListItemsDrawBulletsAndNesting(t *testing.T) {
 	doc := "- one\n  - two\n    - three\n1. first\n\n    - after blank\nend"
-	h := startEditor(t, 60, 20, WithRenderer(NewMarkdownRenderer()), WithView(tuiwidget.ViewRendered),
-		WithCore(tuiwidget.CoreInitialText(doc)))
+	h := startEditor(t, 60, 20, WithRenderer(NewMarkdownRenderer()), WithView(editor.ViewRendered),
+		WithCore(editor.CoreInitialText(doc)))
 	h.keys(key('G'))
 	h.paint()
 	find := func(ln int, text string) (flow.Span, bool) {
@@ -625,7 +626,7 @@ func leadingSpaces(s string) int { return len(s) - len(strings.TrimLeft(s, " "))
 
 // List editing is the Rendered Markdown view's: Raw is the source as typed.
 func TestListEditingFollowsTheView(t *testing.T) {
-	h := startEditor(t, 60, 8, WithRenderer(NewMarkdownRenderer()), WithCore(tuiwidget.CoreInitialText("- a")))
+	h := startEditor(t, 60, 8, WithRenderer(NewMarkdownRenderer()), WithCore(editor.CoreInitialText("- a")))
 	on := func() bool {
 		var v bool
 		h.onLoop(func() { v = h.e.Core().ListEditing() })
@@ -634,7 +635,7 @@ func TestListEditingFollowsTheView(t *testing.T) {
 	if on() {
 		t.Error("list editing on in Raw")
 	}
-	h.onLoop(func() { h.e.SetView(tuiwidget.ViewRendered) })
+	h.onLoop(func() { h.e.SetView(editor.ViewRendered) })
 	if !on() {
 		t.Error("list editing off in Rendered Markdown")
 	}
@@ -652,8 +653,8 @@ type wrappedMarkdown struct{ *MarkdownRenderer }
 // and its code stays code.
 func TestListEditingFollowsAStructureRenderer(t *testing.T) {
 	doc := "```\n- code\n```\n\n- item"
-	h := startEditor(t, 60, 20, WithRenderer(wrappedMarkdown{NewMarkdownRenderer()}), WithView(tuiwidget.ViewRendered),
-		WithCore(tuiwidget.CoreInitialText(doc), tuiwidget.CoreKeyset(tuiwidget.KeysetStandard)))
+	h := startEditor(t, 60, 20, WithRenderer(wrappedMarkdown{NewMarkdownRenderer()}), WithView(editor.ViewRendered),
+		WithCore(editor.CoreInitialText(doc), editor.CoreKeyset(editor.KeysetStandard)))
 	at := func(ln, col int) string {
 		var v string
 		h.onLoop(func() {
@@ -676,8 +677,8 @@ func TestListEditingFollowsAStructureRenderer(t *testing.T) {
 // list item in the prose around it continues.
 func TestListEditingSkipsCodeBlocks(t *testing.T) {
 	doc := "```\n- code\n```\n\npara\n\n    - indented code\n\n- item"
-	h := startEditor(t, 60, 20, WithRenderer(NewMarkdownRenderer()), WithView(tuiwidget.ViewRendered),
-		WithCore(tuiwidget.CoreInitialText(doc), tuiwidget.CoreKeyset(tuiwidget.KeysetStandard)))
+	h := startEditor(t, 60, 20, WithRenderer(NewMarkdownRenderer()), WithView(editor.ViewRendered),
+		WithCore(editor.CoreInitialText(doc), editor.CoreKeyset(editor.KeysetStandard)))
 	at := func(ln, col int, k tui.KeyEvent) string {
 		var v string
 		h.onLoop(func() {
@@ -706,8 +707,8 @@ func TestListEditingSkipsCodeBlocks(t *testing.T) {
 // A table's rows are not a list: Enter on a row is a plain line break, whatever the row holds.
 func TestListEditingSkipsTables(t *testing.T) {
 	doc := "| - a | b |\n|---|---|\n| - c | d |"
-	h := startEditor(t, 60, 20, WithRenderer(NewMarkdownRenderer()), WithView(tuiwidget.ViewRendered),
-		WithCore(tuiwidget.CoreInitialText(doc), tuiwidget.CoreKeyset(tuiwidget.KeysetStandard)))
+	h := startEditor(t, 60, 20, WithRenderer(NewMarkdownRenderer()), WithView(editor.ViewRendered),
+		WithCore(editor.CoreInitialText(doc), editor.CoreKeyset(editor.KeysetStandard)))
 	var got string
 	var where bool
 	h.onLoop(func() {
@@ -729,8 +730,8 @@ func TestListEditingSkipsTables(t *testing.T) {
 // adds a row.
 func TestTableEditingRunsInTheMarkdownEditor(t *testing.T) {
 	doc := "| a | b |\n|---|---|\n| c | d |"
-	h := startEditor(t, 60, 20, WithRenderer(NewMarkdownRenderer()), WithView(tuiwidget.ViewRendered),
-		WithCore(tuiwidget.CoreInitialText(doc), tuiwidget.CoreKeyset(tuiwidget.KeysetStandard), tuiwidget.CoreTableEditing(true)))
+	h := startEditor(t, 60, 20, WithRenderer(NewMarkdownRenderer()), WithView(editor.ViewRendered),
+		WithCore(editor.CoreInitialText(doc), editor.CoreKeyset(editor.KeysetStandard), editor.CoreTableEditing(true)))
 	tab, back := tui.KeyEvent{Code: tui.KeyTab}, tui.KeyEvent{Code: tui.KeyTab, Mods: tui.ModShift}
 	var walk []string
 	var added string
@@ -801,8 +802,8 @@ func laidAfterPaint(h *edHarness, i int) (height float32, laid, stale bool) {
 // text changed, which no edit says. Until it is called the layouts kept stand; once called, the
 // next paint draws the new one. The cursor and the text stay as they were.
 func TestRelayoutLaysTheBlocksOutAgain(t *testing.T) {
-	h := startEditor(t, 60, 14, WithRenderer(&besideRenderer{Renderer: NewMarkdownRenderer()}), WithView(tuiwidget.ViewRendered),
-		WithCore(tuiwidget.CoreInitialText("first\n## Title here\nlast")))
+	h := startEditor(t, 60, 14, WithRenderer(&besideRenderer{Renderer: NewMarkdownRenderer()}), WithView(editor.ViewRendered),
+		WithCore(editor.CoreInitialText("first\n## Title here\nlast")))
 	r := h.e.render.(*besideRenderer)
 	h.keys(key('j'))
 	h.paint()
@@ -833,7 +834,7 @@ func TestRelayoutLaysTheBlocksOutAgain(t *testing.T) {
 func scrolledIntoATallBlock(t *testing.T, extra float32) (*edHarness, *besideRenderer) {
 	t.Helper()
 	r := &besideRenderer{Renderer: NewMarkdownRenderer(), extra: extra}
-	h := startEditor(t, 60, 14, WithRenderer(r), WithView(tuiwidget.ViewRendered), WithCore(tuiwidget.CoreInitialText("external output\n\nlast")))
+	h := startEditor(t, 60, 14, WithRenderer(r), WithView(editor.ViewRendered), WithCore(editor.CoreInitialText("external output\n\nlast")))
 	h.keys(key('G'))
 	h.paint()
 	h.onLoop(func() { h.e.layout.scrollBy(-100000); h.e.layout.scrollBy(200) })
@@ -899,7 +900,7 @@ func (r *tailRenderer) LayOut(b Block, lines []string, width float32, cursorInsi
 // paint, it still leaves the scroll at the text's end, not past it.
 func TestRelayoutKeepsTheScrollWithinTheTextWhenAStaleBlockIsDrawnLater(t *testing.T) {
 	r := &tailRenderer{Renderer: NewMarkdownRenderer(), extra: 500}
-	h := startEditor(t, 60, 14, WithRenderer(r), WithView(tuiwidget.ViewRendered), WithCore(tuiwidget.CoreInitialText(strings.Repeat("## heading\n\n", 40)+"tail")))
+	h := startEditor(t, 60, 14, WithRenderer(r), WithView(editor.ViewRendered), WithCore(editor.CoreInitialText(strings.Repeat("## heading\n\n", 40)+"tail")))
 	h.keys(key('G'))
 	h.paint() // the tail laid out, 500 high
 	h.keys(key('g'), key('g'))
@@ -928,8 +929,8 @@ func TestRelayoutKeepsTheScrollWithinTheTextWhenAStaleBlockIsDrawnLater(t *testi
 // included, so no row shows its raw source. An editable one typing (Insert) keeps
 // the cursor's block raw, and turning read-only re-lays the row the cursor is on.
 func TestAReadonlyRenderedEditorRendersTheCursorsRowToo(t *testing.T) {
-	h := startEditor(t, 60, 14, WithRenderer(NewMarkdownRenderer()), WithView(tuiwidget.ViewRendered),
-		WithCore(tuiwidget.CoreInitialText("first\n## Title here\nlast")))
+	h := startEditor(t, 60, 14, WithRenderer(NewMarkdownRenderer()), WithView(editor.ViewRendered),
+		WithCore(editor.CoreInitialText("first\n## Title here\nlast")))
 	h.keys(key('j'), key('i')) // the cursor onto the heading, typing
 	h.paint()
 	for _, s := range spansOfLine(h, 1) {
@@ -952,8 +953,8 @@ func TestAReadonlyRenderedEditorRendersTheCursorsRowToo(t *testing.T) {
 // whatever block the cursor is in, so the cache holds; nor does one moving in
 // Normal. An editable editor typing re-lays the rows the cursor enters and leaves.
 func TestACursorMovingInAViewerReLaysNothing(t *testing.T) {
-	viewer := startEditor(t, 60, 14, WithRenderer(&layCounter{Renderer: NewMarkdownRenderer()}), WithView(tuiwidget.ViewRendered),
-		WithCore(tuiwidget.CoreInitialText("first\n## Title here\nlast")))
+	viewer := startEditor(t, 60, 14, WithRenderer(&layCounter{Renderer: NewMarkdownRenderer()}), WithView(editor.ViewRendered),
+		WithCore(editor.CoreInitialText("first\n## Title here\nlast")))
 	vc := viewer.e.render.(*layCounter)
 	viewer.onLoop(func() { viewer.e.SetReadOnly(true) })
 	viewer.paint()
@@ -969,18 +970,18 @@ func TestACursorMovingInAViewerReLaysNothing(t *testing.T) {
 		t.Fatalf("a cursor moving off a block re-laid it in a viewer: %d -> %d calls", first, vc.calls)
 	}
 
-	editor := startEditor(t, 60, 14, WithRenderer(&layCounter{Renderer: NewMarkdownRenderer()}), WithView(tuiwidget.ViewRendered),
-		WithCore(tuiwidget.CoreInitialText("first\n## Title here\nlast")))
-	ec := editor.e.render.(*layCounter)
-	editor.paint()
+	ed := startEditor(t, 60, 14, WithRenderer(&layCounter{Renderer: NewMarkdownRenderer()}), WithView(editor.ViewRendered),
+		WithCore(editor.CoreInitialText("first\n## Title here\nlast")))
+	ec := ed.e.render.(*layCounter)
+	ed.paint()
 	before := ec.calls
-	editor.keys(key('j'))
-	editor.paint()
+	ed.keys(key('j'))
+	ed.paint()
 	if ec.calls != before {
 		t.Fatalf("a cursor moving in Normal re-laid a block: %d -> %d calls", before, ec.calls)
 	}
-	editor.keys(key('i'), tui.KeyEvent{Code: tui.KeyDown}) // typing, and moving down
-	editor.paint()
+	ed.keys(key('i'), tui.KeyEvent{Code: tui.KeyDown}) // typing, and moving down
+	ed.paint()
 	if ec.calls <= before {
 		t.Fatalf("an editable editor typing re-laid nothing when the cursor moved onto a block: %d -> %d calls", before, ec.calls)
 	}
@@ -993,7 +994,7 @@ func TestEditorReplaceValueKeepsTheReadersPlace(t *testing.T) {
 	for i := range 40 {
 		lines = append(lines, "line "+strconv.Itoa(i))
 	}
-	h := startEditor(t, 50, 6, WithCore(tuiwidget.CoreInitialText(strings.Join(lines, "\n"))))
+	h := startEditor(t, 50, 6, WithCore(editor.CoreInitialText(strings.Join(lines, "\n"))))
 	h.paint()
 	var scrolled float32
 	h.onLoop(func() { h.e.layout.scrollBy(80); scrolled = h.e.layout.scroll })
@@ -1001,13 +1002,13 @@ func TestEditorReplaceValueKeepsTheReadersPlace(t *testing.T) {
 		t.Fatal("the editor did not scroll")
 	}
 	var scroll float32
-	var at tuiwidget.TextPos
+	var at editor.TextPos
 	h.onLoop(func() {
 		h.e.ReplaceValue(strings.ReplaceAll(strings.Join(lines, "\n"), "line", "row"))
 		scroll, at = h.e.layout.scroll, h.e.core.Cursor()
 	})
 	h.paint()
-	if scroll != scrolled || at != (tuiwidget.TextPos{}) {
+	if scroll != scrolled || at != (editor.TextPos{}) {
 		t.Errorf("after ReplaceValue: scroll %v, cursor %v; want %v and the cursor where it was", scroll, at, scrolled)
 	}
 	h.onLoop(func() { h.e.SetValue("fresh"); scroll = h.e.layout.scroll })

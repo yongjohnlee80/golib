@@ -9,18 +9,19 @@ import (
 
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/table"
 )
 
 // tableRows is an in-memory TableSource; with more set it is a TablePager with rows still to load.
 type tableRows struct {
-	fields []tuiwidget.TableField
+	fields []core.TableField
 	rows   [][]string
 }
 
-func (s *tableRows) Fields() []tuiwidget.TableField { return s.fields }
-func (s *tableRows) Len() int                       { return len(s.rows) }
-func (s *tableRows) Cell(r, c int) string           { return s.rows[r][c] }
+func (s *tableRows) Fields() []core.TableField { return s.fields }
+func (s *tableRows) Len() int                  { return len(s.rows) }
+func (s *tableRows) Cell(r, c int) string      { return s.rows[r][c] }
 
 type moreRows struct{ *tableRows }
 
@@ -29,7 +30,7 @@ func (moreRows) FetchMore(int) {}
 
 // cities is n rows of an id, a name, a city and a right-aligned number.
 func cities(n int) *tableRows {
-	s := &tableRows{fields: []tuiwidget.TableField{{Title: "id"}, {Title: "name"}, {Title: "city"},
+	s := &tableRows{fields: []core.TableField{{Title: "id"}, {Title: "name"}, {Title: "city"},
 		{Title: "n", Align: style.AlignRight}}}
 	for i := range n {
 		s.rows = append(s.rows, []string{strconv.Itoa(i), "row" + strconv.Itoa(i), "Seoul", strconv.Itoa(i * 10)})
@@ -38,9 +39,9 @@ func cities(n int) *tableRows {
 }
 
 // pixelTable is a DataTable over src bound to its pixel layout.
-func pixelTable(t *testing.T, src tuiwidget.TableSource, opts ...tuiwidget.TableOption) (*tuiwidget.DataTable, *tableLayout) {
+func pixelTable(t *testing.T, src table.TableSource, opts ...table.TableOption) (*table.DataTable, *tableLayout) {
 	t.Helper()
-	dt := tuiwidget.NewDataTable(tuiwidget.NewTableCore(src, opts...))
+	dt := table.NewDataTable(table.NewTableCore(src, opts...))
 	BindTable(dt)
 	BindTable(nil) // nothing to bind
 	l, ok := dt.BoundLayout().(*tableLayout)
@@ -158,9 +159,9 @@ func TestATableRowBandIsOneDraw(t *testing.T) {
 // carries its mark: ▲ or ▼, and "(loaded rows)" while rows remain to load and there is room.
 func TestATableDrawsTheCursorTheSelectionAndTheSortMark(t *testing.T) {
 	dt, l := pixelTable(t, cities(30))
-	core := dt.Core()
+	tcore := dt.Core()
 	paintTable(l, 600, 200)
-	core.SetCursor(tuiwidget.TablePos{Row: 2, Col: 1})
+	tcore.SetCursor(table.TablePos{Row: 2, Col: 1})
 	c := paintTable(l, 600, 200)
 	cols := l.columns(600)
 	want := gui.Rect{X: cols[1].x - l.pad, Y: 3 * l.rowH, W: cols[1].w + 2*l.pad, H: l.rowH}
@@ -176,16 +177,16 @@ func TestATableDrawsTheCursorTheSelectionAndTheSortMark(t *testing.T) {
 	if !cursor {
 		t.Error("no fill in the cursor's colour")
 	}
-	core.Select(tuiwidget.TableSelectBlock, tuiwidget.TablePos{Row: 1, Col: 0})
+	tcore.Select(table.TableSelectBlock, table.TablePos{Row: 1, Col: 0})
 	c = paintTable(l, 600, 200)
 	sel := gui.Rect{Y: 2 * l.rowH, W: cols[1].x + cols[1].w + l.pad, H: 2 * l.rowH}
 	if got := fillsIn(c, l.selection); len(got) != 1 || got[0] != sel {
 		t.Errorf("the block of rows 1-2, fields 0-1 filled %+v, want one fill at %+v", got, sel)
 	}
-	core.SetAnchor(nil)
+	tcore.SetAnchor(nil)
 
-	core.SortBy(3, true)
-	core.SetCursor(tuiwidget.TablePos{})
+	tcore.SortBy(3, true)
+	tcore.SetCursor(table.TablePos{})
 	paintTable(l, 600, 200)
 	cols = l.columns(600)
 	if got := runTexts(l.header); strings.Join(got, "|") != "id|name|city|n|▼" {
@@ -223,7 +224,7 @@ func TestATableCursorTextContrastsWithTwoFillColors(t *testing.T) {
 		if lightFill {
 			fg, bg = style.RGB(25, 25, 25), style.RGB(195, 185, 245)
 		}
-		l.t.SetStyles(tuiwidget.DataTableStyles{CursorBlurred: style.New().Foreground(fg).Background(bg)})
+		l.t.SetStyles(table.DataTableStyles{CursorBlurred: style.New().Foreground(fg).Background(bg)})
 		c := paintTable(l, 600, 120)
 		fill := l.cursorFill()
 		var overlay *gui.PaintCall
@@ -250,8 +251,8 @@ func TestATableCursorTextContrastsWithTwoFillColors(t *testing.T) {
 // the layout has no size and reveals at the paint.
 func TestATableRevealsTheCursor(t *testing.T) {
 	dt, l := pixelTable(t, cities(30))
-	core := dt.Core()
-	core.SetCursor(tuiwidget.TablePos{Row: 20})
+	tcore := dt.Core()
+	tcore.SetCursor(table.TablePos{Row: 20})
 	if l.top != 0 {
 		t.Errorf("a reveal before the first paint scrolled to %d", l.top)
 	}
@@ -265,14 +266,14 @@ func TestATableRevealsTheCursor(t *testing.T) {
 	if l.PageRows() != 6 {
 		t.Errorf("a page is %d rows, want 6", l.PageRows())
 	}
-	core.SetCursor(tuiwidget.TablePos{Row: 2})
+	tcore.SetCursor(table.TablePos{Row: 2})
 	if l.top != 2 {
 		t.Errorf("up to row 2: rows from %d", l.top)
 	}
 
 	many := &tableRows{}
 	for i := range 8 {
-		many.fields = append(many.fields, tuiwidget.TableField{Title: "field" + strconv.Itoa(i), Width: 10})
+		many.fields = append(many.fields, core.TableField{Title: "field" + strconv.Itoa(i), Width: 10})
 	}
 	many.rows = [][]string{{"a", "b", "c", "d", "e", "f", "g", "h"}}
 	dt, l = pixelTable(t, many)
@@ -296,15 +297,15 @@ func TestATableRevealsTheCursor(t *testing.T) {
 func TestATableScrollsBackWhenRowsGo(t *testing.T) {
 	src := cities(30)
 	dt, l := pixelTable(t, src)
-	core := dt.Core()
+	tcore := dt.Core()
 	paintTable(l, 600, 200) // 7 rows
-	core.SetCursor(tuiwidget.TablePos{Row: 29})
+	tcore.SetCursor(table.TablePos{Row: 29})
 	if l.top != 23 {
 		t.Fatalf("at the last row: rows from %d, want 23", l.top)
 	}
 	src.rows = src.rows[26:] // four rows left
-	core.Changed()
-	core.SetCursor(tuiwidget.TablePos{Row: 3})
+	tcore.Changed()
+	tcore.SetCursor(table.TablePos{Row: 3})
 	paintTable(l, 600, 200)
 	if l.top != 0 {
 		t.Errorf("after rows went: rows from %d, want 0, all four in sight", l.top)
@@ -319,23 +320,23 @@ func TestATableScrollsBackWhenRowsGo(t *testing.T) {
 // field's edge, and a larger text size measures them again.
 func TestATableMeasuresItsWidthsInPixels(t *testing.T) {
 	src := cities(3)
-	src.fields = append(src.fields, tuiwidget.TableField{Title: "d", Width: 6})
+	src.fields = append(src.fields, core.TableField{Title: "d", Width: 6})
 	src.fields[2].Title = "city"
 	src.rows[1][2] = strings.Repeat("Gyeongsangbuk-do ", 6)
 	for i := range src.rows {
 		src.rows[i] = append(src.rows[i], "x")
 	}
 	dt, l := pixelTable(t, src)
-	core := dt.Core()
+	tcore := dt.Core()
 	paintTable(l, 1600, 200)
-	if w, want := core.Width(1), max(l.Measure("name"), l.Measure("row0"), l.Measure("row1"), l.Measure("row2")); w != want || w < 20 {
+	if w, want := tcore.Width(1), max(l.Measure("name"), l.Measure("row0"), l.Measure("row1"), l.Measure("row2")); w != want || w < 20 {
 		t.Errorf("the name field is %d wide, want its widest text's %d pixels", w, want)
 	}
-	if w, want := core.Width(4), l.Measure("000000"); w != want {
+	if w, want := tcore.Width(4), l.Measure("000000"); w != want {
 		t.Errorf("a field declared 6 wide is %d, want six digits' %d", w, want)
 	}
 	cols := l.columns(1600)
-	if x := l.bands[0].runs[1].X; x != cols[1].x || cols[1].x != 3*l.pad+float32(core.Width(0)) {
+	if x := l.bands[0].runs[1].X; x != cols[1].x || cols[1].x != 3*l.pad+float32(tcore.Width(0)) {
 		t.Errorf("the name field's text at %v, want after the id field and its padding (%v)", x, cols[1].x)
 	}
 	n := l.bands[2].runs[3]
@@ -346,12 +347,12 @@ func TestATableMeasuresItsWidthsInPixels(t *testing.T) {
 	if !strings.HasSuffix(long.Text, "…") || l.width(long.Text, l.body) > cols[2].w {
 		t.Errorf("a long cell drew %q, %v wide in a field %v wide", long.Text, l.width(long.Text, l.body), cols[2].w)
 	}
-	before := core.Width(1)
+	before := tcore.Width(1)
 	c := gui.NewRecordingCanvas(gui.Size{W: 1600, H: 200}, gui.Size{W: 8, H: 16})
 	c.TextPx = 28
 	l.Paint(c)
-	if core.Width(1) <= before {
-		t.Errorf("at twice the text size the name field is %d wide, was %d: not measured again", core.Width(1), before)
+	if tcore.Width(1) <= before {
+		t.Errorf("at twice the text size the name field is %d wide, was %d: not measured again", tcore.Width(1), before)
 	}
 	if l.rowH != 48 {
 		t.Errorf("rows %v high at 28px, want 48", l.rowH)
@@ -367,7 +368,7 @@ func TestATablePlacesThePointer(t *testing.T) {
 		t.Error("a point on the header is not the header")
 	}
 	cols := l.columns(600)
-	if p, header, ok := l.CellAt(cols[1].x+2, 3.5*l.rowH); header || !ok || p != (tuiwidget.TablePos{Row: 2, Col: 1}) {
+	if p, header, ok := l.CellAt(cols[1].x+2, 3.5*l.rowH); header || !ok || p != (table.TablePos{Row: 2, Col: 1}) {
 		t.Errorf("a point in row band 3, field 1: %+v header %v ok %v; want row 2 field 1", p, header, ok)
 	}
 	if _, _, ok := l.CellAt(cols[3].x+cols[3].w+l.pad+1, 3*l.rowH); ok {
@@ -389,7 +390,7 @@ func TestATablePlacesThePointer(t *testing.T) {
 
 // An empty table draws its header and its empty text, in two draws.
 func TestAnEmptyTableSaysSo(t *testing.T) {
-	dt, l := pixelTable(t, &tableRows{fields: []tuiwidget.TableField{{Title: "x"}}})
+	dt, l := pixelTable(t, &tableRows{fields: []core.TableField{{Title: "x"}}})
 	c := paintTable(l, 400, 100)
 	if n := len(calls(c, "DrawText")); n != 2 || strings.Join(runTexts(l.empty), "") != "No rows" {
 		t.Errorf("%d draws, empty text %q; want the header and No rows", n, runTexts(l.empty))
@@ -405,40 +406,40 @@ func TestAnEmptyTableSaysSo(t *testing.T) {
 // and nothing at the gutter's corner of the header, past the last field, below the last row or
 // off the view. CellAt keeps its answers, and a row's number is no cell to it.
 func TestATableHitsTheGutterTheHeadersAndTheCells(t *testing.T) {
-	_, l := pixelTable(t, cities(5), tuiwidget.TableRowNumbers(true))
+	_, l := pixelTable(t, cities(5), table.TableRowNumbers(true))
 	paintTable(l, 600, 200)
 	g := l.gutter()
 	cols := l.columns(600)
 	if g <= 0 || cols[0].x != g+l.pad {
 		t.Fatalf("a gutter %v wide, the first field at %v: want a gutter, and the field after it", g, cols[0].x)
 	}
-	hit := func(x, y float32) (tuiwidget.TablePos, tuiwidget.TableHit) { return l.HitAt(x, y) }
-	if p, h := hit(g/2, 3.5*l.rowH); h != tuiwidget.TableHitGutter || p.Row != 2 {
+	hit := func(x, y float32) (table.TablePos, table.TableHit) { return l.HitAt(x, y) }
+	if p, h := hit(g/2, 3.5*l.rowH); h != table.TableHitGutter || p.Row != 2 {
 		t.Errorf("over row 2's number: %+v %v, want the gutter's row 2", p, h)
 	}
 	for _, c := range cols {
 		for _, x := range []float32{c.x - l.pad + 1, c.x + c.w/2, c.x + c.w + l.pad - 1} {
-			if p, h := hit(x, l.rowH/2); h != tuiwidget.TableHitHeader || p.Col != c.col {
+			if p, h := hit(x, l.rowH/2); h != table.TableHitHeader || p.Col != c.col {
 				t.Errorf("over field %d's title at x %v: %+v %v, want its header", c.col, x, p, h)
 			}
 		}
 	}
-	if p, h := hit(cols[2].x+2, 3.5*l.rowH); h != tuiwidget.TableHitCell || p != (tuiwidget.TablePos{Row: 2, Col: 2}) {
+	if p, h := hit(cols[2].x+2, 3.5*l.rowH); h != table.TableHitCell || p != (table.TablePos{Row: 2, Col: 2}) {
 		t.Errorf("over row 2 field 2: %+v %v, want that cell", p, h)
 	}
 	end := cols[3].x + cols[3].w + l.pad
 	for _, pt := range [][2]float32{{g / 2, l.rowH / 2}, {end + 1, 2.5 * l.rowH}, {end + 1, l.rowH / 2},
 		{cols[1].x, 6.5 * l.rowH}, {-1, 2.5 * l.rowH}, {cols[1].x, -1}} {
-		if p, h := hit(pt[0], pt[1]); h != tuiwidget.TableHitNone {
+		if p, h := hit(pt[0], pt[1]); h != table.TableHitNone {
 			t.Errorf("at %v: %+v %v, want nothing", pt, p, h)
 		}
 	}
 	// past the painted view: nothing, and no field beyond the ones painted
-	_, ln := pixelTable(t, cities(5), tuiwidget.TableRowNumbers(true))
+	_, ln := pixelTable(t, cities(5), table.TableRowNumbers(true))
 	paintTable(ln, 100, 100)
 	shown := ln.columns(100)
 	for _, pt := range [][2]float32{{120, ln.rowH / 2}, {120, 2.5 * ln.rowH}, {50, 120}, {120, 120}, {100, ln.rowH / 2}} {
-		if p, h := ln.HitAt(pt[0], pt[1]); h != tuiwidget.TableHitNone {
+		if p, h := ln.HitAt(pt[0], pt[1]); h != table.TableHitNone {
 			t.Errorf("a 100x100 view at %v: %+v %v, want nothing past what is painted", pt, p, h)
 		}
 	}
@@ -455,7 +456,7 @@ func TestATableHitsTheGutterTheHeadersAndTheCells(t *testing.T) {
 	if _, header, ok := l.CellAt(cols[2].x, l.rowH/2); !header || !ok {
 		t.Error("CellAt over the header is not the header")
 	}
-	if p, header, ok := l.CellAt(cols[1].x, 2.5*l.rowH); header || !ok || p != (tuiwidget.TablePos{Row: 1, Col: 1}) {
+	if p, header, ok := l.CellAt(cols[1].x, 2.5*l.rowH); header || !ok || p != (table.TablePos{Row: 1, Col: 1}) {
 		t.Errorf("CellAt over row 1 field 1: %+v %v %v", p, header, ok)
 	}
 	if _, _, ok := l.CellAt(g/2, 2.5*l.rowH); ok {
@@ -468,7 +469,7 @@ func TestATableHitsTheGutterTheHeadersAndTheCells(t *testing.T) {
 // reach a digit more, 9 to 10, moving the fields with it.
 func TestATableGutterNumbersTheRowsAndWidens(t *testing.T) {
 	src := cities(9)
-	dt, l := pixelTable(t, src, tuiwidget.TableRowNumbers(true))
+	dt, l := pixelTable(t, src, table.TableRowNumbers(true))
 	c := paintTable(l, 600, 400)
 	g9 := l.gutter()
 	if want := float32(l.Measure("0")) + 2*l.pad; g9 != want {
@@ -531,7 +532,7 @@ func TestATableGutterNumbersTheRowsAndWidens(t *testing.T) {
 // row above has too grown into one fill.
 func TestATablePaintsEachSelectionKind(t *testing.T) {
 	dt, l := pixelTable(t, cities(30))
-	core := dt.Core()
+	tcore := dt.Core()
 	paintTable(l, 600, 200)
 	cols := l.columns(600)
 	left, right := func(i int) float32 { return cols[i].x - l.pad }, func(i int) float32 { return cols[i].x + cols[i].w + l.pad }
@@ -540,26 +541,26 @@ func TestATablePaintsEachSelectionKind(t *testing.T) {
 	}
 	cases := []struct {
 		name   string
-		kind   tuiwidget.TableSelectKind
-		anchor tuiwidget.TablePos
-		cursor tuiwidget.TablePos
+		kind   table.TableSelectKind
+		anchor table.TablePos
+		cursor table.TablePos
 		want   []gui.Rect
 	}{
-		{"Cells over two rows", tuiwidget.TableSelectCells, tuiwidget.TablePos{Row: 1, Col: 2}, tuiwidget.TablePos{Row: 2, Col: 1},
+		{"Cells over two rows", table.TableSelectCells, table.TablePos{Row: 1, Col: 2}, table.TablePos{Row: 2, Col: 1},
 			[]gui.Rect{band(1, 1, 2, 3), band(2, 1, 0, 1)}},
-		{"Cells over four rows", tuiwidget.TableSelectCells, tuiwidget.TablePos{Row: 1, Col: 2}, tuiwidget.TablePos{Row: 4, Col: 1},
+		{"Cells over four rows", table.TableSelectCells, table.TablePos{Row: 1, Col: 2}, table.TablePos{Row: 4, Col: 1},
 			[]gui.Rect{band(1, 1, 2, 3), band(2, 2, 0, 3), band(4, 1, 0, 1)}},
-		{"Cells in one row", tuiwidget.TableSelectCells, tuiwidget.TablePos{Row: 3, Col: 2}, tuiwidget.TablePos{Row: 3, Col: 1},
+		{"Cells in one row", table.TableSelectCells, table.TablePos{Row: 3, Col: 2}, table.TablePos{Row: 3, Col: 1},
 			[]gui.Rect{band(3, 1, 1, 2)}},
-		{"Rows", tuiwidget.TableSelectRows, tuiwidget.TablePos{Row: 3, Col: 2}, tuiwidget.TablePos{Row: 1, Col: 2},
+		{"Rows", table.TableSelectRows, table.TablePos{Row: 3, Col: 2}, table.TablePos{Row: 1, Col: 2},
 			[]gui.Rect{band(1, 3, 0, 3)}},
-		{"Block", tuiwidget.TableSelectBlock, tuiwidget.TablePos{Row: 1, Col: 2}, tuiwidget.TablePos{Row: 4, Col: 1},
+		{"Block", table.TableSelectBlock, table.TablePos{Row: 1, Col: 2}, table.TablePos{Row: 4, Col: 1},
 			[]gui.Rect{band(1, 4, 1, 2)}},
 	}
 	for _, tc := range cases {
-		core.SetAnchor(nil)
-		core.SetCursor(tc.cursor)
-		core.Select(tc.kind, tc.anchor)
+		tcore.SetAnchor(nil)
+		tcore.SetCursor(tc.cursor)
+		tcore.Select(tc.kind, tc.anchor)
 		c := paintTable(l, 600, 200)
 		got := fillsIn(c, l.selection)
 		slices.SortFunc(got, func(a, b gui.Rect) int { return int(a.Y - b.Y) })
@@ -573,7 +574,7 @@ func TestATablePaintsEachSelectionKind(t *testing.T) {
 // one key each mark carries its key's place, and only the first key's title takes the note.
 func TestATableMarksEverySortKey(t *testing.T) {
 	dt, l := pixelTable(t, cities(30))
-	dt.Core().SortKeys([]tuiwidget.TableSortKey{{Col: 3, Desc: true}, {Col: 1}})
+	dt.Core().SortKeys([]table.TableSortKey{{Col: 3, Desc: true}, {Col: 1}})
 	paintTable(l, 600, 200)
 	cols := l.columns(600)
 	if got := runTexts(l.header); strings.Join(got, "|") != "id|name|city|n|▼¹|▲²" {
@@ -585,14 +586,14 @@ func TestATableMarksEverySortKey(t *testing.T) {
 			t.Errorf("key %d's mark at %v, want in the gap after field %d (%v to %v)", i+1, m.X, col, c.x+c.w, c.x+c.w+2*l.pad)
 		}
 	}
-	dt.Core().SortKeys([]tuiwidget.TableSortKey{{Col: 2}, {Col: 0, Desc: true}, {Col: 2, Desc: true}})
+	dt.Core().SortKeys([]table.TableSortKey{{Col: 2}, {Col: 0, Desc: true}, {Col: 2, Desc: true}})
 	paintTable(l, 600, 200)
 	if got := runTexts(l.header); strings.Join(got, "|") != "id|name|city|n|▲¹|▼²" {
 		t.Errorf("a field keyed twice: header %q, want its first key's mark alone", got)
 	}
-	dt.Core().SortKeys([]tuiwidget.TableSortKey{{Col: 1}, {Col: 3}})
+	dt.Core().SortKeys([]table.TableSortKey{{Col: 1}, {Col: 3}})
 	paintTable(l, 600, 200)
-	dt.Core().SortKeys([]tuiwidget.TableSortKey{{Col: 3}, {Col: 1}}) // the same marks' texts, the places swapped
+	dt.Core().SortKeys([]table.TableSortKey{{Col: 3}, {Col: 1}}) // the same marks' texts, the places swapped
 	paintTable(l, 600, 200)
 	for i, col := range []int{3, 1} {
 		c, m := cols[col], l.header.runs[4+i]
@@ -600,7 +601,7 @@ func TestATableMarksEverySortKey(t *testing.T) {
 			t.Errorf("places swapped: key %d's mark at %v, want after field %d (%v to %v): the old marks reused", i+1, m.X, col, c.x+c.w, c.x+c.w+2*l.pad)
 		}
 	}
-	dt.Core().SortKeys([]tuiwidget.TableSortKey{{Col: 0}})
+	dt.Core().SortKeys([]table.TableSortKey{{Col: 0}})
 	paintTable(l, 600, 200)
 	if got := runTexts(l.header); strings.Join(got, "|") != "id|name|city|n|▲" {
 		t.Errorf("one key: header %q, want its mark with no place", got)
@@ -609,7 +610,7 @@ func TestATableMarksEverySortKey(t *testing.T) {
 	wide := cities(3)
 	wide.fields[1].Width, wide.fields[3].Width = 40, 40
 	dt, l = pixelTable(t, moreRows{wide})
-	dt.Core().SortKeys([]tuiwidget.TableSortKey{{Col: 3}, {Col: 1}})
+	dt.Core().SortKeys([]table.TableSortKey{{Col: 3}, {Col: 1}})
 	paintTable(l, 1200, 200)
 	if got := runTexts(l.header); strings.Join(got, "|") != "id|name|city|n (loaded rows)|▲¹|▲²" {
 		t.Errorf("two keys over a partial result: header %q, want the note on the first key's title", got)
@@ -620,10 +621,10 @@ func TestATableMarksEverySortKey(t *testing.T) {
 // its number's when the gutter is on; the header one. The fills are the page, the header's tint and rule, the gutter's tint,
 // a fill per selected run and the cursor's: none per cell.
 func TestATableRowBandStaysBatchedWithTheGutterAndASelection(t *testing.T) {
-	dt, l := pixelTable(t, cities(30), tuiwidget.TableRowNumbers(true))
-	core := dt.Core()
-	core.SetCursor(tuiwidget.TablePos{Row: 4, Col: 1})
-	core.Select(tuiwidget.TableSelectCells, tuiwidget.TablePos{Row: 1, Col: 2})
+	dt, l := pixelTable(t, cities(30), table.TableRowNumbers(true))
+	tcore := dt.Core()
+	tcore.SetCursor(table.TablePos{Row: 4, Col: 1})
+	tcore.Select(table.TableSelectCells, table.TablePos{Row: 1, Col: 2})
 	c := paintTable(l, 600, 200)
 	body := l.bodyRows()
 	perBand := map[int]int{}
@@ -655,10 +656,10 @@ func TestATableRowBandStaysBatchedWithTheGutterAndASelection(t *testing.T) {
 // field's right, on the cursor's row; the cell cursor back, the fill is its cell's again.
 func TestATableFillsARowCursorAcrossItsRow(t *testing.T) {
 	dt, l := pixelTable(t, cities(30))
-	core := dt.Core()
+	tcore := dt.Core()
 	paintTable(l, 600, 200)
-	core.SetCursor(tuiwidget.TablePos{Row: 2, Col: 1})
-	core.SetRowCursor(true)
+	tcore.SetCursor(table.TablePos{Row: 2, Col: 1})
+	tcore.SetRowCursor(true)
 	c := paintTable(l, 600, 200)
 	cols := l.columns(600)
 	last := cols[len(cols)-1]
@@ -666,7 +667,7 @@ func TestATableFillsARowCursorAcrossItsRow(t *testing.T) {
 	if got := fillsIn(c, l.blurred); len(got) != 1 || got[0] != want {
 		t.Errorf("the row cursor filled %+v, want row 2 across every field %+v", got, want)
 	}
-	core.SetRowCursor(false)
+	tcore.SetRowCursor(false)
 	c = paintTable(l, 600, 200)
 	cell := gui.Rect{X: cols[1].x - l.pad, Y: 3 * l.rowH, W: cols[1].w + 2*l.pad, H: l.rowH}
 	if got := fillsIn(c, l.blurred); len(got) != 1 || got[0] != cell {

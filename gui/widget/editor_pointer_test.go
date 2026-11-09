@@ -6,7 +6,8 @@ import (
 
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/tui"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
+	"github.com/yongjohnlee80/golib/tui/widget/htmlview"
 )
 
 // The native editor body is an I-beam from the first whole cell past its gutter, as the paint
@@ -14,7 +15,7 @@ import (
 // is asked once. With the line numbers off, past the page's padding alone; turned on, past the
 // numbers on that same frame, not the next.
 func TestTheNativeEditorBodyIsAnIBeamPastItsGutter(t *testing.T) {
-	h := startEditor(t, 60, 8, WithCore(tuiwidget.CoreInitialText("one\ntwo")))
+	h := startEditor(t, 60, 8, WithCore(editor.CoreInitialText("one\ntwo")))
 	frame := func(numbers bool) (got []tui.PointerRegion, want int) {
 		h.onLoop(func() {
 			h.e.SetLineNumbers(numbers)
@@ -42,7 +43,7 @@ func TestTheNativeEditorBodyIsAnIBeamPastItsGutter(t *testing.T) {
 // A bound HTML page's links are a hand on the first frame they are drawn: the layout gives them
 // after the paint that laid them out. The cell view gives none of its own for it.
 func TestABoundHTMLPagesLinksAreAHandOnTheirFirstFrame(t *testing.T) {
-	v := tuiwidget.NewHTMLView()
+	v := htmlview.NewHTMLView()
 	BindHTML(v)
 	v.SetHTML([]byte(`<p>see <a href="b.md">the link</a> here</p>`))
 	view := v.BoundLayout().(gui.View)

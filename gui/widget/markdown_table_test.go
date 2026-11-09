@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/gui"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // tableTheme is the theme the table tests lay out with.
@@ -243,7 +243,7 @@ func TestAFittingTableKeepsItsColumns(t *testing.T) {
 func TestTheRendererReadsTheCellsTableTextReads(t *testing.T) {
 	doc := "| name | note | n |\n| :-- | :-: | --: |\n| a \\| b | c | 1 |\n| x \\\\| y | z | 22 |\n| 한국 |  | 3 |"
 	lines := strings.Split(doc, "\n")
-	tt, ok := tuiwidget.TableAt(tuiwidget.NewEditorCore(tuiwidget.CoreInitialText(doc)), 0)
+	tt, ok := editor.TableAt(editor.NewEditorCore(editor.CoreInitialText(doc)), 0)
 	if !ok || tt.Len() != 3 {
 		t.Fatalf("TableText read no table of 3 rows: %v", ok)
 	}
@@ -280,7 +280,7 @@ func TestTheRendererReadsTheCellsTableTextReads(t *testing.T) {
 	bl := layTableAt(t, doc, 800)
 	for row := range tt.Len() {
 		ln := row + 2
-		spans, _ := tuiwidget.MarkdownTableCells(lines[ln])
+		spans, _ := editor.MarkdownTableCells(lines[ln])
 		shown := make([]bool, len(spans))
 		for _, s := range bl.Lines[ln].Spans {
 			if s.Hidden || strings.TrimSpace(s.Text) == "" {

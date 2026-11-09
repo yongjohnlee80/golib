@@ -5,7 +5,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // rowRecorder is a surface that keeps the first row's cells: each one's content and whether it
@@ -43,7 +43,7 @@ func renderSelected(t *testing.T, line string, from, to int) []string {
 	t.Helper()
 	e := NewEditor()
 	e.core.SetValue(line)
-	e.core.Select(tuiwidget.TextRange{From: tuiwidget.TextPos{Col: from}, To: tuiwidget.TextPos{Col: to}})
+	e.core.Select(editor.TextRange{From: editor.TextPos{Col: from}, To: editor.TextPos{Col: to}})
 	e.body.focused = true
 	r := newRowRecorder(20, 3)
 	e.body.Render(r)

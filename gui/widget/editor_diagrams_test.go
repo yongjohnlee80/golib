@@ -9,7 +9,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/tui"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // fakeDiagrams answers Pending until finish marks a source done, and keeps every request's
@@ -58,8 +58,8 @@ const diagramDoc = "top\n```mermaid\nA-->B\n```\nend"
 func startDiagrams(t *testing.T) (*edHarness, *fakeDiagrams) {
 	t.Helper()
 	f := &fakeDiagrams{done: map[string]bool{}}
-	h := startEditor(t, 50, 14, WithRenderer(NewMarkdownRenderer(WithDiagrams(f))), WithView(tuiwidget.ViewRendered),
-		WithCore(tuiwidget.CoreInitialText(diagramDoc)))
+	h := startEditor(t, 50, 14, WithRenderer(NewMarkdownRenderer(WithDiagrams(f))), WithView(editor.ViewRendered),
+		WithCore(editor.CoreInitialText(diagramDoc)))
 	h.paint()
 	return h, f
 }

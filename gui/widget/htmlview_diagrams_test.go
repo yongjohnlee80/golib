@@ -8,7 +8,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/tui"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/htmlview"
 )
 
 // htmlFakeDiagrams answers every request with state, and a picture that counts its paints.
@@ -30,11 +30,11 @@ func (f *htmlFakeDiagrams) Diagram(_ context.Context, req DiagramRequest, _ func
 // diagramView is a pixel HTMLView of html with d as its Diagrammer, painted once.
 func diagramView(t *testing.T, html string, d Diagrammer) (*htmlLayout, func()) {
 	t.Helper()
-	var opts []tuiwidget.HTMLOption
+	var opts []htmlview.HTMLOption
 	if d != nil {
-		opts = append(opts, tuiwidget.WithDiagrams(d))
+		opts = append(opts, htmlview.WithDiagrams(d))
 	}
-	v := tuiwidget.NewHTMLView(opts...)
+	v := htmlview.NewHTMLView(opts...)
 	v.SetHTML([]byte(html))
 	BindHTML(v)
 	l := v.BoundLayout().(*htmlLayout)
@@ -154,7 +154,7 @@ func TestAnotherDiagrammerDrawsThePagesDiagramsAgain(t *testing.T) {
 		t.Fatal("the first Diagrammer's picture is not drawn")
 	}
 	second := &htmlFakeDiagrams{state: Declined}
-	tuiwidget.WithDiagrams(second)(l.v)
+	htmlview.WithDiagrams(second)(l.v)
 	l.v.SetHTML([]byte(mermaidPage))
 	paint()
 	if len(second.asked) == 0 {
@@ -207,7 +207,7 @@ func TestAnyDiagrammerReplacedDrawsAgain(t *testing.T) {
 	if firstAsked != asked {
 		t.Errorf("the same Diagrammer was asked again (%d times, then %d): its answer is kept", asked, firstAsked)
 	}
-	tuiwidget.WithDiagrams(funcDiagrams(func(DiagramRequest) DiagramAnswer {
+	htmlview.WithDiagrams(funcDiagrams(func(DiagramRequest) DiagramAnswer {
 		secondAsked++
 		return DiagramAnswer{State: Declined}
 	}))(l.v)
@@ -218,10 +218,10 @@ func TestAnyDiagrammerReplacedDrawsAgain(t *testing.T) {
 	}
 
 	n := 0
-	tuiwidget.WithDiagrams(valueDiagrams{state: Ready, data: []int{1}, asked: &n})(l.v)
+	htmlview.WithDiagrams(valueDiagrams{state: Ready, data: []int{1}, asked: &n})(l.v)
 	l.v.SetHTML([]byte(mermaidPage))
 	paint()
-	tuiwidget.WithDiagrams(valueDiagrams{state: Declined, data: []int{2}, asked: &n})(l.v)
+	htmlview.WithDiagrams(valueDiagrams{state: Declined, data: []int{2}, asked: &n})(l.v)
 	l.v.SetHTML([]byte(mermaidPage))
 	paint() // two values of one type holding slices: comparing them panics
 	if n < 2 || preDrawn(l) {
@@ -233,7 +233,7 @@ func TestAnyDiagrammerReplacedDrawsAgain(t *testing.T) {
 // asked in a window whose prose is Go Mono, it lays out at the size of one naming Go Mono.
 func TestAPagesDiagramIsMeasuredInTheWindowsProse(t *testing.T) {
 	f := &htmlFakeDiagrams{state: Pending}
-	v := tuiwidget.NewHTMLView(tuiwidget.WithDiagrams(f))
+	v := htmlview.NewHTMLView(htmlview.WithDiagrams(f))
 	v.SetHTML([]byte("<pre class=\"mermaid\">" + strings.ReplaceAll(wideLabels, ">", "&gt;") + "</pre>"))
 	BindHTML(v)
 	c := gui.NewRecordingCanvas(gui.Size{W: 600, H: 400}, gui.Size{W: 8, H: 19.2})

@@ -11,13 +11,14 @@ import (
 	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // editorBody is an Editor's text area: it routes input to the core, draws the text natively in
 // pixels, and in cells on a backend without native views.
 type editorBody struct {
-	tuiwidget.Base
+	core.Base
 	e *Editor
 
 	focused    bool
@@ -368,15 +369,15 @@ func (v bodyView) Paint(c gui.Canvas) {
 	// the gutter, and placed at the text's left edge.
 	textLeft := padX + l.gutter
 	tc := c.Sub(gui.Rect{X: textLeft, W: max(c.Size().W-textLeft, 0), H: h})
-	rendered, tint := e.ShownView() == tuiwidget.ViewRendered && e.render != nil, b.markTint(l)
-	if e.ruler > 0 && e.ShownView() == tuiwidget.ViewRaw {
+	rendered, tint := e.ShownView() == editor.ViewRendered && e.render != nil, b.markTint(l)
+	if e.ruler > 0 && e.ShownView() == editor.ViewRaw {
 		// the guide sits under the text, so a line that crosses it stays readable
 		if x := l.textX() + float32(e.ruler-1)*l.monoCell(); x >= textLeft && x < c.Size().W {
 			c.FillRect(gui.Rect{X: x, Y: 0, W: 1, H: h}, gui.Solid(mix(th.Muted, bg, 0.5)))
 		}
 	}
 
-	var frame *tuiwidget.HighlightFrame
+	var frame *editor.HighlightFrame
 	top := 0
 	var y float32
 	for ; top < len(l.blocks); top++ {
@@ -386,7 +387,7 @@ func (v bodyView) Paint(c gui.Canvas) {
 		}
 		y += hh
 	}
-	if e.ShownView() == tuiwidget.ViewRaw && top < len(l.blocks) {
+	if e.ShownView() == editor.ViewRaw && top < len(l.blocks) {
 		frame = e.core.BeginHighlight(l.blocks[top].From)
 		defer frame.Close()
 		if frame.Behind {
@@ -397,8 +398,8 @@ func (v bodyView) Paint(c gui.Canvas) {
 	}
 	b.caretOn = false
 	cl, ccol := e.core.Line()
-	visualLine := e.core.Mode() == tuiwidget.ModeVisualLine
-	visual := visualLine || e.core.Mode() == tuiwidget.ModeVisual || e.core.Mode() == tuiwidget.ModeVisualBlock
+	visualLine := e.core.Mode() == editor.ModeVisualLine
+	visual := visualLine || e.core.Mode() == editor.ModeVisual || e.core.Mode() == editor.ModeVisualBlock
 	sel := selColor(th)
 	for i := top; i < len(l.blocks) && y-l.scroll < h; i++ {
 		lb := l.lay(i, frame)
@@ -426,7 +427,7 @@ func (v bodyView) Paint(c gui.Canvas) {
 				tc.FillRect(gui.Rect{X: at.X + r.X, Y: at.Y + r.Y, W: r.W, H: r.H}, gui.Solid(sel))
 			}
 			ll.Para.PaintText(tc, at, ll.Spans)
-			if e.ShownView() == tuiwidget.ViewRaw {
+			if e.ShownView() == editor.ViewRaw {
 				paintIndentMarks(tc, e.core, ll, at, b.focused, l.monoFont(), mix(th.Muted, bg, 0.5))
 			}
 			if e.numbers && !ll.Unnumbered && len(ll.Spans) > 0 && ll.Spans[0].Line >= 0 && ll.Spans[0].Line != numbered && len(ll.Para.Lines) > 0 {
@@ -497,7 +498,7 @@ func (v bodyView) Paint(c gui.Canvas) {
 // paintIndentMarks draws the line's marked indentation over its text (IndentMarks): "·" centred
 // in each leading space's box and "→" at the left of each leading tab's, on its row's baseline,
 // in the ruler's dim colour. Raw mode only: a rendered line's whitespace is not its source's.
-func paintIndentMarks(c gui.Canvas, core *tuiwidget.EditorCore, ll LineLayout, at gui.Point, focused bool, f gui.Font, col color.NRGBA) {
+func paintIndentMarks(c gui.Canvas, core *editor.EditorCore, ll LineLayout, at gui.Point, focused bool, f gui.Font, col color.NRGBA) {
 	if len(ll.Spans) == 0 || ll.Spans[0].Line < 0 {
 		return
 	}
@@ -560,7 +561,7 @@ func (b *editorBody) paintNumber(c gui.Canvas, ln int, baseline float32, current
 // overlayMarks are a rendered line's clusters the core's overlay marks (a find's every match, the
 // host's marks: EditorCore.OverlayStyles), as tinted rects under the text in the paragraph's
 // coordinates: Rendered shows what the text's highlighting shows in Raw.
-func overlayMarks(core *tuiwidget.EditorCore, ll LineLayout, tint func(highlight.Style) (color.NRGBA, bool)) []Mark {
+func overlayMarks(core *editor.EditorCore, ll LineLayout, tint func(highlight.Style) (color.NRGBA, bool)) []Mark {
 	var out []Mark
 	styles := map[int][]highlight.Style{}
 	for si, sp := range ll.Spans {
@@ -623,7 +624,7 @@ const markAlpha = 0x66
 // selection is a line's highlighted clusters (the core's Highlighted: the selection while focused,
 // a pinned one, the current match) as rects, in the paragraph's coordinates. A Visual-line
 // selection covers each row of the line, the width of the text.
-func selection(core *tuiwidget.EditorCore, ll LineLayout, wholeLine bool, width float32, focused bool) []gui.Rect {
+func selection(core *editor.EditorCore, ll LineLayout, wholeLine bool, width float32, focused bool) []gui.Rect {
 	if len(ll.Spans) == 0 || ll.Spans[0].Line < 0 {
 		return nil
 	}
@@ -659,16 +660,16 @@ func selection(core *tuiwidget.EditorCore, ll LineLayout, wholeLine bool, width 
 
 // paintCaret draws the caret: a bar in Insert mode, an underline in Replace (as Vim draws it), a
 // block over the cluster otherwise.
-func paintCaret(c gui.Canvas, r gui.Rect, m tuiwidget.EditorMode, th Theme) {
+func paintCaret(c gui.Canvas, r gui.Rect, m editor.EditorMode, th Theme) {
 	col := th.Text
 	if th.Caret.A > 0 {
 		col = th.Caret
 	}
 	switch m {
-	case tuiwidget.ModeInsert:
+	case editor.ModeInsert:
 		c.FillRect(gui.Rect{X: r.X, Y: r.Y, W: 2, H: r.H}, gui.Solid(col))
 		return
-	case tuiwidget.ModeReplace:
+	case editor.ModeReplace:
 		c.FillRect(gui.Rect{X: r.X, Y: r.Y + r.H - 2, W: max(th.Mono.Size*0.6, 2), H: 2}, gui.Solid(col))
 		return
 	}

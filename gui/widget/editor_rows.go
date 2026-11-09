@@ -2,10 +2,10 @@ package widget
 
 import (
 	"github.com/yongjohnlee80/golib/gui"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
-var _ tuiwidget.EditorRowLayout = (*pixelLayout)(nil)
+var _ editor.EditorRowLayout = (*pixelLayout)(nil)
 
 // THE EDITOR'S DISPLAY ROWS — the GUI Editor's rows for Vim's gj and gk (tui/widget's
 // EditorRowLayout), in pixels. A source line's rows are the paragraph lines its spans are drawn

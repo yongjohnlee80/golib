@@ -2,7 +2,9 @@ package widget
 
 import (
 	"github.com/yongjohnlee80/golib/tui"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
+	"github.com/yongjohnlee80/golib/tui/widget/htmlview"
+	"github.com/yongjohnlee80/golib/tui/widget/table"
 )
 
 // THE DOCUMENT VIEW — a second kind of Rendered view. A Renderer lays the text out line by line,
@@ -40,11 +42,11 @@ import (
 // ShowDocument as the view is shown, and again on SetValue while it is. Shown, the focus goes into
 // it (the view itself, or what it holds that takes the keys), so a key it leaves, the Rendered
 // toggle among them, bubbles to the Editor.
-type DocumentView = tuiwidget.DocumentView
+type DocumentView = editor.DocumentView
 
 var (
-	_ DocumentView = (*tuiwidget.HTMLView)(nil)
-	_ DocumentView = (*tuiwidget.TableDocument)(nil)
+	_ DocumentView = (*htmlview.HTMLView)(nil)
+	_ DocumentView = (*table.TableDocument)(nil)
 )
 
 // WithDocumentView gives the Editor a document view, off until SetRenderedDocument turns it on.
@@ -158,7 +160,7 @@ func (s *editorStack) HandleEvent(ev tui.Event) bool {
 	if !ok || !s.e.doc.Shown() {
 		return false
 	}
-	if act, ok := s.e.core.ActionOf(k); ok && act == tuiwidget.ActToggleRendered && s.e.canRender() {
+	if act, ok := s.e.core.ActionOf(k); ok && act == editor.ActToggleRendered && s.e.canRender() {
 		s.e.toggleMode()
 		return true
 	}

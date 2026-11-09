@@ -7,14 +7,15 @@ import (
 
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/tui"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
+	"github.com/yongjohnlee80/golib/tui/widget/table"
 )
 
 // csvPixelTable is a pixel table over a CSV document's core, with the edges and the row numbers.
-func csvPixelTable(t *testing.T, text string) (*tuiwidget.DataTable, *tableLayout, *tuiwidget.EditorCore) {
+func csvPixelTable(t *testing.T, text string) (*table.DataTable, *tableLayout, *editor.EditorCore) {
 	t.Helper()
-	ed := tuiwidget.NewEditorCore(tuiwidget.CoreInitialText(text))
-	dt, l := pixelTable(t, tuiwidget.NewTableCSV(ed, ','), tuiwidget.TableAppendEdges(), tuiwidget.TableRowNumbers(true))
+	ed := editor.NewEditorCore(editor.CoreInitialText(text))
+	dt, l := pixelTable(t, table.NewTableCSV(ed, ','), table.TableAppendEdges(), table.TableRowNumbers(true))
 	return dt, l, ed
 }
 
@@ -55,21 +56,21 @@ func TestATableHitsTheEdgesAndOsRow(t *testing.T) {
 	if !ok {
 		t.Fatal("the edge field is not shown at 600 px")
 	}
-	if p, hit := l.HitAt(first, at(2)); hit != tuiwidget.TableHitCell || p != (tuiwidget.TablePos{Row: 2, Col: 0}) {
+	if p, hit := l.HitAt(first, at(2)); hit != table.TableHitCell || p != (table.TablePos{Row: 2, Col: 0}) {
 		t.Fatalf("the edge row: %+v %v, want row 2 (Len) field 0", p, hit)
 	}
-	if p, hit := l.HitAt(edge.x+1, at(0)); hit != tuiwidget.TableHitCell || p != (tuiwidget.TablePos{Row: 0, Col: 2}) {
+	if p, hit := l.HitAt(edge.x+1, at(0)); hit != table.TableHitCell || p != (table.TablePos{Row: 0, Col: 2}) {
 		t.Fatalf("the edge field: %+v %v, want field 2", p, hit)
 	}
-	if _, hit := l.HitAt(1, at(2)); hit != tuiwidget.TableHitNone {
+	if _, hit := l.HitAt(1, at(2)); hit != table.TableHitNone {
 		t.Fatalf("the edge row's gutter is %v, want nothing", hit)
 	}
 	dt.Core().HandleKey(keyRune('o'))
 	paintTable(l, 600, 300)
-	if _, hit := l.HitAt(first, at(1)); hit != tuiwidget.TableHitNone {
+	if _, hit := l.HitAt(first, at(1)); hit != table.TableHitNone {
 		t.Fatalf("o's new row is %v, want no cell", hit)
 	}
-	if p, hit := l.HitAt(first, at(2)); hit != tuiwidget.TableHitCell || p.Row != 1 {
+	if p, hit := l.HitAt(first, at(2)); hit != table.TableHitCell || p.Row != 1 {
 		t.Fatalf("the row after o's: %+v %v, want display row 1", p, hit)
 	}
 }
@@ -109,7 +110,7 @@ func TestATablePaintsTheOpenFieldAndItsCaret(t *testing.T) {
 	}
 
 	core.DropEdit()
-	core.SetCursor(tuiwidget.TablePos{Row: 0, Col: 2}) // the edge field
+	core.SetCursor(table.TablePos{Row: 0, Col: 2}) // the edge field
 	c = paintTable(l, 600, 300)
 	edge, _ := l.edgeColumn(l.columns(l.size.W))
 	var cursor bool
@@ -144,7 +145,7 @@ func TestATableScrollsItsFieldsSideways(t *testing.T) {
 // The gui's table document is the terminal's, its table drawn in pixels: an Editor takes it as
 // its document view.
 func TestTheGuiTableDocumentIsTheSharedOneInPixels(t *testing.T) {
-	ed := tuiwidget.NewEditorCore(tuiwidget.CoreInitialText("h,v\na,1\n"))
+	ed := editor.NewEditorCore(editor.CoreInitialText("h,v\na,1\n"))
 	d := NewTableDocument(ed, ',')
 	if _, ok := d.Table().BoundLayout().(*tableLayout); !ok {
 		t.Fatalf("its table is laid out by %T, want the pixel layout", d.Table().BoundLayout())
@@ -181,7 +182,7 @@ func TestTheOpenFieldIsRevealedAsItOpens(t *testing.T) {
 			if c.bottom {
 				row = l.bodyRows() - 1
 			}
-			dt.Core().SetCursor(tuiwidget.TablePos{Row: row})
+			dt.Core().SetCursor(table.TablePos{Row: row})
 			paintTable(l, 600, height)
 			if !dt.HandleEvent(keyRune('o')) || dt.Core().Editing() == nil {
 				t.Fatal("o opened no row")
@@ -196,7 +197,7 @@ func TestTheOpenFieldIsRevealedAsItOpens(t *testing.T) {
 	dt, l, _ := csvPixelTable(t, "h,v\na,1\nb,2\nc,3\nd,4\ne,5\n")
 	height := l.rowH * 4
 	paintTable(l, 600, height)
-	dt.Core().SetCursor(tuiwidget.TablePos{Row: 1})
+	dt.Core().SetCursor(table.TablePos{Row: 1})
 	paintTable(l, 600, height)
 	dt.HandleEvent(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter})
 	for _, line := range []string{"x", "y", "z"} {
@@ -231,18 +232,18 @@ func TestTheOpenFieldIsRevealedAsItOpens(t *testing.T) {
 func TestTheEdgeFieldIsRevealedWhereItIsReached(t *testing.T) {
 	for _, c := range []struct {
 		name  string
-		width func(l *tableLayout, dt *tuiwidget.DataTable) float32
+		width func(l *tableLayout, dt *table.DataTable) float32
 		left  func(n int) int
 	}{
-		{"roomy", func(*tableLayout, *tuiwidget.DataTable) float32 { return 600 }, func(int) int { return 0 }},
-		{"the fields fit, the edge not", func(l *tableLayout, dt *tuiwidget.DataTable) float32 {
+		{"roomy", func(*tableLayout, *table.DataTable) float32 { return 600 }, func(int) int { return 0 }},
+		{"the fields fit, the edge not", func(l *tableLayout, dt *table.DataTable) float32 {
 			w := l.gutter() + l.pad + l.edgeWidth()/2
 			for col := range len(dt.Core().Fields()) {
 				w += float32(dt.Core().Width(col)) + 2*l.pad
 			}
 			return w
 		}, func(int) int { return 1 }},
-		{"the edge alone", func(l *tableLayout, _ *tuiwidget.DataTable) float32 {
+		{"the edge alone", func(l *tableLayout, _ *table.DataTable) float32 {
 			return l.gutter() + 2*l.pad + l.edgeWidth() + 1
 		}, func(n int) int { return n }},
 	} {
@@ -252,7 +253,7 @@ func TestTheEdgeFieldIsRevealedWhereItIsReached(t *testing.T) {
 			n := len(dt.Core().Fields())
 			width := c.width(l, dt)
 			paintTable(l, width, 300)
-			dt.Core().SetCursor(tuiwidget.TablePos{Row: 0, Col: n - 1})
+			dt.Core().SetCursor(table.TablePos{Row: 0, Col: n - 1})
 			dt.HandleEvent(keyRune('l'))
 			if dt.Core().Cursor().Col != n {
 				t.Fatal("l did not reach the edge field")
@@ -279,7 +280,7 @@ func TestAResizeKeepsTheOpenFieldShown(t *testing.T) {
 	dt, l, _ := csvPixelTable(t, "h,v\na,1\nb,2\nc,3\nd,4\ne,5\n")
 	tall := l.rowH * 5 // the header and four rows
 	paintTable(l, 600, tall)
-	dt.Core().SetCursor(tuiwidget.TablePos{Row: 1})
+	dt.Core().SetCursor(table.TablePos{Row: 1})
 	paintTable(l, 600, tall)
 	dt.HandleEvent(keyRune('o')) // o's row is drawn row 2, shown
 	if rec := paintTable(l, 600, tall); !fieldShown(rec, l) {

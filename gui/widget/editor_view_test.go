@@ -7,7 +7,8 @@ import (
 
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // rowsOf is how many rows line ln is laid out on.
@@ -21,9 +22,9 @@ func rowsOf(h *edHarness, ln int) int {
 // sideways, and a click on a cluster past the view's first width lands on that cluster.
 func TestNoWrapScrollsSideways(t *testing.T) {
 	long := strings.Repeat("abcdefghij", 20)
-	h := startEditor(t, 40, 10, WithCore(tuiwidget.CoreInitialText("short\n"+long+"\nend")))
+	h := startEditor(t, 40, 10, WithCore(editor.CoreInitialText("short\n"+long+"\nend")))
 	h.paint()
-	if got := h.e.Wrap(); got != tuiwidget.WrapNone {
+	if got := h.e.Wrap(); got != core.WrapNone {
 		t.Fatalf("the default wrap is %v, want WrapNone as tui's Editor's", got)
 	}
 	if n := rowsOf(h, 1); n != 1 {
@@ -45,7 +46,7 @@ func TestNoWrapScrollsSideways(t *testing.T) {
 	if ln, col := h.line(); ln != 1 || col != want {
 		t.Errorf("a click on cluster %d past the first width landed on %d:%d", want, ln, col)
 	}
-	h.onLoop(func() { h.e.SetWrap(tuiwidget.WrapSoft) })
+	h.onLoop(func() { h.e.SetWrap(core.WrapSoft) })
 	h.paint()
 	if n := rowsOf(h, 1); n < 2 {
 		t.Errorf("WrapSoft left the long line on %d row", n)
@@ -60,7 +61,7 @@ func TestNoWrapScrollsSideways(t *testing.T) {
 // columns): the text starts after it, a click lands on the cluster under it, and the numbers
 // are drawn in the gutter, in the colour SetLineNumberColor gives them.
 func TestLineNumbersTakeAGutter(t *testing.T) {
-	h := startEditor(t, 40, 10, WithLineNumbers(true), WithCore(tuiwidget.CoreInitialText("alpha\nbeta\ngamma")))
+	h := startEditor(t, 40, 10, WithLineNumbers(true), WithCore(editor.CoreInitialText("alpha\nbeta\ngamma")))
 	rc := h.paint()
 	var gutter, textX, cell float32
 	h.onLoop(func() { gutter, textX, cell = h.e.layout.gutter, h.e.layout.textX(), h.e.layout.monoCell() })
@@ -107,7 +108,7 @@ func TestLineNumbersTakeAGutter(t *testing.T) {
 // The ruler is a one-pixel guide at its column of the Raw view, counted in monospace cells; the
 // Rendered view, whose text is not in source columns, draws none.
 func TestRulerAtItsColumn(t *testing.T) {
-	h := startEditor(t, 60, 8, WithRuler(5), WithRenderer(NewMarkdownRenderer()), WithCore(tuiwidget.CoreInitialText("# title\nbody")))
+	h := startEditor(t, 60, 8, WithRuler(5), WithRenderer(NewMarkdownRenderer()), WithCore(editor.CoreInitialText("# title\nbody")))
 	rc := h.paint()
 	var want, cell float32
 	h.onLoop(func() { cell = h.e.layout.monoCell(); want = h.e.layout.textX() + 4*cell })
@@ -122,11 +123,11 @@ func TestRulerAtItsColumn(t *testing.T) {
 	if !guide(rc) {
 		t.Errorf("no guide at x %v (column 5)", want)
 	}
-	h.onLoop(func() { h.e.SetView(tuiwidget.ViewRendered) })
+	h.onLoop(func() { h.e.SetView(editor.ViewRendered) })
 	if guide(h.paint()) {
 		t.Error("the Rendered view drew the ruler")
 	}
-	h.onLoop(func() { h.e.SetView(tuiwidget.ViewRaw); h.e.SetRuler(0) })
+	h.onLoop(func() { h.e.SetView(editor.ViewRaw); h.e.SetRuler(0) })
 	if guide(h.paint()) {
 		t.Error("SetRuler(0) left the guide")
 	}
@@ -135,7 +136,7 @@ func TestRulerAtItsColumn(t *testing.T) {
 // The native switch draws each label inside the cells HandleEvent hit-tests for it, the current
 // one in the bar's text colour and the other muted; Rendered unavailable is fainter still.
 func TestModeSwitchSegmentsSitOnTheirHitCells(t *testing.T) {
-	h := startEditor(t, 60, 8, WithRenderer(NewMarkdownRenderer()), WithCore(tuiwidget.CoreInitialText("# hi")))
+	h := startEditor(t, 60, 8, WithRenderer(NewMarkdownRenderer()), WithCore(editor.CoreInitialText("# hi")))
 	w := len(switchRaw) + len(switchSep) + len(switchRendered)
 	labels := func() []gui.PaintCall { // Raw's, then Rendered's
 		var out []gui.PaintCall
@@ -168,7 +169,7 @@ func TestModeSwitchSegmentsSitOnTheirHitCells(t *testing.T) {
 	if raw.Brush.Color == ren.Brush.Color {
 		t.Error("the current and the other segment drawn alike")
 	}
-	h.onLoop(func() { h.e.SetView(tuiwidget.ViewRendered) })
+	h.onLoop(func() { h.e.SetView(editor.ViewRendered) })
 	l2 := labels()
 	if l2[1].Brush.Color != raw.Brush.Color {
 		t.Errorf("Rendered current drawn %v, want the current colour %v", l2[1].Brush.Color, raw.Brush.Color)
@@ -177,7 +178,7 @@ func TestModeSwitchSegmentsSitOnTheirHitCells(t *testing.T) {
 
 // The text is the window's text size (Canvas.TextSize), not a fraction of the cell's height.
 func TestTextAtTheWindowsTextSize(t *testing.T) {
-	h := startEditor(t, 60, 8, WithCore(tuiwidget.CoreInitialText("body")))
+	h := startEditor(t, 60, 8, WithCore(editor.CoreInitialText("body")))
 	var mono, prose float32
 	h.onLoop(func() {
 		rc := gui.NewRecordingCanvas(gui.Size{W: float32(h.e.body.w) * cellW, H: float32(h.e.body.h) * cellH}, h.cell)
@@ -194,7 +195,7 @@ func TestTextAtTheWindowsTextSize(t *testing.T) {
 // The page's colours are the page style's, not the cell under the body's corner: a floating panel
 // over the editor (an explorer's highlighted row) must not lend the whole page its colours.
 func TestPageColoursAreThePageStylesNotACoveredCell(t *testing.T) {
-	h := startEditor(t, 60, 8, WithCore(tuiwidget.CoreInitialText("body")))
+	h := startEditor(t, 60, 8, WithCore(editor.CoreInitialText("body")))
 	page := color.NRGBA{R: 0xe6, G: 0xd9, B: 0xb9, A: 0xff}
 	ink := color.NRGBA{R: 0x5b, G: 0x46, B: 0x36, A: 0xff}
 	brown := color.NRGBA{R: 0x8a, G: 0x5a, B: 0x2b, A: 0xff}
@@ -217,8 +218,8 @@ func TestPageColoursAreThePageStylesNotACoveredCell(t *testing.T) {
 // The cursor's line number wears the text's colour, the others the muted tone; a table's rule
 // row, too thin to hold one, takes none.
 func TestTheCursorsLineNumberStandsOut(t *testing.T) {
-	h := startEditor(t, 40, 10, WithLineNumbers(true), WithRenderer(NewMarkdownRenderer()), WithView(tuiwidget.ViewRendered),
-		WithCore(tuiwidget.CoreInitialText("alpha\n| a | b |\n|---|---|\n| c | d |\n\nend")))
+	h := startEditor(t, 40, 10, WithLineNumbers(true), WithRenderer(NewMarkdownRenderer()), WithView(editor.ViewRendered),
+		WithCore(editor.CoreInitialText("alpha\n| a | b |\n|---|---|\n| c | d |\n\nend")))
 	h.onLoop(func() { h.e.Core().SetLine(5, 0) }) // past the blank line: outside the table
 	rc := h.paint()
 	var textX, cell float32

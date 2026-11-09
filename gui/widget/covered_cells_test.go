@@ -6,7 +6,8 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/gui"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // A covered-cell test's colours: the view's own sepia, and a dark terminal panel raised over its
@@ -37,7 +38,7 @@ func everyCell(int, int) bool     { return true }
 // A panel's bar takes its colours from a bar cell nothing covers, and keeps those of its last paint
 // while the whole bar is covered.
 func TestThePanelBarIsNotThePanelOverItsColour(t *testing.T) {
-	p := NewPanel(tuiwidget.NewText("x"), WithTitle("Notes"))
+	p := NewPanel(core.NewText("x"), WithTitle("Notes"))
 	v, _ := p.NativeView()
 	v.(gui.View).Paint(underPanel(gui.NewRecordingCanvas(gui.Size{W: 240, H: 80}, gui.Size{W: 8, H: 16}), firstCell))
 	text, fill, _ := p.BarColors()
@@ -71,7 +72,7 @@ func TestTheHTMLPageIsNotThePanelOverItsColour(t *testing.T) {
 // With no page style, the editor's page takes its colours from a body cell nothing covers, and
 // keeps them while the body is wholly covered.
 func TestTheEditorPageIsNotThePanelOverItsColour(t *testing.T) {
-	h := startEditor(t, 60, 8, WithCore(tuiwidget.CoreInitialText("body")))
+	h := startEditor(t, 60, 8, WithCore(editor.CoreInitialText("body")))
 	paint := func(covered func(col, row int) bool) (fg, bg color.NRGBA) {
 		h.onLoop(func() {
 			rc := gui.NewRecordingCanvas(gui.Size{W: float32(h.e.body.w) * cellW, H: float32(h.e.body.h) * cellH}, h.cell)

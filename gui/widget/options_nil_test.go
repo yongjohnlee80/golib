@@ -3,7 +3,7 @@ package widget
 import (
 	"testing"
 
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // A nil option is no option, as tui's constructors take it: NewEditor, NewPanel and
@@ -11,7 +11,7 @@ import (
 func TestTheConstructorsSkipANilOption(t *testing.T) {
 	for name, build := range map[string]func(){
 		"NewEditor":           func() { NewEditor(nil, WithLineNumbers(true)) },
-		"NewPanel":            func() { NewPanel(tuiwidget.NewText("x"), nil, WithTitle("t")) },
+		"NewPanel":            func() { NewPanel(core.NewText("x"), nil, WithTitle("t")) },
 		"NewMarkdownRenderer": func() { NewMarkdownRenderer(nil, WithHeadingScale(2)) },
 	} {
 		func() {
