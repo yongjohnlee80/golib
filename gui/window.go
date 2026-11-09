@@ -126,12 +126,7 @@ func (b *Backend) run() {
 			return
 
 		case app.ConfigEvent:
-			if was := b.focused.Swap(e.Config.Focused); was != e.Config.Focused && b.isStarted() {
-				if !e.Config.Focused {
-					b.releaseHeld() // the window lost focus: no key stays down
-				}
-				b.q.push(tui.FocusEvent{Terminal: true, Gained: e.Config.Focused})
-			}
+			b.configure(e)
 
 		case app.FrameEvent:
 			b.gio.source = e.Source
@@ -151,6 +146,18 @@ func (b *Backend) run() {
 			b.readInput(e.Source, tag, b.inputMetrics(m))
 			b.present(e, tag, m, fs)
 		}
+	}
+}
+
+// configure takes the window's configuration: whether it is maximized (WindowControls), and a
+// change of keyboard focus, which the App hears as a FocusEvent.
+func (b *Backend) configure(e app.ConfigEvent) {
+	b.maxed.Store(e.Config.Mode == app.Maximized)
+	if was := b.focused.Swap(e.Config.Focused); was != e.Config.Focused && b.isStarted() {
+		if !e.Config.Focused {
+			b.releaseHeld() // the window lost focus: no key stays down
+		}
+		b.q.push(tui.FocusEvent{Terminal: true, Gained: e.Config.Focused})
 	}
 }
 
