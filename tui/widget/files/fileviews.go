@@ -1,10 +1,13 @@
-package widget
+package files
 
 import (
 	"context"
 	"io/fs"
 	"path"
 	"strings"
+
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 
 	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/tui"
@@ -145,7 +148,7 @@ func WithOnHint(fn func(string)) FileViewOption {
 // typed in; Enter goes back to the list with the filter kept, Esc clears it.
 // The Save and Folder views' listings have no filter.
 type FileOpenView struct {
-	Base
+	core.Base
 	cfg     fileViewConfig
 	list    *FileList
 	preview *FilePreview // nil when turned off
@@ -157,8 +160,8 @@ type FileOpenView struct {
 	last   tui.Component
 	// filterField narrows the listing as it is typed in; hidden until `/`.
 	// nil when the view has no filter.
-	filterField *TextInput
-	filterPane  *Box
+	filterField *core.TextInput
+	filterPane  *core.Box
 	// path is the location bar, just above the list; enterPath is what Enter on a path typed in
 	// it does once it is known what the path names (later: found off the loop). The Save and
 	// Folder views give their own; the Open view's lists a folder and chooses a file.
@@ -233,11 +236,11 @@ func (v *FileOpenView) buildList(cfg fileViewConfig, dirOpts []FileListOption) {
 func (v *FileOpenView) buildFilter(cfg fileViewConfig) []tui.Component {
 	above := append(append([]tui.Component(nil), cfg.fields...), v.path.pane)
 	if cfg.filter {
-		inputOpts := []TextInputOption{WithOnEdit(func(text string) { v.list.SetFilter(text) })}
+		inputOpts := []core.TextInputOption{core.WithOnEdit(func(text string) { v.list.SetFilter(text) })}
 		if cfg.styled {
-			inputOpts = append(inputOpts, WithTextInputStyles(TextInputStyles{Text: cfg.st.Surface}))
+			inputOpts = append(inputOpts, core.WithTextInputStyles(core.TextInputStyles{Text: cfg.st.Surface}))
 		}
-		v.filterField = NewTextInput(inputOpts...)
+		v.filterField = core.NewTextInput(inputOpts...)
 		v.filterPane = newFilePane(v.filterField, "", cfg.st, cfg.styled)
 		v.filterPane.SetTitleMessage(tui.Msg("tui.files.filter"))
 		v.filterPane.SetVisible(false)
@@ -264,11 +267,11 @@ func (v *FileOpenView) buildLayout(cfg fileViewConfig, above []tui.Component) {
 	if v.preview != nil {
 		// A BLANK DIVIDER: the two panes are framed, and a drawn line between
 		// two frames reads as a third.
-		splitOpts := []SplitOption{WithRatio(0.45), WithSplitDividerGlyphs(" ", " ")}
+		splitOpts := []core.SplitOption{core.WithRatio(0.45), core.WithSplitDividerGlyphs(" ", " ")}
 		if cfg.styled {
-			splitOpts = append(splitOpts, WithDividerStyle(cfg.st.Gap))
+			splitOpts = append(splitOpts, core.WithDividerStyle(cfg.st.Gap))
 		}
-		v.root = NewSplit(Horizontal, left, v.preview, splitOpts...)
+		v.root = core.NewSplit(core.Horizontal, left, v.preview, splitOpts...)
 	}
 }
 
@@ -540,14 +543,14 @@ func (v *FileOpenView) FocusInitial()        { v.list.Focus() }
 
 // SetPreviewHighlighting highlights the preview: see
 // [FilePreview.SetHighlighting]. A view with no preview ignores it.
-func (v *FileOpenView) SetPreviewHighlighting(forFile func(name string) highlight.Highlighter, styles SyntaxStyles) {
+func (v *FileOpenView) SetPreviewHighlighting(forFile func(name string) highlight.Highlighter, styles editor.SyntaxStyles) {
 	if v.preview != nil {
 		v.preview.SetHighlighting(forFile, styles)
 	}
 }
 
 // SetPreviewSourceHighlighting installs the immutable source catalog on the preview.
-func (v *FileOpenView) SetPreviewSourceHighlighting(catalog *highlight.Catalog, styles SyntaxStyles) {
+func (v *FileOpenView) SetPreviewSourceHighlighting(catalog *highlight.Catalog, styles editor.SyntaxStyles) {
 	if v.preview != nil {
 		v.preview.SetSourceHighlighting(catalog, styles)
 	}
@@ -586,10 +589,10 @@ func (v *FileOpenView) HintMessage() tui.Message {
 // FileSaveView names a file to write: a FileOpenView with a name field at the
 // top of its left column.
 type FileSaveView struct {
-	Base
+	core.Base
 	cfg      fileViewConfig
-	name     *TextInput
-	namePane *Box
+	name     *core.TextInput
+	namePane *core.Box
 	listing  *FileOpenView
 	root     tui.Component
 	stat     typedStat
@@ -600,11 +603,11 @@ func NewFileSaveView(opts ...FileViewOption) *FileSaveView {
 	cfg := fileViewConfigOf(opts)
 	v := &FileSaveView{cfg: cfg}
 
-	inputOpts := []TextInputOption{WithOnSubmit(func(string) { v.confirm() }), WithOnEdit(func(string) { v.stat.drop() })}
+	inputOpts := []core.TextInputOption{core.WithOnSubmit(func(string) { v.confirm() }), core.WithOnEdit(func(string) { v.stat.drop() })}
 	if cfg.styled {
-		inputOpts = append(inputOpts, WithTextInputStyles(TextInputStyles{Text: cfg.st.Surface}))
+		inputOpts = append(inputOpts, core.WithTextInputStyles(core.TextInputStyles{Text: cfg.st.Surface}))
 	}
-	v.name = NewTextInput(inputOpts...)
+	v.name = core.NewTextInput(inputOpts...)
 	v.namePane = newFilePane(v.name, "", cfg.st, cfg.styled)
 	v.namePane.SetTitleMessage(tui.Msg("tui.files.fileName"))
 
@@ -821,12 +824,12 @@ func (v *FileSaveView) SetName(s string) {
 
 // SetPreviewHighlighting highlights the preview, when it has one: see
 // [FileOpenView].
-func (v *FileSaveView) SetPreviewHighlighting(forFile func(name string) highlight.Highlighter, styles SyntaxStyles) {
+func (v *FileSaveView) SetPreviewHighlighting(forFile func(name string) highlight.Highlighter, styles editor.SyntaxStyles) {
 	v.listing.SetPreviewHighlighting(forFile, styles)
 }
 
 // SetPreviewSourceHighlighting selects complete source behavior for the listing preview.
-func (v *FileSaveView) SetPreviewSourceHighlighting(catalog *highlight.Catalog, styles SyntaxStyles) {
+func (v *FileSaveView) SetPreviewSourceHighlighting(catalog *highlight.Catalog, styles editor.SyntaxStyles) {
 	v.listing.SetPreviewSourceHighlighting(catalog, styles)
 }
 
@@ -902,7 +905,7 @@ func (s *typedStat) answer(r tui.TaskResult, owner tui.NodeID) bool {
 // folder chosen is the field's. Files are listed too, and previewed, so a
 // folder is seen for what is in it.
 type FileFolderView struct {
-	Base
+	core.Base
 	cfg     fileViewConfig
 	listing *FileOpenView
 }
@@ -1072,12 +1075,12 @@ func (v *FileFolderView) FocusInitial() {
 func (v *FileFolderView) Path() string { return v.listing.Path() }
 
 // SetPreviewHighlighting highlights the preview: see [FileOpenView].
-func (v *FileFolderView) SetPreviewHighlighting(forFile func(name string) highlight.Highlighter, styles SyntaxStyles) {
+func (v *FileFolderView) SetPreviewHighlighting(forFile func(name string) highlight.Highlighter, styles editor.SyntaxStyles) {
 	v.listing.SetPreviewHighlighting(forFile, styles)
 }
 
 // SetPreviewSourceHighlighting selects complete source behavior for the folder preview.
-func (v *FileFolderView) SetPreviewSourceHighlighting(catalog *highlight.Catalog, styles SyntaxStyles) {
+func (v *FileFolderView) SetPreviewSourceHighlighting(catalog *highlight.Catalog, styles editor.SyntaxStyles) {
 	v.listing.SetPreviewSourceHighlighting(catalog, styles)
 }
 
@@ -1102,7 +1105,7 @@ var _ FileChooser = (*FileFolderView)(nil)
 // FileFolderView are each one, so a host restyles any of them through one assertion.
 type FileChooserStyler interface {
 	SetPaneStyles(st FilePaneStyles)
-	SetPreviewSourceHighlighting(catalog *highlight.Catalog, styles SyntaxStyles)
+	SetPreviewSourceHighlighting(catalog *highlight.Catalog, styles editor.SyntaxStyles)
 }
 
 // SetPaneStyles is WithStyles, for a caller that holds the view as a FileChooserStyler.
@@ -1127,7 +1130,7 @@ func (v *FileOpenView) WithStyles(st FilePaneStyles) *FileOpenView {
 	styled := st != (FilePaneStyles{})
 	v.cfg.st, v.cfg.styled = st, styled
 	v.list.withStyles(st, styled)
-	text := TextInputStyles{}
+	text := core.TextInputStyles{}
 	if styled {
 		text.Text = st.Surface
 	}
@@ -1136,7 +1139,7 @@ func (v *FileOpenView) WithStyles(st FilePaneStyles) *FileOpenView {
 	if v.preview != nil {
 		v.preview.withStyles(st, styled)
 	}
-	if sp, ok := v.root.(*Split); ok {
+	if sp, ok := v.root.(*core.Split); ok {
 		gap := style.Style{}
 		if styled {
 			gap = st.Gap
@@ -1151,7 +1154,7 @@ func (v *FileOpenView) WithStyles(st FilePaneStyles) *FileOpenView {
 func (v *FileSaveView) WithStyles(st FilePaneStyles) *FileSaveView {
 	styled := st != (FilePaneStyles{})
 	v.cfg.st, v.cfg.styled = st, styled
-	text := TextInputStyles{}
+	text := core.TextInputStyles{}
 	if styled {
 		text.Text = st.Surface
 	}

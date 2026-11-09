@@ -1,10 +1,11 @@
-package widget
+package files
 
 import (
 	"cmp"
-	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 	"strings"
 	"testing"
+
+	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"

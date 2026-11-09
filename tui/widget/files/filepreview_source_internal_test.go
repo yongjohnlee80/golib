@@ -1,8 +1,10 @@
-package widget
+package files
 
 import (
 	"testing"
 	"testing/fstest"
+
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 
 	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
@@ -17,7 +19,7 @@ func TestFactoryPreviewOwnsStatesAndPaletteDoesNotRenewSource(t *testing.T) {
 	}}
 	catalog := highlight.NewRepository(d).Snapshot()
 	preview := NewFilePreview(FilePaneStyles{}, false)
-	preview.SetSourceHighlighting(catalog, SyntaxStyles{})
+	preview.SetSourceHighlighting(catalog, editor.SyntaxStyles{})
 	files := FileSource{FS: fstest.MapFS{"one.custom": &fstest.MapFile{Data: []byte("one\ntwo")}, "two.custom": &fstest.MapFile{Data: []byte("next")}}}
 	preview.Show(files, "one.custom", false)
 	f := preview.view.Core().BeginHighlight(0)
@@ -25,7 +27,7 @@ func TestFactoryPreviewOwnsStatesAndPaletteDoesNotRenewSource(t *testing.T) {
 	f.Close()
 	old := traces[len(traces)-1]
 	count := len(traces)
-	preview.SetSourceHighlighting(catalog, SyntaxStyles{})
+	preview.SetSourceHighlighting(catalog, editor.SyntaxStyles{})
 	if len(traces) != count {
 		t.Fatal("palette rebuilt semantic source")
 	}

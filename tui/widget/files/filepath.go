@@ -1,10 +1,12 @@
-package widget
+package files
 
 import (
 	"context"
 	"io/fs"
 	"path"
 	"strings"
+
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 
 	"github.com/yongjohnlee80/golib/tui"
 )
@@ -37,8 +39,8 @@ var (
 
 // pathField is the field, its pane and its check: the part the three views share.
 type pathField struct {
-	input  *TextInput
-	pane   *Box
+	input  *core.TextInput
+	pane   *core.Box
 	titles pathTitles
 	stat   typedStat
 	// shown is the folder listed, rooted, as the field last followed it: what Esc puts back.
@@ -47,14 +49,14 @@ type pathField struct {
 
 func newPathField(cfg fileViewConfig, titles pathTitles, submit func(string)) *pathField {
 	f := &pathField{titles: titles}
-	inputOpts := []TextInputOption{WithOnSubmit(submit), WithOnEdit(func(string) {
+	inputOpts := []core.TextInputOption{core.WithOnSubmit(submit), core.WithOnEdit(func(string) {
 		f.stat.drop()
 		f.pane.SetTitleMessage(f.titles.field)
 	})}
 	if cfg.styled {
-		inputOpts = append(inputOpts, WithTextInputStyles(TextInputStyles{Text: cfg.st.Surface}))
+		inputOpts = append(inputOpts, core.WithTextInputStyles(core.TextInputStyles{Text: cfg.st.Surface}))
 	}
-	f.input = NewTextInput(inputOpts...)
+	f.input = core.NewTextInput(inputOpts...)
 	f.pane = newFilePane(f.input, "", cfg.st, cfg.styled)
 	f.pane.SetTitleMessage(titles.field)
 	return f

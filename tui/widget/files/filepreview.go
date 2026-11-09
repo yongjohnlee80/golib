@@ -1,10 +1,13 @@
-package widget
+package files
 
 import (
 	"bytes"
 	"context"
 	"io"
 	"unicode/utf8"
+
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 
 	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/tui"
@@ -31,9 +34,9 @@ const maxPreview = 1 << 20
 // FilePreview shows one file's text — highlighted, when it is given a way to
 // pick a highlighter by file name ([FilePreview.SetHighlighting]).
 type FilePreview struct {
-	Base
-	view *Editor
-	box  *Box
+	core.Base
+	view *editor.Editor
+	box  *core.Box
 
 	// forFile picks the highlighter for a file by its name, nil for none;
 	// shown is the file on show, "" for a message rather than a file's text.
@@ -64,14 +67,14 @@ type previewWant struct {
 
 // NewFilePreview builds an empty preview, dressed like the panes beside it.
 func NewFilePreview(st FilePaneStyles, styled bool) *FilePreview {
-	opts := []EditorOption{WithEditorWrap(WrapSoft)}
+	opts := []editor.EditorOption{editor.WithEditorWrap(core.WrapSoft)}
 	if styled {
-		opts = append(opts, WithEditorStyles(TextInputStyles{Text: st.Surface}))
+		opts = append(opts, editor.WithEditorStyles(core.TextInputStyles{Text: st.Surface}))
 	}
 	// A READ-ONLY EDITOR rather than a Text: a pane the keyboard can enter
 	// and read the whole file in. It does not consume Escape when idle, so
 	// Escape still reaches a dialog around it.
-	p := &FilePreview{view: NewEditor(opts...)}
+	p := &FilePreview{view: editor.NewEditor(opts...)}
 	p.view.Core().SetReadOnly(true)
 	p.box = newFilePane(p.view, "", st, styled)
 	p.box.SetTitleMessage(tui.Msg("tui.files.preview"))
@@ -185,7 +188,7 @@ func (p *FilePreview) put(path, text string, note tui.Message, arg string) {
 // highlighter for a file by its name — KSyntaxHighlighting's
 // definitionForFileName — and styles colour it. A nil forFile is none. A
 // message — a folder, a binary file — is never highlighted.
-func (p *FilePreview) SetHighlighting(forFile func(name string) highlight.Highlighter, styles SyntaxStyles) {
+func (p *FilePreview) SetHighlighting(forFile func(name string) highlight.Highlighter, styles editor.SyntaxStyles) {
 	p.forFile = forFile
 	p.catalog = nil
 	p.view.Core().SetSyntaxStyles(styles)
@@ -211,7 +214,7 @@ func (p *FilePreview) highlight() {
 
 // SetSourceHighlighting selects complete document-owned providers for previews.
 // Palette-only changes preserve the selected source and its leased states.
-func (p *FilePreview) SetSourceHighlighting(catalog *highlight.Catalog, styles SyntaxStyles) {
+func (p *FilePreview) SetSourceHighlighting(catalog *highlight.Catalog, styles editor.SyntaxStyles) {
 	p.view.Core().SetSyntaxStyles(styles)
 	if p.catalog == catalog {
 		return
@@ -279,7 +282,7 @@ func trimPartialRune(b []byte) []byte {
 
 // withStyles restyles the preview's text and its frame.
 func (p *FilePreview) withStyles(st FilePaneStyles, styled bool) {
-	text := TextInputStyles{}
+	text := core.TextInputStyles{}
 	if styled {
 		text.Text = st.Surface
 	}

@@ -1,10 +1,12 @@
-package widget
+package files
 
 import (
 	"context"
 	"os"
 	"path"
 	"path/filepath"
+
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
@@ -86,7 +88,7 @@ func (e fileEntry) label() string {
 
 // FileList lists a folder.
 type FileList struct {
-	Base
+	core.Base
 
 	src FileSource
 	// start is WithFileListDir's rooted path, read once at construction.
@@ -110,8 +112,8 @@ type FileList struct {
 	// left (C1).
 	rows kit.RowsEpoch
 
-	list *List[fileEntry]
-	box  *Box
+	list *core.List[fileEntry]
+	box  *core.Box
 	// title is the folder as it stands, before it is fitted to the pane; unreadable says it
 	// could not be read, which the pane's title then says too.
 	title      string
@@ -145,16 +147,16 @@ func NewFileList(opts ...FileListOption) *FileList {
 	}
 	l.src = l.src.or()
 	l.dir = l.startDir()
-	listOpts := []ListOption[fileEntry]{
-		WithItems([]fileEntry(nil), fileEntry.label),
-		WithEmptyTextMessage[fileEntry](tui.Msg("tui.files.empty")),
-		WithListOnCursor[fileEntry](func(i int) { l.cursorOn(i) }),
-		WithListOnActivate[fileEntry](l.activate),
+	listOpts := []core.ListOption[fileEntry]{
+		core.WithItems([]fileEntry(nil), fileEntry.label),
+		core.WithEmptyTextMessage[fileEntry](tui.Msg("tui.files.empty")),
+		core.WithListOnCursor[fileEntry](func(i int) { l.cursorOn(i) }),
+		core.WithListOnActivate[fileEntry](l.activate),
 	}
 	if l.styled {
-		listOpts = append(listOpts, WithListStyles[fileEntry](fileListStyles(l.st)))
+		listOpts = append(listOpts, core.WithListStyles[fileEntry](fileListStyles(l.st)))
 	}
-	l.list = NewList(listOpts...)
+	l.list = core.NewList(listOpts...)
 	l.box = newFilePane(l.list, l.src.Rooted(l.dir), l.st, l.styled)
 	// An async source is listed once the list is mounted, off the loop, so
 	// building a dialog never waits on it.
@@ -167,9 +169,9 @@ func NewFileList(opts ...FileListOption) *FileList {
 // fileListStyles are a file list's rows in the view's looks: the cursor on
 // Cursor while the list has the keyboard, on CursorBlurred once it has not.
 // Not reversed: the looks were chosen as pairs.
-func fileListStyles(st FilePaneStyles) ListStyles {
+func fileListStyles(st FilePaneStyles) core.ListStyles {
 	cursor := st.Cursor.Reverse(false)
-	ls := ListStyles{Row: st.Surface, CursorRow: cursor, SelectedRow: st.Surface, CursorSelected: cursor}
+	ls := core.ListStyles{Row: st.Surface, CursorRow: cursor, SelectedRow: st.Surface, CursorSelected: cursor}
 	if st.CursorBlurred != (style.Style{}) {
 		ls.CursorBlurred = st.CursorBlurred.Reverse(false)
 	}
@@ -503,7 +505,7 @@ func (l *FileList) fitTitle() {
 		measure = ctx.StringWidth
 	}
 	if l.width > 0 && room > 1 {
-		title = ElideText(title, room, ElidePath, measure)
+		title = core.ElideText(title, room, core.ElidePath, measure)
 	}
 	l.box.SetTitle(title)
 }
@@ -515,7 +517,7 @@ func (l *FileList) withStyles(st FilePaneStyles, styled bool) {
 	if styled {
 		l.list.ResetStyles(fileListStyles(st))
 	} else {
-		l.list.ResetStyles(ListStyles{})
+		l.list.ResetStyles(core.ListStyles{})
 	}
 	stylePane(l.box, st, styled)
 }
