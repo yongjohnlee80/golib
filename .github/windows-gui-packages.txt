@@ -1,5 +1,6 @@
 # gui packages (relative to gui/) whose tests pass on Windows: the gui-windows job runs these.
-# The list may only grow. Not yet: . (TestARowsBatchDrawsWhatEachCellDrew).
+# The list may only grow.
+.
 ./decl/
 ./examples/scene3d/
 ./flow/
