@@ -19,7 +19,7 @@ func TestEveryStripsMenuOpensRightUnderTheStrip(t *testing.T) {
 	}
 	type strip struct {
 		root  tui.Component
-		core  *StripCore
+		core  *stripCore
 		blank bool // it is wider than its cells, so a right press on its blank opens the menu
 	}
 	kinds := map[string]func() strip{
@@ -52,7 +52,7 @@ func TestEveryStripsMenuOpensRightUnderTheStrip(t *testing.T) {
 
 // stripCellsOf is where each kind of stretch first starts on s's row, and the first tab's start
 // (-1 for none), as MenuOpensUnderTheStrip presses them.
-func stripCellsOf(s *StripCore) (map[kit.StripKind]int, int) {
+func stripCellsOf(s *stripCore) (map[kit.StripKind]int, int) {
 	cells, tab := map[kit.StripKind]int{}, -1
 	for _, c := range s.Row() {
 		if _, ok := cells[c.Kind]; !ok {

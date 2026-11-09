@@ -167,8 +167,8 @@ func (t *Tabs) TabSpans() []TabSpan { return t.strip.Spans() }
 func (t *Tabs) ActiveTabIndex() int { return t.strip.ActiveIndex() }
 
 // TabSpanner is a tab strip as a native painter reads it: the stretches its row draws (TabSpans)
-// and the active tab's place among them (-1 when it is not shown). Tabs, TabStrip and TerminalTabs
-// all draw through one strip, so each answers the same way.
+// and the active tab's place among them (-1 when it is not shown). Tabs and TabStrip draw through
+// one strip, so each answers the same way; TerminalTabs's strip is a TabStrip.
 type TabSpanner interface {
 	TabSpans() []TabSpan
 	ActiveTabIndex() int

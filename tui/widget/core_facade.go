@@ -627,8 +627,8 @@ type Anchor = core.Anchor
 type TabSpan = core.TabSpan
 
 // TabSpanner is a tab strip as a native painter reads it: the stretches its row draws (TabSpans)
-// and the active tab's place among them (-1 when it is not shown). Tabs, TabStrip and TerminalTabs
-// all draw through one strip, so each answers the same way.
+// and the active tab's place among them (-1 when it is not shown). Tabs and TabStrip draw through
+// one strip, so each answers the same way; TerminalTabs's strip is a TabStrip.
 //
 // Deprecated: use [core.TabSpanner], from github.com/yongjohnlee80/golib/tui/widget/core.
 type TabSpanner = core.TabSpanner
@@ -1589,10 +1589,10 @@ type StatusBarOption = core.StatusBarOption
 type StripTab = core.StripTab
 
 // TabStrip is a row of tabs over nothing of its own: the host keeps what the tabs stand for (an
-// editor's buffers, say), sets them and the active one, and hears which the user chooses. It draws
-// and takes presses as TerminalTabs's strip does: a left press on a tab chooses it, a right one
-// opens its menu, and + and ≡ open theirs (SetActions, SetMenu, SetAddMenu). A GUI backend paints
-// it natively (TabSpans, ActiveTabIndex).
+// editor's buffers, say), sets them and the active one, and hears which the user chooses. A left
+// press on a tab chooses it, a right one opens its menu, and + and ≡ open theirs (SetActions,
+// SetMenu, SetAddMenu). A GUI backend paints it natively (TabSpans, ActiveTabIndex,
+// TabWindowControls).
 //
 // It takes no focus: it sits in a title bar, or on its host's first row, and the host's own keys
 // switch what it shows. A host that has focus may pass it the strip's keys (TabStripCommands)
@@ -1600,32 +1600,6 @@ type StripTab = core.StripTab
 //
 // Deprecated: use [core.TabStrip], from github.com/yongjohnlee80/golib/tui/widget/core.
 type TabStrip = core.TabStrip
-
-// StripOwner is a strip's owner (TabStrip, TerminalTabs, Tabs): it keeps the tabs, says which is
-// active, and is told which one the user chose. golib's components draw through it; a widget outside golib rarely needs it.
-//
-// Deprecated: use [core.StripOwner], from github.com/yongjohnlee80/golib/tui/widget/core.
-type StripOwner = core.StripOwner
-
-// StripCore is the strip Tabs, TabStrip and TerminalTabs share: its state, and its drawing and
-// input. golib's components draw through it; a widget outside golib rarely needs it. It is exported while TerminalTabs, a widget of the terminal's,
-// draws through it; once that draws through the public TabStrip it is unexported again, so a
-// widget outside golib should not build on it.
-//
-// Deprecated: use [core.StripCore], from github.com/yongjohnlee80/golib/tui/widget/core.
-type StripCore = core.StripCore
-
-// StripCell is a stretch of the row as drawn: what it is, the tab's id, its text, where it starts
-// and its width, in cells. StripCore's Row answers them; golib's components draw through it; a widget outside golib rarely needs it.
-//
-// Deprecated: use [core.StripCell], from github.com/yongjohnlee80/golib/tui/widget/core.
-type StripCell = core.StripCell
-
-// StripAction is a strip menu row's action: what runs, with the tab the menu opened for; nil for a
-// row that runs nothing. golib's components draw through it; a widget outside golib rarely needs it.
-//
-// Deprecated: use [core.StripAction], from github.com/yongjohnlee80/golib/tui/widget/core.
-type StripAction = core.StripAction
 
 // TabStripMenuAction is a row of a TabStrip's menus: when the row is chosen, Run runs with the tab
 // the menu was opened for (SetMenu), or with "" (SetAddMenu's +).
@@ -2816,7 +2790,7 @@ var (
 	TabStripAdd = core.TabStripAdd
 	// Deprecated: use [core.TabStripMenu], from github.com/yongjohnlee80/golib/tui/widget/core.
 	TabStripMenu = core.TabStripMenu
-	// TabStripCommands are a strip's key commands, as StripCore reads them; golib's components
+	// TabStripCommands are a strip's key commands, as stripCore reads them; golib's components
 	// draw through it.
 	//
 	// Deprecated: use [core.TabStripCommands], from github.com/yongjohnlee80/golib/tui/widget/core.
