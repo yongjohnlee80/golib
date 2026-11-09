@@ -42,7 +42,7 @@ func hintIs(h *harness, v interface{ HintMessage() tui.Message }, want string) b
 func TestTheOpenViewsPathFieldGoesWhereTyped(t *testing.T) {
 	root := tree(t, map[string]string{"deep/down/n.md": "deep note", "sub/s.md": "sub note", "top.md": "top"})
 	var chosen atomic.Int32
-	v := files.NewFileOpenView(files.WithFileViewSource(files.FileSource{FS: os.DirFS("/"), Root: "/"}),
+	v := files.NewFileOpenView(files.WithFileViewSource(func() files.FileSource { s := files.LocalFiles(); s.Home = ""; return s }()),
 		files.WithFileViewDir(root), files.WithOnChoose(func() { chosen.Add(1) }))
 	h := startBrowser(t, v)
 	defer h.stop()
@@ -118,7 +118,7 @@ func TestAPathTheSourceRefusesCannotBeRead(t *testing.T) {
 // field puts back the folder listed and gives the keyboard back to the list.
 func TestTildeOpensThePathFieldAndEscRestoresIt(t *testing.T) {
 	root := tree(t, map[string]string{"notes/a.md": "a", "z.md": "z"})
-	v := files.NewFileFolderView(files.WithFileViewSource(files.FileSource{FS: os.DirFS("/"), Root: "/", Home: root}),
+	v := files.NewFileFolderView(files.WithFileViewSource(func() files.FileSource { s := files.LocalFiles(); s.Home = root; return s }()),
 		files.WithFileViewDir(root))
 	h := startBrowser(t, v)
 	defer h.stop()
@@ -176,7 +176,7 @@ func TestTheFolderViewsFieldSaysWhatATypedPathIs(t *testing.T) {
 func TestTheSaveViewsPathFieldNamesTheTarget(t *testing.T) {
 	root := tree(t, map[string]string{"docs/old.md": "old", "here.md": "here"})
 	var chosen atomic.Int32
-	v := files.NewFileSaveView(files.WithFileViewSource(files.FileSource{FS: os.DirFS("/"), Root: "/"}),
+	v := files.NewFileSaveView(files.WithFileViewSource(func() files.FileSource { s := files.LocalFiles(); s.Home = ""; return s }()),
 		files.WithFileViewDir(root), files.WithOnChoose(func() { chosen.Add(1) }))
 	h := startBrowser(t, v) // the name field has the keyboard
 	defer h.stop()
