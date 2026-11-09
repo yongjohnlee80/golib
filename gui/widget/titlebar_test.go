@@ -89,37 +89,6 @@ func TestATitleBarOnATerminalIsARowWithNoControls(t *testing.T) {
 	})
 }
 
-// With a window, the controls (close, maximize, minimize from the right, three cells each) act on
-// it on release; maximize restores a maximized window; a double-click on the bar maximizes.
-func TestATitleBarsControlsActOnItsWindow(t *testing.T) {
-	bar := NewTitleBar("Notes")
-	win := &fakeWindow{}
-	bar.window = win // as Init finds it on the GUI backend
-	app, _ := titleBarApp(t, bar, 30, tui.Capabilities{NativeViews: true})
-	click := func(x int) {
-		bar.HandleEvent(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: x, Count: 1})
-		bar.HandleEvent(tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: x})
-	}
-	onLoop(t, app, func() {
-		click(28) // close: columns 27-29
-		click(25) // maximize: 24-26
-		win.maxed = true
-		click(24) // maximize on a maximized window restores it
-		click(21) // minimize: 21-23
-		click(10) // the title: nothing
-		bar.HandleEvent(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 10, Count: 2})
-	})
-	want := []system.Action{system.ActionClose, system.ActionMaximize, system.ActionUnmaximize, system.ActionMinimize, system.ActionUnmaximize}
-	if len(win.asked) != len(want) {
-		t.Fatalf("the window was asked %v, want %v", win.asked, want)
-	}
-	for i := range want {
-		if win.asked[i] != want[i] {
-			t.Fatalf("the window was asked %v, want %v", win.asked, want)
-		}
-	}
-}
-
 // Natively, the bar paints three controls in their colours and marks the window's drag area over
 // its empty part: from its left edge to the trailing widget, not over the widget or the controls.
 func TestATitleBarPaintsItsControlsAndItsDragArea(t *testing.T) {
@@ -168,30 +137,114 @@ func TestATitleBarsTitleChanges(t *testing.T) {
 	}
 }
 
-// A control acts only when its press and its release both land on it: a press on maximize released
-// over close does neither, a release over close that no press armed does nothing, and a press on
-// close dragged off the bar is cancelled.
+// barOverBody runs bar over a body row, on a w x 2 native-view TestBackend: what routes a pointer
+// event, captures included, as a window does.
+func barOverBody(t *testing.T, bar *TitleBar, w int) (*tui.App, *tui.TestBackend) {
+	t.Helper()
+	col := tui.NewFlex(tui.Vertical)
+	col.Add(bar)
+	col.Add(core.NewText("body"))
+	tb := tui.NewTestBackend(w, 2, tui.WithTestCapabilities(tui.Capabilities{NativeViews: true}))
+	app := tui.NewApp(col, tui.WithBackend(tb), tui.WithMinFrameInterval(0))
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- app.Run(ctx) }()
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(3 * time.Second):
+			t.Error("the title bar's App did not stop")
+		}
+	})
+	for deadline := time.Now().Add(5 * time.Second); !strings.Contains(tb.String(), "body"); time.Sleep(5 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("no frame")
+		}
+	}
+	return app, tb
+}
+
+// send routes evs through tb and returns once the App has dispatched them.
+func send(t *testing.T, tb *tui.TestBackend, evs ...tui.Event) {
+	t.Helper()
+	fence, err := tb.InjectFenced(evs...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-fence:
+	case <-time.After(3 * time.Second):
+		t.Fatal("the App did not dispatch the events")
+	}
+}
+
+func press(x, y int) tui.Event {
+	return tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: x, Y: y}
+}
+
+func release(x, y int) tui.Event {
+	return tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: x, Y: y}
+}
+
+// With a window, the controls (close, maximize, minimize from the right, three cells each) act on
+// it when clicked; maximize restores a maximized window; a double-click on the bar maximizes.
+func TestATitleBarsControlsActOnItsWindow(t *testing.T) {
+	bar := NewTitleBar("Notes")
+	win := &fakeWindow{}
+	bar.window = win // as Init finds it on the GUI backend
+	app, tb := barOverBody(t, bar, 30)
+	send(t, tb, press(28, 0), release(28, 0))   // close: columns 27-29
+	send(t, tb, press(25, 0), release(25, 0))   // maximize: 24-26
+	onLoop(t, app, func() { win.maxed = true }) // the loop reads it
+	send(t, tb, press(24, 0), release(24, 0))   // maximize on a maximized window restores it
+	send(t, tb, press(21, 0), release(21, 0))   // minimize: 21-23
+	send(t, tb, press(10, 0), release(10, 0))   // the title: nothing
+	send(t, tb, tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 10, Y: 0, Count: 2}, release(10, 0))
+	want := []system.Action{system.ActionClose, system.ActionMaximize, system.ActionUnmaximize, system.ActionMinimize, system.ActionUnmaximize}
+	if len(win.asked) != len(want) {
+		t.Fatalf("the window was asked %v, want %v", win.asked, want)
+	}
+	for i := range want {
+		if win.asked[i] != want[i] {
+			t.Fatalf("the window was asked %v, want %v", win.asked, want)
+		}
+	}
+}
+
+// A control acts only when its press and its release both land on it, as the App routes them: a
+// press on maximize released over close does nothing; a release over close no press armed does
+// nothing; a press on close released over the body below (the capture brings that release to the
+// bar) is cancelled, so a later press on the body released over close does nothing either.
 func TestATitleBarsControlActsOnlyOnItsOwnPressAndRelease(t *testing.T) {
 	bar := NewTitleBar("Notes")
 	win := &fakeWindow{}
 	bar.window = win
-	app, _ := titleBarApp(t, bar, 30, tui.Capabilities{NativeViews: true})
-	ev := func(kind tui.MouseKind, x, y int) {
-		bar.HandleEvent(tui.MouseEvent{Kind: kind, Button: tui.MouseLeft, X: x, Y: y, Count: 1})
-	}
-	onLoop(t, app, func() {
-		ev(tui.MousePress, 25, 0)   // maximize
-		ev(tui.MouseRelease, 28, 0) // released over close
-		ev(tui.MouseRelease, 28, 0) // a release no press armed
-		ev(tui.MousePress, 28, 0)   // close
-		ev(tui.MouseRelease, 28, 1) // released off the bar
-		ev(tui.MouseRelease, 28, 0) // and no press armed this one
-	})
+	_, tb := barOverBody(t, bar, 30)
+	send(t, tb, press(25, 0), release(28, 0)) // maximize, released over close
+	send(t, tb, release(28, 0))               // a release no press armed
+	send(t, tb, press(28, 0), release(28, 1)) // close, released over the body
+	send(t, tb, press(2, 1), release(28, 0))  // the body's press, released over close
 	if len(win.asked) != 0 {
 		t.Fatalf("the window was asked %v; want nothing", win.asked)
 	}
-	onLoop(t, app, func() { ev(tui.MousePress, 28, 0); ev(tui.MouseRelease, 28, 0) })
+	send(t, tb, press(28, 0), release(28, 0))
 	if len(win.asked) != 1 || win.asked[0] != system.ActionClose {
 		t.Fatalf("a whole click on close asked %v; want ActionClose", win.asked)
+	}
+}
+
+// A press whose capture is lost (here cancelled, as a programmatic transition does) arms nothing:
+// its release over the same control does not act.
+func TestATitleBarsLostCaptureCancelsItsControl(t *testing.T) {
+	bar := NewTitleBar("Notes")
+	win := &fakeWindow{}
+	bar.window = win
+	app, tb := barOverBody(t, bar, 30)
+	send(t, tb, press(28, 0))
+	onLoop(t, app, func() { bar.ctx.CancelGesture() })
+	send(t, tb, release(28, 0))
+	if len(win.asked) != 0 {
+		t.Fatalf("after a lost capture the window was asked %v; want nothing", win.asked)
 	}
 }
