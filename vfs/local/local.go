@@ -1,4 +1,4 @@
-//go:build linux || darwin
+//go:build linux || darwin || windows
 
 package local
 
@@ -11,8 +11,6 @@ import (
 	"path/filepath"
 	"slices"
 	"sync"
-
-	"golang.org/x/sys/unix"
 
 	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/logger"
@@ -186,10 +184,9 @@ func (f *FS) Open(ctx context.Context, name string, offset int64) (io.ReadCloser
 		return nil, &fs.PathError{Op: "open", Path: name,
 			Err: errs.Wrap(errs.ErrInvalidArgument, "negative offset %d", offset)}
 	}
-	// O_NONBLOCK: opening a FIFO for reading waits for a writer, and with it the open returns at
-	// once, to be refused below. The file opened is the one checked: no path is looked up twice.
-	// A regular file reads the same either way.
-	file, err := f.root.OpenFile(name, os.O_RDONLY|unix.O_NONBLOCK, 0)
+	// readFlags (sys_unix_flags.go, sys_windows.go): a FIFO is refused below without waiting for a
+	// writer. The file opened is the one checked: no path is looked up twice.
+	file, err := f.root.OpenFile(name, readFlags, 0)
 	if err != nil {
 		return nil, err
 	}

@@ -1,4 +1,4 @@
-//go:build linux || darwin
+//go:build linux || darwin || windows
 
 package local
 
@@ -6,13 +6,10 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
 	"io"
 	"io/fs"
 	"os"
 	"strings"
-
-	"golang.org/x/sys/unix"
 
 	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/vfs"
@@ -166,7 +163,7 @@ func (f *FS) commitFailed(op, name string, err error, noReplace bool, dst *paren
 			cur = info(name, fi)
 		}
 		return &vfs.ConflictError{Path: name, Current: cur}
-	case noReplace && (isNoReplaceUnsupported(err) || errors.Is(err, unix.EINVAL) && !dst.supportsNoReplace()):
+	case noReplace && (isNoReplaceUnsupported(err) || isRenameInvalid(err) && !dst.supportsNoReplace()):
 		return &fs.PathError{Op: op, Path: name, Err: errs.WrapCause(errs.ErrUnsupported, err,
 			"the filesystem under %s has no atomic no-replace rename", name)}
 	}
