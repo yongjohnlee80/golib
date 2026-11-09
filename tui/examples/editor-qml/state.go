@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // THE APP SINGLETON'S STATE — what the document reads.
@@ -23,7 +23,7 @@ import (
 // name is content, and is published as it is.
 func (h *Host) state(path, theme, lang string) map[string]any {
 	st := map[string]any{
-		"App.mode":   modeMessage(widget.ModeNormal),
+		"App.mode":   modeMessage(editor.ModeNormal),
 		"App.status": statusName(path),
 		"App.keyset": "vim",
 		// Where the file dialogs open: the current file's folder.
@@ -58,19 +58,19 @@ func (h *Host) syncStatus() error {
 
 // modeMessage is how the status bar names an editor mode. The mode's String is its
 // identity, compared in code; what the user reads is the catalog's word for it.
-func modeMessage(m widget.EditorMode) any {
+func modeMessage(m editor.EditorMode) any {
 	switch m {
-	case widget.ModeNormal:
+	case editor.ModeNormal:
 		return tui.Msg("editor.mode.normal")
-	case widget.ModeInsert:
+	case editor.ModeInsert:
 		return tui.Msg("editor.mode.insert")
-	case widget.ModeVisual:
+	case editor.ModeVisual:
 		return tui.Msg("editor.mode.visual")
-	case widget.ModeVisualLine:
+	case editor.ModeVisualLine:
 		return tui.Msg("editor.mode.visualLine")
-	case widget.ModeVisualBlock:
+	case editor.ModeVisualBlock:
 		return tui.Msg("editor.mode.visualBlock")
-	case widget.ModeReplace:
+	case editor.ModeReplace:
 		return tui.Msg("editor.mode.replace")
 	}
 	return m.String()
