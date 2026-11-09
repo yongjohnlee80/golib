@@ -162,6 +162,12 @@ func TestKillEndsTheProgramAndOtherSignalsAreUnsupported(t *testing.T) {
 func TestCloseReturnsWhenClosingTheConsoleBlocks(t *testing.T) {
 	hangupGrace = 300 * time.Millisecond
 	defer func() { hangupGrace = 2 * time.Second }()
+	// a program that prints and waits, with no one reading its output; started before the stub is
+	// installed, so a Start that fails leaves no cleanup waiting on a stub nothing will call
+	p, err := Start(Cmd{Path: "cmd.exe", Args: []string{"/c", "for /L %i in (1,1,2000) do @echo line %i & ping -n 60 127.0.0.1 >nul"}})
+	if err != nil {
+		t.Fatal(err)
+	}
 	entered, release, finished := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	orig := closePseudoConsole
 	// blocks until released, as an older Windows's close does until its output is read; then closes
@@ -173,17 +179,13 @@ func TestCloseReturnsWhenClosingTheConsoleBlocks(t *testing.T) {
 		close(finished)
 	}
 	t.Cleanup(func() {
-		// the stub was entered before the hook goes back, and it has finished before the test ends
+		// Close calls the stub (below), so it has been entered; it is released and joined before
+		// the hook goes back
 		<-entered
 		close(release)
 		<-finished
 		closePseudoConsole = orig
 	})
-	// a program that prints and waits, with no one reading its output
-	p, err := Start(Cmd{Path: "cmd.exe", Args: []string{"/c", "for /L %i in (1,1,2000) do @echo line %i & ping -n 60 127.0.0.1 >nul"}})
-	if err != nil {
-		t.Fatal(err)
-	}
 	done := make(chan error, 1)
 	go func() { done <- p.Close() }()
 	select {
