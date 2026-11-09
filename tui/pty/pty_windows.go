@@ -100,6 +100,10 @@ func (p *PTY) spawn(path string, c Cmd) error {
 	}
 	si := &windows.StartupInfoEx{ProcThreadAttributeList: attrs.List()}
 	si.Cb = uint32(unsafe.Sizeof(*si))
+	// STARTF_USESTDHANDLES with no handles: the child's standard handles come from the
+	// pseudo-console, not from this process. Without it a child of a process whose own stdio is a
+	// console (a test runner, a terminal) writes to that console instead of to the pseudo-console.
+	si.Flags |= windows.STARTF_USESTDHANDLES
 	cmdline, err := windows.UTF16PtrFromString(windows.ComposeCommandLine(append([]string{path}, c.Args...)))
 	if err != nil {
 		return fmt.Errorf("pty: %w", err)
