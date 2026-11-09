@@ -1,4 +1,4 @@
-//go:build linux || (darwin && cgo)
+//go:build linux || (darwin && cgo) || windows
 
 package local
 
@@ -10,7 +10,8 @@ import (
 	"github.com/yongjohnlee80/golib/vfs"
 )
 
-// The watch tests' helpers, shared by the inotify (Linux) and FSEvents (macOS) suites.
+// The watch tests' helpers, shared by the inotify (Linux), FSEvents (macOS) and ReadDirectoryChangesW
+// (Windows) suites.
 
 func startWatch(t *testing.T, f *FS, dir string) (<-chan vfs.Event, context.CancelFunc) {
 	t.Helper()

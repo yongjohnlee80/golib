@@ -91,3 +91,22 @@ descriptor per directory and no ceiling on how many a root holds.
 
 A macOS build **without cgo** (`CGO_ENABLED=0`) has no `Watch`: `*local.FS` does not implement
 `vfs.Watcher` there, and callers take `vfs.Poll`.
+
+## Watching (Windows)
+
+`Watch` uses one overlapped `ReadDirectoryChangesW` handle per call. One handle covers the whole
+tree, so there is no ceiling on how many directories a root holds.
+
+- The directory is opened through `os.Root`, and that handle is opened again relative to itself
+  (`NtCreateFile` with an empty name, as `ReOpenFile` does) for listing and overlapped reads. No
+  pathname is resolved after the root's, so a junction swapped in cannot move the watch outside.
+- As on macOS, presence is decided by an `lstat` when a record is handled: a vanished name is
+  `OpRemove`, a present one `OpCreate` (it appeared, or went and came back) or `OpWrite`.
+- A directory that appears is `OpCreate` + `OpOverflow` for its subtree, except one `vfs.SkipDirs`
+  names: `OpCreate` alone, and nothing inside it. The kernel still watches a skipped directory, so its
+  changes count toward the buffer.
+- The kernel keeps changes made between reads in a 64 KiB buffer; a consumer that falls behind until it
+  overflows gets an `OpOverflow{Path: ""}`.
+- The watched directory deleted, or moved or replaced, is a final `OpOverflow{Path: ""}`, then the
+  channel closes. A moved directory reports nothing about itself, so it is noticed by a check made
+  every second while nothing else happens.

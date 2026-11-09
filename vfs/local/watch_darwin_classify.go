@@ -38,16 +38,6 @@ type fsevent struct {
 	flags uint32
 }
 
-// presence is what an lstat at handling time found at a path.
-type presence uint8
-
-const (
-	absent presence = iota
-	presentFile
-	presentDir
-	unknown // lstat failed other than "does not exist": report a write and let the consumer re-read
-)
-
 // fseMapper turns FSEvents records into vfs events for one watch. FSEvents' item flags accumulate per
 // path — an append to a recently created file still carries ItemCreated — so they say what happened at
 // some point, not what is there now: presence is decided by stat, at handling time.
