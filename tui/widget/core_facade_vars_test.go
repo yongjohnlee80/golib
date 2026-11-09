@@ -10,9 +10,9 @@ import (
 	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
-// TestTheFacadesVarsAreCores holds each var tui/widget forwards from core equal to
+// TestTheFacadeForwardsCoreVars holds each var tui/widget forwards from core equal to
 // core's, so a later change there cannot leave a stale copy behind.
-func TestTheFacadesVarsAreCores(t *testing.T) {
+func TestTheFacadeForwardsCoreVars(t *testing.T) {
 	for name, v := range map[string][2]any{
 		"ErrEmptyLayerID":           {widget.ErrEmptyLayerID, core.ErrEmptyLayerID},
 		"ErrLayerAlreadyRegistered": {widget.ErrLayerAlreadyRegistered, core.ErrLayerAlreadyRegistered},
