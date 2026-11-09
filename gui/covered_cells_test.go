@@ -15,7 +15,8 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/terminal"
 )
 
 // The colours of a covered-cell test: the view's own sepia, and the dark terminal panel raised over
@@ -109,23 +110,23 @@ func at(cols ...int) func(col, row int) bool {
 // fakeTabs is a tab strip of spans, as TerminalTabs reports them.
 type fakeTabs struct {
 	tui.MultiChild
-	spans    []widget.TabSpan
+	spans    []core.TabSpan
 	active   int
-	controls []widget.TabControl // its window controls at the bar's end (SetWindowButtons)
+	controls []core.TabControl // its window controls at the bar's end (SetWindowButtons)
 }
 
-func (f *fakeTabs) Layout(cs tui.Constraints) tui.Size     { return cs.Constrain(tui.Size{W: 20, H: 1}) }
-func (f *fakeTabs) Render(tui.Surface)                     {}
-func (f *fakeTabs) HandleEvent(tui.Event) bool             { return false }
-func (f *fakeTabs) TabSpans() []widget.TabSpan             { return f.spans }
-func (f *fakeTabs) ActiveTabIndex() int                    { return f.active }
-func (f *fakeTabs) TabWindowControls() []widget.TabControl { return f.controls }
+func (f *fakeTabs) Layout(cs tui.Constraints) tui.Size   { return cs.Constrain(tui.Size{W: 20, H: 1}) }
+func (f *fakeTabs) Render(tui.Surface)                   {}
+func (f *fakeTabs) HandleEvent(tui.Event) bool           { return false }
+func (f *fakeTabs) TabSpans() []core.TabSpan             { return f.spans }
+func (f *fakeTabs) ActiveTabIndex() int                  { return f.active }
+func (f *fakeTabs) TabWindowControls() []core.TabControl { return f.controls }
 
 // The bar is filled in its own colour with the panel raised over its right end: AutoDoc's todos tab
 // bar turned the agent terminal's black while the agent panel, raised by its focus, covered its
 // last cell.
 func TestTheTabBarIsNotTheColourOfAPanelOverItsEnd(t *testing.T) {
-	tabs := &fakeTabs{spans: []widget.TabSpan{{X: 0, W: 5}, {X: 6, W: 4}, {X: 17, W: 3}}}
+	tabs := &fakeTabs{spans: []core.TabSpan{{X: 0, W: 5}, {X: 6, W: 4}, {X: 17, W: 3}}}
 	view, _, ok := paintTabs(tabs)
 	if !ok {
 		t.Fatal("no view")
@@ -147,7 +148,7 @@ func TestTheTabBarIsNotTheColourOfAPanelOverItsEnd(t *testing.T) {
 	}
 
 	// covered at its first cell only, a tab's box takes the colour of a cell of its own still open
-	tabs.spans = []widget.TabSpan{{X: 0, W: 5}}
+	tabs.spans = []core.TabSpan{{X: 0, W: 5}}
 	rc = paintUnder(t, view, overView{cols: 20, rows: 1, covered: at(0)})
 	if i := slices.IndexFunc(rc.Calls, func(p PaintCall) bool { return p.Op == "FillRRect" }); i < 0 || rc.Calls[i].Brush.Color != sepiaBG {
 		t.Fatalf("the tab's box %+v; want its own %v", rc.Calls, sepiaBG)
@@ -164,7 +165,7 @@ func TestTheTabBarIsNotTheColourOfAPanelOverItsEnd(t *testing.T) {
 // (Johno: which tab a × belongs to), and none where a panel covers that cell or the tabs do not
 // meet across one cell.
 func TestTabsHaveADividerBetweenThem(t *testing.T) {
-	tabs := &fakeTabs{spans: []widget.TabSpan{{X: 0, W: 5}, {X: 6, W: 4}, {X: 11, W: 3}, {X: 17, W: 3}}}
+	tabs := &fakeTabs{spans: []core.TabSpan{{X: 0, W: 5}, {X: 6, W: 4}, {X: 11, W: 3}, {X: 17, W: 3}}}
 	view, _, ok := paintTabs(tabs)
 	if !ok {
 		t.Fatal("no view")
@@ -204,7 +205,7 @@ func TestTabsHaveADividerBetweenThem(t *testing.T) {
 func TestEveryDividerIsDrawnAlike(t *testing.T) {
 	// gaps after the cells 2, 6 and 13: placed by their cells, at 9.6 pixels a cell, they come out
 	// 6, 5 and 5 pixels wide
-	tabs := &fakeTabs{spans: []widget.TabSpan{{X: 0, W: 2}, {X: 3, W: 3}, {X: 7, W: 6}, {X: 14, W: 4}}}
+	tabs := &fakeTabs{spans: []core.TabSpan{{X: 0, W: 2}, {X: 3, W: 3}, {X: 7, W: 6}, {X: 14, W: 4}}}
 	view, _, _ := paintTabs(tabs)
 	rc := NewRecordingCanvas(Size{W: 20 * 9.6, H: 16}, Size{W: 9.6, H: 16})
 	rc.Covers = func(int, int) bool { return false }
@@ -259,8 +260,8 @@ func TestAStripOnAPanelBarIsThePanelsColour(t *testing.T) {
 		}
 		return color.NRGBA{}, false
 	}
-	strip := widget.NewTabStrip()
-	strip.SetTabs([]widget.StripTab{{ID: "a", Label: "aa"}, {ID: "b", Label: "bb"}})
+	strip := core.NewTabStrip()
+	strip.SetTabs([]core.StripTab{{ID: "a", Label: "aa"}, {ID: "b", Label: "bb"}})
 	painted := false
 	OnPanelBar(strip, func() (color.NRGBA, bool) { return tint, painted })
 	view, _, ok := paintTabs(strip)
@@ -274,7 +275,7 @@ func TestAStripOnAPanelBarIsThePanelsColour(t *testing.T) {
 	if got, ok := barOf(paintUnder(t, view, overView{cols: 20, rows: 1, covered: open})); !ok || got != tint {
 		t.Fatalf("on the panel's bar, the bar %v (%v); want the panel's %v", got, ok, tint)
 	}
-	view, _, _ = paintTabs(&fakeTabs{spans: []widget.TabSpan{{X: 0, W: 4}, {X: 5, W: 4}}})
+	view, _, _ = paintTabs(&fakeTabs{spans: []core.TabSpan{{X: 0, W: 4}, {X: 5, W: 4}}})
 	if got, ok := barOf(paintUnder(t, view, overView{cols: 20, rows: 1, covered: open})); !ok || got != sepiaBG {
 		t.Fatalf("another strip's bar %v (%v); want its cells' %v", got, ok, sepiaBG)
 	}
@@ -284,7 +285,7 @@ func TestAStripOnAPanelBarIsThePanelsColour(t *testing.T) {
 // from their own cells.
 func TestButtonFieldAndScrollbarAreNotThePanelsColour(t *testing.T) {
 	t.Run("button", func(t *testing.T) {
-		view, _, _ := paintButton(widget.NewButton("Save"))
+		view, _, _ := paintButton(core.NewButton("Save"))
 		rc := paintUnder(t, view, overView{cols: 8, rows: 1, covered: at(0)})
 		i := slices.IndexFunc(rc.Calls, func(p PaintCall) bool { return p.Op == "FillRRect" })
 		if i < 0 || rc.Calls[i].Brush.Color != sepiaBG {
@@ -297,7 +298,7 @@ func TestButtonFieldAndScrollbarAreNotThePanelsColour(t *testing.T) {
 		row := []string{"S", " ", "S", "a", "v", "e", " ", " "}
 		navy := color.NRGBA{R: 0x10, G: 0x18, B: 0x40, A: 0xff}
 		white := color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff}
-		view, _, _ := paintButton(widget.NewButton("Save", widget.WithMnemonic('S')))
+		view, _, _ := paintButton(core.NewButton("Save", core.WithMnemonic('S')))
 		paintUnder(t, view, overView{cols: 8, rows: 1, covered: at(0), text: func(col, _ int) string { return row[col] },
 			own: func(int, int) (color.NRGBA, color.NRGBA) { return white, navy }})
 	})
@@ -306,7 +307,7 @@ func TestButtonFieldAndScrollbarAreNotThePanelsColour(t *testing.T) {
 		// mounted, so the key's cell is where tui draws it (Button.MnemonicColumn), and the row is
 		// what tui drew.
 		accent := color.NRGBA{R: 0xc0, G: 0x30, B: 0x20, A: 0xff}
-		b := widget.NewButton("Save", widget.WithMnemonic('S'), widget.WithButtonDecoration("", ""))
+		b := core.NewButton("Save", core.WithMnemonic('S'), core.WithButtonDecoration("", ""))
 		_, sb := styledApp(t, b, 6, 1, NativeStyle())
 		var row []string
 		waitUntil(t, "the button drawn", func() bool {
@@ -334,17 +335,17 @@ func TestButtonFieldAndScrollbarAreNotThePanelsColour(t *testing.T) {
 		}
 	})
 	t.Run("text field", func(t *testing.T) {
-		view, _, _ := paintTextField(widget.NewTextInput(widget.WithInitialValue("hello")))
+		view, _, _ := paintTextField(core.NewTextInput(core.WithInitialValue("hello")))
 		rc := paintUnder(t, view, overView{cols: 10, rows: 1, covered: at(0)})
 		if rc.Calls[0].Op != "FillRect" || rc.Calls[0].Brush.Color != sepiaBG {
 			t.Fatalf("the field's fill %+v; want its own %v", rc.Calls, sepiaBG)
 		}
 	})
 	t.Run("text area", func(t *testing.T) {
-		if NativeStyle().painterFor(widget.NewTextArea()) == nil {
+		if NativeStyle().painterFor(core.NewTextArea()) == nil {
 			t.Fatal("the native style has no painter for a text area")
 		}
-		view, _, ok := paintTextArea(widget.NewTextArea())
+		view, _, ok := paintTextArea(core.NewTextArea())
 		if !ok {
 			t.Fatal("no view")
 		}
@@ -357,7 +358,7 @@ func TestButtonFieldAndScrollbarAreNotThePanelsColour(t *testing.T) {
 		}
 	})
 	t.Run("text area with its first row covered", func(t *testing.T) {
-		view, _, _ := paintTextArea(widget.NewTextArea())
+		view, _, _ := paintTextArea(core.NewTextArea())
 		rc := paintUnder(t, view, overView{cols: 10, rows: 3, covered: func(_, row int) bool { return row == 0 }})
 		if len(rc.Calls) == 0 || rc.Calls[0].Op != "FillRect" || rc.Calls[0].Brush.Color != sepiaBG {
 			t.Fatalf("the area under a panel over its first row %+v; want its open rows painted, in its own %v", rc.Calls, sepiaBG)
@@ -367,7 +368,7 @@ func TestButtonFieldAndScrollbarAreNotThePanelsColour(t *testing.T) {
 		// the placeholder's cells, from (0, 0), wear a muted accent: the area's frame is the area's
 		// own colour, read from a cell past them
 		accent := color.NRGBA{R: 0xc0, G: 0x30, B: 0x20, A: 0xff}
-		ta := widget.NewTextArea(widget.WithTextAreaPlaceholder("say"))
+		ta := core.NewTextArea(core.WithTextAreaPlaceholder("say"))
 		ta.Layout(tui.Tight(tui.Size{W: 10, H: 3}))
 		view, _, _ := paintTextArea(ta)
 		rc := paintUnder(t, view, overView{cols: 10, rows: 3, covered: func(int, int) bool { return false },
@@ -426,7 +427,7 @@ func TestACheckBoxIsNotFoundUnderAPanel(t *testing.T) {
 // A progress bar takes its filled colour from a filled cell and its track's from an empty one,
 // each one nothing covers.
 func TestAProgressBarIsNotThePanelsColour(t *testing.T) {
-	p := widget.NewProgressBar()
+	p := core.NewProgressBar()
 	p.SetProgress(0.5)
 	view, _, ok := paintProgress(p)
 	if !ok {
@@ -493,15 +494,15 @@ func TestCompositeHandsAViewItsCoveredCells(t *testing.T) {
 // bar's last column. The bar keeps its own colour.
 func TestARaisedPanelOverTheTabBarLeavesTheBarItsColour(t *testing.T) {
 	bar := style.New().Background(style.RGB(sepiaBG.R, sepiaBG.G, sepiaBG.B)).Foreground(style.RGB(sepiaFG.R, sepiaFG.G, sepiaFG.B))
-	tabs := widget.NewTabs(widget.WithTab("Open", widget.NewText("open")), widget.WithTab("Done", widget.NewText("done")),
-		widget.WithTabsStyles(bar, bar, bar))
-	host := widget.NewOverlayHost(tabs)
+	tabs := core.NewTabs(core.WithTab("Open", core.NewText("open")), core.WithTab("Done", core.NewText("done")),
+		core.WithTabsStyles(bar, bar, bar))
+	host := core.NewOverlayHost(tabs)
 	dark := style.New().Background(style.RGB(darkBG.R, darkBG.G, darkBG.B)).Foreground(style.RGB(darkFG.R, darkFG.G, darkFG.B))
-	in := widget.NewTextInput()
+	in := core.NewTextInput()
 	body := tui.NewFlex(tui.Vertical)
-	body.Add(widget.NewText("agent", widget.WithTextStyle(dark)), in)
+	body.Add(core.NewText("agent", core.WithTextStyle(dark)), in)
 	const w = 30
-	panel := widget.NewFloat(body, widget.WithAnchor(widget.AtRect(tui.Rect{X: w - 5, Y: 0, W: 5, H: 2})))
+	panel := core.NewFloat(body, core.WithAnchor(core.AtRect(tui.Rect{X: w - 5, Y: 0, W: 5, H: 2})))
 	host.Attach(panel)
 	app, sb := styledApp(t, host, w, 6, NativeStyle())
 	onLoop(t, app, panel.Show)
@@ -536,11 +537,11 @@ func TestARaisedPanelOverTheTabBarLeavesTheBarItsColour(t *testing.T) {
 // painter reads the tab's place among the spans drawn (tabs in view, < and > around them), not its
 // place among all the tabs, which is another span or none once the bar scrolls.
 func TestAnOverflowingTabBarUnderlinesTheActiveTab(t *testing.T) {
-	var opts []widget.TabsOption
+	var opts []core.TabsOption
 	for i := range 8 {
-		opts = append(opts, widget.WithTab(fmt.Sprintf("tab%d", i), widget.NewText(fmt.Sprint(i))))
+		opts = append(opts, core.WithTab(fmt.Sprintf("tab%d", i), core.NewText(fmt.Sprint(i))))
 	}
-	tabs := widget.NewTabs(opts...)
+	tabs := core.NewTabs(opts...)
 	app, sb := styledApp(t, tabs, 20, 3, NativeStyle())
 	onLoop(t, app, func() { tabs.Select(7) })
 	var row string
@@ -576,7 +577,7 @@ func TestAnOverflowingTabBarUnderlinesTheActiveTab(t *testing.T) {
 // A spinner bar draws one cell, a frame or a blank, and never a track: given a progress, the
 // painter leaves it to its cells rather than drawing a track and a fill tui never draws.
 func TestADeterminateSpinnerBarIsLeftToItsCells(t *testing.T) {
-	p := widget.NewProgressBar(widget.WithSpinner([]string{"|", "/"}, time.Second))
+	p := core.NewProgressBar(core.WithSpinner([]string{"|", "/"}, time.Second))
 	p.SetProgress(0.5)
 	if view, _, ok := paintProgress(p); ok || view != nil {
 		t.Fatal("a spinner bar at 0.5 is painted natively: a track and a fill tui never draws")
@@ -587,8 +588,8 @@ func TestADeterminateSpinnerBarIsLeftToItsCells(t *testing.T) {
 // its colour (WindowControlColor), centred on them, so side by side they are three cells apart, at the
 // title bar's radius; none for a control a panel covers, and none on a strip without controls.
 func TestATabStripsWindowControlsAreTheTitleBarsDots(t *testing.T) {
-	tabs := &fakeTabs{spans: []widget.TabSpan{{X: 0, W: 5}},
-		controls: []widget.TabControl{{X: 11, W: 3, Op: widget.WindowMinimize}, {X: 14, W: 3, Op: widget.WindowMaximize}, {X: 17, W: 3, Op: widget.WindowClose}}}
+	tabs := &fakeTabs{spans: []core.TabSpan{{X: 0, W: 5}},
+		controls: []core.TabControl{{X: 11, W: 3, Op: core.WindowMinimize}, {X: 14, W: 3, Op: core.WindowMaximize}, {X: 17, W: 3, Op: core.WindowClose}}}
 	view, _, ok := paintTabs(tabs)
 	if !ok {
 		t.Fatal("no view")
@@ -623,10 +624,10 @@ func TestATabStripsWindowControlsAreTheTitleBarsDots(t *testing.T) {
 		}
 	}
 	if got := dots(paintUnder(t, view, overView{cols: 20, rows: 1, covered: at(17, 18, 19)})); len(got) != 2 ||
-		got[0].Brush.Color != WindowControlColor(widget.WindowMinimize) || got[1].Brush.Color != WindowControlColor(widget.WindowMaximize) {
+		got[0].Brush.Color != WindowControlColor(core.WindowMinimize) || got[1].Brush.Color != WindowControlColor(core.WindowMaximize) {
 		t.Errorf("with x covered: dots %+v; want _'s and +'s alone", got)
 	}
-	plain, _, _ := paintTabs(&fakeTabs{spans: []widget.TabSpan{{X: 0, W: 5}}})
+	plain, _, _ := paintTabs(&fakeTabs{spans: []core.TabSpan{{X: 0, W: 5}}})
 	if got := dots(paintUnder(t, plain, overView{cols: 20, rows: 1, covered: func(int, int) bool { return false }})); len(got) != 0 {
 		t.Errorf("a strip without controls painted %d dots", len(got))
 	}
@@ -635,7 +636,7 @@ func TestATabStripsWindowControlsAreTheTitleBarsDots(t *testing.T) {
 // A strip with no tab yet, as the terminal's before its first shell, still shows its controls'
 // dots: nothing else on the bar is a box, and the controls are what closes it.
 func TestAnEmptyTabStripStillPaintsItsWindowControls(t *testing.T) {
-	tabs := widget.NewTerminalTabs()
+	tabs := terminal.NewTerminalTabs()
 	tabs.SetWindowButtons(true)
 	if n := len(tabs.TabSpans()); n != 0 {
 		t.Fatalf("an empty strip has %d spans", n)
@@ -653,7 +654,7 @@ func TestAnEmptyTabStripStillPaintsItsWindowControls(t *testing.T) {
 			got = append(got, p.Brush.Color)
 		}
 	}
-	if want := []color.NRGBA{WindowControlColor(widget.WindowMinimize), WindowControlColor(widget.WindowMaximize), WindowControlColor(widget.WindowClose)}; !slices.Equal(got, want) {
+	if want := []color.NRGBA{WindowControlColor(core.WindowMinimize), WindowControlColor(core.WindowMaximize), WindowControlColor(core.WindowClose)}; !slices.Equal(got, want) {
 		t.Errorf("an empty strip painted dots %v; want %v", got, want)
 	}
 	plain, _, _ := paintTabs(&fakeTabs{})

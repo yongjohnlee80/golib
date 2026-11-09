@@ -20,7 +20,9 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/htmlview"
+	"github.com/yongjohnlee80/golib/tui/widget/table"
 )
 
 // styled is a TestBackend that is a NativeHost, styled by a real Backend's NativeFor, and keeps
@@ -119,7 +121,7 @@ func placementOf(t *testing.T, sb *styled, id tui.NodeID) tui.NativePlacement {
 }
 
 func TestStyleChoosesByTypeThenRole(t *testing.T) {
-	btn := widget.NewButton("OK")
+	btn := core.NewButton("OK")
 	byRole := func(tui.Component) (View, tui.NativeScope, bool) {
 		return ViewFunc(func(Canvas) {}), tui.ScopeChrome, true
 	}
@@ -128,7 +130,7 @@ func TestStyleChoosesByTypeThenRole(t *testing.T) {
 		t.Fatal("a role registration did not match")
 	}
 	var typed bool
-	ForType(st, func(*widget.Button) (View, tui.NativeScope, bool) { typed = true; return nil, 0, false })
+	ForType(st, func(*core.Button) (View, tui.NativeScope, bool) { typed = true; return nil, 0, false })
 	st.painterFor(btn)(btn)
 	if !typed {
 		t.Fatal("an exact-type registration did not beat the role's")
@@ -147,8 +149,8 @@ func TestStyleChoosesByTypeThenRole(t *testing.T) {
 }
 
 func TestButtonAndFieldPlacements(t *testing.T) {
-	btn := widget.NewButton("OK")
-	in := widget.NewTextInput(widget.WithInitialValue("hello"))
+	btn := core.NewButton("OK")
+	in := core.NewTextInput(core.WithInitialValue("hello"))
 	root := tui.NewFlex(tui.Vertical)
 	root.Add(btn, in)
 	app, sb := styledApp(t, root, 20, 4, NativeStyle())
@@ -178,7 +180,7 @@ func TestButtonAndFieldPlacements(t *testing.T) {
 
 // The selection is tui's own cells at the columns tui wrote them, after the field's scroll.
 func TestTextFieldSelectionKeepsTuisColumns(t *testing.T) {
-	in := widget.NewTextInput()
+	in := core.NewTextInput()
 	root := tui.NewFlex(tui.Vertical)
 	root.Add(in)
 	app, sb := styledApp(t, root, 20, 1, NativeStyle())
@@ -204,7 +206,7 @@ func TestTextFieldSelectionKeepsTuisColumns(t *testing.T) {
 // The native selection is the cells tui draws selected, no more: a wide cluster the field's edge
 // cuts is not drawn by tui, so its cell is not painted selected either.
 func TestTextFieldSelectionIsTheCellsTuiDrawsSelected(t *testing.T) {
-	in := widget.NewTextInput()
+	in := core.NewTextInput()
 	root := tui.NewFlex(tui.Vertical)
 	root.Add(in)
 	app, sb := styledApp(t, root, 20, 1, NativeStyle())
@@ -249,7 +251,7 @@ func TestTextFieldSelectionIsTheCellsTuiDrawsSelected(t *testing.T) {
 // A field covered at both ends takes its colours from an open cell outside its selection: the
 // selection's colours are not the field's.
 func TestAFieldUnderPanelsIsNotItsSelectionsColour(t *testing.T) {
-	in := widget.NewTextInput()
+	in := core.NewTextInput()
 	root := tui.NewFlex(tui.Vertical)
 	root.Add(in)
 	app, sb := styledApp(t, root, 20, 1, NativeStyle())
@@ -287,7 +289,7 @@ func TestAFieldUnderPanelsIsNotItsSelectionsColour(t *testing.T) {
 // A text area whose selection starts at its first cell (it has no padding) takes its colours from a
 // cell past the selection: the selection's colours are not the area's.
 func TestATextAreaIsNotItsSelectionsColour(t *testing.T) {
-	area := widget.NewTextArea()
+	area := core.NewTextArea()
 	root := tui.NewFlex(tui.Vertical)
 	root.Add(area)
 	app, sb := styledApp(t, root, 20, 3, NativeStyle())
@@ -425,7 +427,7 @@ func TestCheckBoxDrawsItsBoxAndKeepsItsText(t *testing.T) {
 
 func TestScrollbarOnlyWhenContentOverflows(t *testing.T) {
 	items := []string{"a", "b", "c", "d", "e", "f"}
-	l := widget.NewList(widget.WithSource(widget.SliceSource(items), func(s string) string { return s }))
+	l := core.NewList(core.WithSource(core.SliceSource(items), func(s string) string { return s }))
 	root := tui.NewFlex(tui.Vertical)
 	root.Add(l)
 	app, sb := styledApp(t, root, 10, 3, NativeStyle())
@@ -434,7 +436,7 @@ func TestScrollbarOnlyWhenContentOverflows(t *testing.T) {
 	if len(rc.Calls) != 1 || rc.Calls[0].Op != "FillRRect" || rc.Calls[0].Rect.X+rc.Calls[0].Rect.W > 80 {
 		t.Fatalf("scrollbar painted %+v", rc.Calls)
 	}
-	if _, _, ok := paintScrollbar(widget.NewList(widget.WithSource(widget.SliceSource([]string{"a"}), func(s string) string { return s }))); ok {
+	if _, _, ok := paintScrollbar(core.NewList(core.WithSource(core.SliceSource([]string{"a"}), func(s string) string { return s }))); ok {
 		t.Fatal("a list that fits has a scrollbar")
 	}
 }
@@ -444,9 +446,9 @@ func TestScrollbarOnlyWhenContentOverflows(t *testing.T) {
 func TestAScrollViewHasAThumbWhenItsChildOverflows(t *testing.T) {
 	col := tui.NewFlex(tui.Vertical)
 	for i := range 6 {
-		col.AddSized(widget.NewText(fmt.Sprintf("row %d", i)), 1)
+		col.AddSized(core.NewText(fmt.Sprintf("row %d", i)), 1)
 	}
-	v := widget.NewScrollView(col)
+	v := core.NewScrollView(col)
 	app, sb := styledApp(t, v, 10, 3, NativeStyle())
 	p := placementOf(t, sb, v.NodeID())
 	rc := paintOn(t, app, sb, p)
@@ -456,7 +458,7 @@ func TestAScrollViewHasAThumbWhenItsChildOverflows(t *testing.T) {
 	if r := rc.Calls[0].Rect; r.X < 9*8 || r.X+r.W > 80 {
 		t.Fatalf("the thumb at %+v is outside the last column", r)
 	}
-	if _, _, ok := paintScrollView(widget.NewScrollView(widget.NewText("one"))); ok {
+	if _, _, ok := paintScrollView(core.NewScrollView(core.NewText("one"))); ok {
 		t.Fatal("a ScrollView that fits has a thumb")
 	}
 }
@@ -464,11 +466,11 @@ func TestAScrollViewHasAThumbWhenItsChildOverflows(t *testing.T) {
 // A dialog over a native button puts it under the dialog: the scrim, drawn natively, is a later
 // placement over the button's cells, so it is composited over the button.
 func TestModalCoversANativeButton(t *testing.T) {
-	btn := widget.NewButton("Under")
-	host := widget.NewOverlayHost(btn)
+	btn := core.NewButton("Under")
+	host := core.NewOverlayHost(btn)
 	app, sb := styledApp(t, host, 30, 8, NativeStyle())
 	waitUntil(t, "the button's placement", func() bool { return len(sb.placements()) > 0 })
-	m := widget.NewModal(widget.NewText("over"), widget.WithModalTitle("Dialog"))
+	m := core.NewModal(core.NewText("over"), core.WithModalTitle("Dialog"))
 	onLoop(t, app, func() {
 		if err := m.Open(host); err != nil {
 			t.Error(err)
@@ -612,10 +614,10 @@ func TestBackdropIsWhatSurroundsTheView(t *testing.T) {
 // the scrim's view dims it. With CellStyle it fills its cells, as on a terminal.
 func TestScrimLetsWhatIsBeneathShow(t *testing.T) {
 	for _, st := range []*Style{NativeStyle(), CellStyle} {
-		base := widget.NewText("beneath the dialog")
-		host := widget.NewOverlayHost(base)
+		base := core.NewText("beneath the dialog")
+		host := core.NewOverlayHost(base)
 		app, sb := styledApp(t, host, 30, 9, st)
-		m := widget.NewModal(widget.NewText("x"), widget.WithModalTitle("D"))
+		m := core.NewModal(core.NewText("x"), core.WithModalTitle("D"))
 		onLoop(t, app, func() {
 			if err := m.Open(host); err != nil {
 				t.Error(err)
@@ -676,13 +678,13 @@ func TestCompositeOrderIsPaintOrder(t *testing.T) {
 // An image beneath a native dialog is composited before the dialog's scrim and card, and the
 // card's cells are drawn over it; an image after a native button is composited after it.
 func TestImagesCompositeInPaintOrderWithNatives(t *testing.T) {
-	btn := widget.NewButton("Above")
+	btn := core.NewButton("Above")
 	pic := &pictured{id: 501}
 	base := tui.NewFlex(tui.Vertical)
 	base.Add(btn, pic)
-	host := widget.NewOverlayHost(base)
+	host := core.NewOverlayHost(base)
 	app, sb := styledApp(t, host, 30, 9, NativeStyle())
-	m := widget.NewModal(widget.NewText("over the picture"), widget.WithModalTitle("D"))
+	m := core.NewModal(core.NewText("over the picture"), core.WithModalTitle("D"))
 	onLoop(t, app, func() {
 		if err := m.Open(host); err != nil {
 			t.Error(err)
@@ -717,7 +719,7 @@ func TestImagesCompositeInPaintOrderWithNatives(t *testing.T) {
 // A native button marks its mnemonic's letter with a line under it, between the label's other
 // letters, at the label's own weight: not bold.
 func TestButtonMarksItsMnemonic(t *testing.T) {
-	b := widget.NewButton("Close (q)", widget.WithMnemonic('q'))
+	b := core.NewButton("Close (q)", core.WithMnemonic('q'))
 	v, _, ok := paintButton(b)
 	if !ok {
 		t.Fatal("no view")
@@ -750,7 +752,7 @@ func TestButtonMarksItsMnemonic(t *testing.T) {
 	if bold := rc.Text().Layout("q", f, 0).Width; bold != regular && texts[1].Text.Width != regular {
 		t.Fatalf("the key is %v wide: bold (%v), not the label's weight (%v)", texts[1].Text.Width, bold, regular)
 	}
-	v, _, _ = paintButton(widget.NewButton("Use"))
+	v, _, _ = paintButton(core.NewButton("Use"))
 	rc = NewRecordingCanvas(Size{W: 120, H: 18}, Size{W: 8, H: 18})
 	v.Paint(rc)
 	if n := strings.Count(strings.Join(rc.Ops(), " "), "DrawText"); n != 1 {
@@ -819,7 +821,7 @@ func TestTheAccessKeyReadsOnItsFill(t *testing.T) {
 // subtree, and leaves one laid out in cells to its cells.
 func TestNativeStyleDrawsABoundHTMLView(t *testing.T) {
 	s := NativeStyle()
-	v := widget.NewHTMLView()
+	v := htmlview.NewHTMLView()
 	if p := s.painterFor(v); p == nil {
 		t.Fatal("no painter for HTMLView")
 	} else if _, _, ok := p(v); ok {
@@ -836,21 +838,21 @@ func TestNativeStyleDrawsABoundHTMLView(t *testing.T) {
 // viewLayout is an HTMLLayout that is a View: what gui/widget's pixel layout is.
 type viewLayout struct{}
 
-func (viewLayout) Paint(Canvas)                                       {}
-func (viewLayout) SetSource([]byte)                                   {}
-func (viewLayout) Height() float32                                    { return 0 }
-func (viewLayout) At(float32, float32) widget.DocPos                  { return widget.DocPos{} }
-func (viewLayout) Rects(widget.DocPos, widget.DocPos) []widget.Rect32 { return nil }
-func (viewLayout) Text(widget.DocPos, widget.DocPos) string           { return "" }
-func (viewLayout) LinkAt(float32, float32) string                     { return "" }
-func (viewLayout) BlockAt(float32) (int, float32)                     { return -1, 0 }
-func (viewLayout) BlockTop(int) (float32, bool)                       { return 0, false }
+func (viewLayout) Paint(Canvas)                                             {}
+func (viewLayout) SetSource([]byte)                                         {}
+func (viewLayout) Height() float32                                          { return 0 }
+func (viewLayout) At(float32, float32) htmlview.DocPos                      { return htmlview.DocPos{} }
+func (viewLayout) Rects(htmlview.DocPos, htmlview.DocPos) []htmlview.Rect32 { return nil }
+func (viewLayout) Text(htmlview.DocPos, htmlview.DocPos) string             { return "" }
+func (viewLayout) LinkAt(float32, float32) string                           { return "" }
+func (viewLayout) BlockAt(float32) (int, float32)                           { return -1, 0 }
+func (viewLayout) BlockTop(int) (float32, bool)                             { return 0, false }
 
 // The native style draws a DataTable bound to a pixel layout with that layout, over its whole
 // subtree, and leaves one laid out in cells to its cells.
 func TestNativeStyleDrawsABoundDataTable(t *testing.T) {
 	s := NativeStyle()
-	dt := widget.NewDataTable(widget.NewTableCore(nil))
+	dt := table.NewDataTable(table.NewTableCore(nil))
 	if p := s.painterFor(dt); p == nil {
 		t.Fatal("no painter for DataTable")
 	} else if _, _, ok := p(dt); ok {
@@ -953,7 +955,7 @@ func TestAComboBoxIsABorderedBoxWithAChevron(t *testing.T) {
 
 // NativeStyle draws golib's Select through this painter.
 func TestNativeStyleDrawsASelect(t *testing.T) {
-	sel := widget.NewSelect[string]()
+	sel := core.NewSelect[string]()
 	if NativeStyle().painterFor(sel) == nil {
 		t.Fatal("NativeStyle has no painter for a Select")
 	}

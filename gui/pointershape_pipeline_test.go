@@ -14,7 +14,8 @@ import (
 	"github.com/yongjohnlee80/golib/gui"
 	guiwidget "github.com/yongjohnlee80/golib/gui/widget"
 	"github.com/yongjohnlee80/golib/tui"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
+	"github.com/yongjohnlee80/golib/tui/widget/htmlview"
 )
 
 // pipeHost runs a real App on a TestBackend whose native views, pointer shapes, cell pixels and
@@ -117,7 +118,7 @@ func from(f []gui.CursorCells, c pointer.Cursor) int {
 // runs them, with no paint made by hand: on the very first frame, and on the frame the line
 // numbers turn on, past the gutter that frame painted, never the gutter before.
 func TestTheNativeEditorsIBeamIsEachFramesOwnThroughThePipeline(t *testing.T) {
-	e := guiwidget.NewEditor(guiwidget.WithCore(tuiwidget.CoreInitialText("one\ntwo")))
+	e := guiwidget.NewEditor(guiwidget.WithCore(editor.CoreInitialText("one\ntwo")))
 	p := startPipe(t, e, 60, 8)
 	plain := from(p.frame(t, 0), pointer.CursorText)
 	if plain < 0 {
@@ -133,7 +134,7 @@ func TestTheNativeEditorsIBeamIsEachFramesOwnThroughThePipeline(t *testing.T) {
 // A bound HTML page's links are a hand on the first frame that draws them, through the App and the
 // Backend as a window runs them, with no paint made by hand.
 func TestABoundHTMLPagesHandIsOnItsFirstFrameThroughThePipeline(t *testing.T) {
-	v := tuiwidget.NewHTMLView()
+	v := htmlview.NewHTMLView()
 	guiwidget.BindHTML(v)
 	v.SetHTML([]byte(`<p>see <a href="b.md">the link</a> here</p>`))
 	p := startPipe(t, v, 40, 4)
@@ -156,7 +157,7 @@ func TestAScrolledHTMLPagesHandIsWhereItsFrameDrewTheLink(t *testing.T) {
 	for i := range 30 {
 		fmt.Fprintf(&page, "<p>after %d</p>", i)
 	}
-	v := tuiwidget.NewHTMLView()
+	v := htmlview.NewHTMLView()
 	guiwidget.BindHTML(v)
 	v.SetHTML([]byte(page.String()))
 	const cols, rows = 40, 12
