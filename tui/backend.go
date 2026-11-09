@@ -307,6 +307,11 @@ type ProbedColor struct {
 // choose what to show: an image where the terminal draws one, a fallback where it does not.
 func (a *App) Capabilities() Capabilities { return a.backend.Capabilities() }
 
+// Backend is the backend the App runs on, as NewApp was given it (or the terminal default). It is
+// for a backend's own extensions to find their backend from an App, as gui.Window does: a
+// component draws and reads input through the App and its Context, never through the backend.
+func (a *App) Backend() Backend { return a.backend }
+
 // backendCaps is a backend's optional capabilities, asserted once, at NewApp: the backend is fixed
 // for the App's life, so no frame or event asks again. Discovery stays by interface, in this one
 // place. A nil field is a capability the backend lacks.
