@@ -1,4 +1,4 @@
-package widget
+package terminal
 
 import (
 	"context"
@@ -8,6 +8,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/pty"
@@ -35,7 +37,7 @@ func TestTerminalTabsCreateSelectAndHideNeverStartOrReplaceInstances(t *testing.
 	if err := tabs.Start(a); !errors.Is(err, ErrTerminalTabsUnmounted) {
 		t.Fatalf("pre-mount start: %v", err)
 	}
-	switcher := NewTabs(WithTab("terminals", tabs), WithTab("other", NewText("other")))
+	switcher := core.NewTabs(core.WithTab("terminals", tabs), core.WithTab("other", core.NewText("other")))
 	h := widgettest.StartApp(t, switcher, 40, 8)
 	defer h.Stop()
 	h.OnLoop(func() {

@@ -1,9 +1,11 @@
-package widget
+package terminal
 
 import (
 	"io"
 	"os"
 	"sync"
+
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 
 	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/tui"
@@ -163,7 +165,7 @@ func WithStarter(fn func(pty.Cmd) (TerminalProcess, error)) TerminalOption {
 // The wheel scrolls the scrollback in normal mode. With WithModelessScroll that view is no mode to
 // leave: the next key or paste goes back to input and to the program.
 type Terminal struct {
-	Base
+	core.Base
 	cfg terminalConfig
 
 	scr        *vt.Screen
@@ -180,7 +182,7 @@ type Terminal struct {
 	lifetimes []*TerminalStopResult // active/closing/error generations; completed successes are pruned at Start
 	shutdown  *TerminalShutdownResult
 	gen       int // the program's generation: output and exits of older ones are dropped
-	wr        *BufferWriter
+	wr        *core.BufferWriter
 	in        *inputQueue
 	pumps     sync.WaitGroup
 	running   bool

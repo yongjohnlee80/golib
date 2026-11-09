@@ -1,4 +1,4 @@
-package widget
+package terminal
 
 import (
 	"cmp"
@@ -7,6 +7,8 @@ import (
 	"os"
 	"sync"
 	"sync/atomic"
+
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 
 	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/tui"
@@ -71,10 +73,10 @@ func (r *TerminalTabRemovalResult) Wait(ctx context.Context) error { return r.ow
 // Mutations and inspection belong to the UI loop. ShutdownWithResult is the
 // exception: it is concurrent-safe and remains observable after destruction.
 type TerminalTabs struct {
-	Base
+	core.Base
 	entries []*terminalTab
 	active  TerminalTabID
-	strip   StripCore // the row of tabs over the terminals (tab_strip.go)
+	strip   core.StripCore // the row of tabs over the terminals (tab_strip.go)
 	look    style.Style
 	empty   string // the body with no tab; "" is the default message
 	// defaults are what every tab takes, those added later too (SetMinimumContrast and the rest):
@@ -93,7 +95,7 @@ type TerminalTabs struct {
 // NewTerminalTabs creates a valid empty terminal container.
 func NewTerminalTabs() *TerminalTabs {
 	t := &TerminalTabs{}
-	t.strip = StripCore{OwnerBase: &t.Base, Anchor: t, Layer: "terminaltabs", Owner: t}
+	t.strip = core.StripCore{OwnerBase: &t.Base, Anchor: t, Layer: "terminaltabs", Owner: t}
 	t.strip.Bar, t.strip.Tab, t.strip.Selected = kit.DefaultTabsStyles()
 	return t
 }
@@ -242,17 +244,17 @@ func (a TerminalTabsMenuAction) StripRun() func(string) {
 // tab too. A row's action
 // is a TerminalTabsMenuAction; a row with children is a submenu ("Go to ›" every tab, say). Unset,
 // those open SetActions' menu callback instead; nil unsets it.
-func (t *TerminalTabs) SetMenu(build func(id TerminalTabID) []MenuItemModel) {
+func (t *TerminalTabs) SetMenu(build func(id TerminalTabID) []core.MenuItemModel) {
 	t.strip.MenuRows = nil
 	if build != nil {
-		t.strip.MenuRows = func(id string) []MenuItemModel { return build(TerminalTabID(id)) }
+		t.strip.MenuRows = func(id string) []core.MenuItemModel { return build(TerminalTabID(id)) }
 	}
 }
 
 // SetAddMenu makes the strip's + open a menu, under it, instead of calling SetActions' add
 // callback: build returns its rows each time it opens (the profiles to start, say). A row's action
 // is a TerminalTabsMenuAction, run with no tab (the zero TerminalTabID); nil unsets it.
-func (t *TerminalTabs) SetAddMenu(build func() []MenuItemModel) { t.strip.AddRows = build }
+func (t *TerminalTabs) SetAddMenu(build func() []core.MenuItemModel) { t.strip.AddRows = build }
 
 // liveBody is whether a tab's terminal fills the body now: not with no tab, nor while the active
 // one closes (the body says so).
@@ -423,8 +425,8 @@ func (t *TerminalTabs) Active() TerminalTabID { return t.active }
 
 // ActiveTabIndex and TabSpans describe only strip chrome for native renderers.
 // Runtime operations continue to use opaque IDs, never presentation indexes.
-func (t *TerminalTabs) ActiveTabIndex() int { return t.strip.ActiveIndex() }
-func (t *TerminalTabs) TabSpans() []TabSpan { return t.strip.Spans() }
+func (t *TerminalTabs) ActiveTabIndex() int      { return t.strip.ActiveIndex() }
+func (t *TerminalTabs) TabSpans() []core.TabSpan { return t.strip.Spans() }
 
 func (*TerminalTabs) AccessibleRole() tui.AccessibleRole { return tui.RolePageTabList }
 
@@ -720,11 +722,11 @@ func (t *TerminalTabs) Render(s tui.Surface) {
 }
 
 // KeyScope is the key-map scope of a TerminalTabs' strip.
-func (t *TerminalTabs) KeyScope() keymap.Scope { return TabStripScope }
+func (t *TerminalTabs) KeyScope() keymap.Scope { return core.TabStripScope }
 
 // KeyBindings is the strip's commands as m binds them (tui.KeyBinder).
 func (t *TerminalTabs) KeyBindings(m *keymap.Map) []keymap.Binding {
-	return tui.BindingsOf(m, TabStripCommands...)
+	return tui.BindingsOf(m, core.TabStripCommands...)
 }
 
 func (t *TerminalTabs) HandleEvent(ev tui.Event) bool {
@@ -784,13 +786,13 @@ func (t *TerminalTabs) SetWindowButtons(on bool) { t.strip.SetWindowButtons(on) 
 
 // SetOnWindowButton is what a press on a window control does (SetWindowButtons): fn with its
 // operation, WindowMinimize, WindowMaximize or WindowClose. nil does nothing.
-func (t *TerminalTabs) SetOnWindowButton(fn func(WindowOperation)) { t.strip.OnWindow = fn }
+func (t *TerminalTabs) SetOnWindowButton(fn func(core.WindowOperation)) { t.strip.OnWindow = fn }
 
 // TabWindowControls are the window controls on the strip, as drawn now.
-func (t *TerminalTabs) TabWindowControls() []TabControl { return t.strip.ControlSpans() }
+func (t *TerminalTabs) TabWindowControls() []core.TabControl { return t.strip.ControlSpans() }
 
 // The interfaces it answers, held at compile time (core declares them).
 var (
-	_ TabWindowController = (*TerminalTabs)(nil)
-	_ TabSpanner          = (*TerminalTabs)(nil)
+	_ core.TabWindowController = (*TerminalTabs)(nil)
+	_ core.TabSpanner          = (*TerminalTabs)(nil)
 )

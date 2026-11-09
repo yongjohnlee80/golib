@@ -1,11 +1,12 @@
-package widget
+package terminal
 
 import (
 	"cmp"
 	"fmt"
-	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 	"strings"
 	"testing"
+
+	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"

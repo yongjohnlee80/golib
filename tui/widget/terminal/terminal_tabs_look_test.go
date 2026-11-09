@@ -1,4 +1,4 @@
-package widget
+package terminal
 
 import (
 	"errors"
@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/pty"
@@ -112,15 +114,15 @@ func TestTerminalTabsOpenTheirOwnMenuForATab(t *testing.T) {
 	a := addTestTerminal(t, tabs, "alpha", p1)
 	b := addTestTerminal(t, tabs, "beta", p2)
 	var ran []TerminalTabID
-	tabs.SetMenu(func(id TerminalTabID) []MenuItemModel {
-		return []MenuItemModel{
-			NewCommand("close", "Close", TerminalTabsMenuAction{ID: "tabs.close", Run: func(id TerminalTabID) { ran = append(ran, id) }}),
-			NewSubmenu("goto", "Go to", []MenuItemModel{
-				NewCommand("goto.a", "alpha", TerminalTabsMenuAction{ID: "tabs.goto", Run: func(TerminalTabID) {}}),
+	tabs.SetMenu(func(id TerminalTabID) []core.MenuItemModel {
+		return []core.MenuItemModel{
+			core.NewCommand("close", "Close", TerminalTabsMenuAction{ID: "tabs.close", Run: func(id TerminalTabID) { ran = append(ran, id) }}),
+			core.NewSubmenu("goto", "Go to", []core.MenuItemModel{
+				core.NewCommand("goto.a", "alpha", TerminalTabsMenuAction{ID: "tabs.goto", Run: func(TerminalTabID) {}}),
 			}),
 		}
 	})
-	h := widgettest.StartApp(t, NewOverlayHost(tabs), 40, 8)
+	h := widgettest.StartApp(t, core.NewOverlayHost(tabs), 40, 8)
 	defer h.Stop()
 	h.Sync()
 	var bx int
@@ -171,13 +173,15 @@ func TestTerminalTabsPlusOpensTheAddMenu(t *testing.T) {
 	addTestTerminal(t, tabs, "alpha", p1)
 	added, picked := 0, []TerminalTabID{"unset"}
 	tabs.SetActions(func() { added++ }, nil)
-	tabs.SetMenu(func(TerminalTabID) []MenuItemModel { return []MenuItemModel{NewCommand("x", "Tab row", nil)} })
-	tabs.SetAddMenu(func() []MenuItemModel {
-		return []MenuItemModel{NewCommand("claude", "Claude", TerminalTabsMenuAction{ID: "add.claude", Run: func(id TerminalTabID) { picked = []TerminalTabID{id} }})}
+	tabs.SetMenu(func(TerminalTabID) []core.MenuItemModel {
+		return []core.MenuItemModel{core.NewCommand("x", "Tab row", nil)}
 	})
-	h := widgettest.StartApp(t, NewOverlayHost(tabs), 40, 8)
+	tabs.SetAddMenu(func() []core.MenuItemModel {
+		return []core.MenuItemModel{core.NewCommand("claude", "Claude", TerminalTabsMenuAction{ID: "add.claude", Run: func(id TerminalTabID) { picked = []TerminalTabID{id} }})}
+	})
+	h := widgettest.StartApp(t, core.NewOverlayHost(tabs), 40, 8)
 	defer h.Stop()
-	var spans []TabSpan
+	var spans []core.TabSpan
 	var plus int
 	h.OnLoop(func() { spans, plus = tabs.TabSpans(), tabs.addX() })
 	if len(spans) != 3 || spans[1].X != plus {
@@ -226,10 +230,10 @@ func TestTerminalTabsAddMenuAloneShowsPlus(t *testing.T) {
 	p1 := newResultProc()
 	defer close(p1.release)
 	addTestTerminal(t, tabs, "alpha", p1)
-	tabs.SetAddMenu(func() []MenuItemModel { return []MenuItemModel{NewCommand("claude", "Claude", nil)} })
-	h := widgettest.StartApp(t, NewOverlayHost(tabs), 40, 8)
+	tabs.SetAddMenu(func() []core.MenuItemModel { return []core.MenuItemModel{core.NewCommand("claude", "Claude", nil)} })
+	h := widgettest.StartApp(t, core.NewOverlayHost(tabs), 40, 8)
 	defer h.Stop()
-	var spans []TabSpan
+	var spans []core.TabSpan
 	var plus int
 	h.OnLoop(func() { spans, plus = tabs.TabSpans(), tabs.addX() })
 	if len(spans) != 2 || spans[1].X != plus {
@@ -267,8 +271,10 @@ func TestTerminalTabsDrawTheirTabsInTheirFaceAndTheStripInTheWindows(t *testing.
 			t.Fatalf("%s: face %q", id, got)
 		}
 	}
-	tabs.SetMenu(func(TerminalTabID) []MenuItemModel { return []MenuItemModel{NewCommand("close", "Close tab", nil)} })
-	h := widgettest.StartApp(t, NewOverlayHost(tabs), 40, 8)
+	tabs.SetMenu(func(TerminalTabID) []core.MenuItemModel {
+		return []core.MenuItemModel{core.NewCommand("close", "Close tab", nil)}
+	})
+	h := widgettest.StartApp(t, core.NewOverlayHost(tabs), 40, 8)
 	defer h.Stop()
 	face := func(x, y int) uint16 { return h.TB.Snapshot()[y][x].Face }
 	var bodyFace uint16
@@ -331,13 +337,13 @@ func TestTerminalTabsDrawTheirTabsInTheirFaceAndTheStripInTheWindows(t *testing.
 func TestTerminalTabsOpenTheirMenuAnywhereOnTheStripAndAnEmptyBody(t *testing.T) {
 	tabs := NewTerminalTabs()
 	var opened []TerminalTabID
-	tabs.SetMenu(func(id TerminalTabID) []MenuItemModel {
+	tabs.SetMenu(func(id TerminalTabID) []core.MenuItemModel {
 		opened = append(opened, id)
-		return []MenuItemModel{NewCommand("hide", "Hide", nil)}
+		return []core.MenuItemModel{core.NewCommand("hide", "Hide", nil)}
 	})
-	h := widgettest.StartApp(t, NewOverlayHost(tabs), 40, 8)
+	h := widgettest.StartApp(t, core.NewOverlayHost(tabs), 40, 8)
 	defer h.Stop()
-	var spans []TabSpan
+	var spans []core.TabSpan
 	h.OnLoop(func() { spans = tabs.TabSpans() })
 	if len(spans) != 1 {
 		t.Fatalf("no tab: spans %v, want ≡ alone", spans)
@@ -459,8 +465,8 @@ func TestTerminalTabsWindowButtonsAtTheStripsRightEnd(t *testing.T) {
 		return addTestTerminal(t, tabs, label, p)
 	}
 	id := add("one")
-	var pressed []WindowOperation
-	tabs.SetOnWindowButton(func(op WindowOperation) { pressed = append(pressed, op) })
+	var pressed []core.WindowOperation
+	tabs.SetOnWindowButton(func(op core.WindowOperation) { pressed = append(pressed, op) })
 	h := widgettest.StartApp(t, tabs, 40, 4)
 	defer h.Stop()
 	h.Sync()
@@ -469,10 +475,10 @@ func TestTerminalTabsWindowButtonsAtTheStripsRightEnd(t *testing.T) {
 	}
 	h.OnLoop(func() { tabs.SetWindowButtons(true) })
 	h.Sync()
-	var controls []TabControl
-	var spans []TabSpan
+	var controls []core.TabControl
+	var spans []core.TabSpan
 	h.OnLoop(func() { controls, spans = tabs.TabWindowControls(), tabs.TabSpans() })
-	wantOps := []WindowOperation{WindowMinimize, WindowMaximize, WindowClose}
+	wantOps := []core.WindowOperation{core.WindowMinimize, core.WindowMaximize, core.WindowClose}
 	if len(controls) != 3 || controls[2].X+controls[2].W != 40 {
 		t.Fatalf("controls %+v, want _, + and x ending at the strip's last cell", controls)
 	}
@@ -495,9 +501,9 @@ func TestTerminalTabsWindowButtonsAtTheStripsRightEnd(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	var got []WindowOperation
+	var got []core.WindowOperation
 	for range 300 { // injected events and the loop's Updates are unordered: poll
-		h.OnLoop(func() { got = append([]WindowOperation(nil), pressed...) })
+		h.OnLoop(func() { got = append([]core.WindowOperation(nil), pressed...) })
 		if len(got) == 3 {
 			break
 		}
