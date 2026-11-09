@@ -11,17 +11,17 @@ import (
 	"time"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // demo is the root controller component: it mounts the widget tree, wires
 // the Bus subscriptions, and owns the async tasks (App.Go).
 type demo struct {
 	root   tui.Component
-	items  *widget.List[string]
-	input  *widget.TextInput
-	log    *widget.BufferView
-	status *widget.StatusBar
+	items  *core.List[string]
+	input  *core.TextInput
+	log    *core.BufferView
+	status *core.StatusBar
 
 	quit      func()
 	stream    bool // periodic colored ticker into the log (off in tests)
@@ -44,24 +44,24 @@ type demo struct {
 // stream enables the streaming panel.
 func New(quit func(), stream bool) *demo {
 	d := &demo{
-		items:  widget.NewList(widget.WithItems[string](nil, func(s string) string { return s })),
-		input:  widget.NewTextInput(widget.WithPlaceholder("type and press Enter")),
-		log:    widget.NewBufferView(),
-		status: widget.NewStatusBar(),
+		items:  core.NewList(core.WithItems[string](nil, func(s string) string { return s })),
+		input:  core.NewTextInput(core.WithPlaceholder("type and press Enter")),
+		log:    core.NewBufferView(),
+		status: core.NewStatusBar(),
 		quit:   quit,
 		stream: stream,
 	}
-	right := widget.NewSplit(widget.Vertical,
-		widget.NewBox(d.input, widget.WithTitle("Input")),
-		widget.NewBox(d.log, widget.WithTitle("Log"), widget.WithStatus("End: follow")),
-		widget.WithRatio(0.25), widget.WithMinSizes(3, 4))
-	body := widget.NewSplit(widget.Horizontal,
-		widget.NewBox(d.items, widget.WithTitle("Items")),
-		right, widget.WithRatio(0.3), widget.WithMinSizes(12, 20))
+	right := core.NewSplit(core.Vertical,
+		core.NewBox(d.input, core.WithTitle("Input")),
+		core.NewBox(d.log, core.WithTitle("Log"), core.WithStatus("End: follow")),
+		core.WithRatio(0.25), core.WithMinSizes(3, 4))
+	body := core.NewSplit(core.Horizontal,
+		core.NewBox(d.items, core.WithTitle("Items")),
+		right, core.WithRatio(0.3), core.WithMinSizes(12, 20))
 	dock := tui.NewDock()
 	dock.Pin(tui.DockBottom, d.status)
 	dock.Add(body)
-	d.root = widget.NewOverlayHost(dock)
+	d.root = core.NewOverlayHost(dock)
 	return d
 }
 
@@ -75,7 +75,7 @@ func (d *demo) Init(ctx *tui.Context) {
 	d.status.SetRight("loading…")
 
 	// Submits append to the log and clear the input (Bus).
-	tui.SubscribeScoped(ctx, func(ev widget.SubmitEvent) {
+	tui.SubscribeScoped(ctx, func(ev core.SubmitEvent) {
 		if ev.Owner != d.input.NodeID() || ev.Value == "" {
 			return
 		}
