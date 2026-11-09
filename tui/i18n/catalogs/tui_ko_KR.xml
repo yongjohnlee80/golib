@@ -231,5 +231,9 @@
         <source>Replace this match?  y yes · n no · q stop</source>
         <translation>이 항목을 바꿀까요?  y 예 · n 아니요 · q 중지</translation>
     </message>
+    <message id="tui.gui.notInTerminal">
+        <source>Not available in the terminal</source>
+        <translation>터미널에서는 표시할 수 없습니다</translation>
+    </message>
 </context>
 </TS>

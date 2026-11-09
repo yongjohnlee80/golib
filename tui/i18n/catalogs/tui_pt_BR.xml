@@ -231,5 +231,9 @@
         <source>Replace this match?  y yes · n no · q stop</source>
         <translation>Substituir esta ocorrência?  y sim · n não · q parar</translation>
     </message>
+    <message id="tui.gui.notInTerminal">
+        <source>Not available in the terminal</source>
+        <translation>Não disponível no terminal</translation>
+    </message>
 </context>
 </TS>
