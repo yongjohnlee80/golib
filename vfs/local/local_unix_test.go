@@ -1,7 +1,7 @@
 //go:build linux || darwin
 
 // The cells for POSIX behaviour alone: a FIFO refused without waiting for a writer, and the
-// no-replace flag's EINVAL probe.
+// no-replace flag's EINVAL probe, and a write's Unix permission bits.
 
 package local
 
@@ -10,12 +10,14 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"golang.org/x/sys/unix"
 
 	"github.com/yongjohnlee80/golib/errs"
+	"github.com/yongjohnlee80/golib/vfs"
 )
 
 // TestRenameIntoItselfThroughLink: a move into itself the lexical check cannot see (through an in-root
@@ -78,5 +80,21 @@ func TestOpenRefusesAFileThatIsNotRegular(t *testing.T) {
 	defer rc.Close()
 	if b, err := io.ReadAll(rc); err != nil || string(b) != "data" {
 		t.Errorf("the regular file read %q, %v", b, err)
+	}
+}
+
+func TestPerm(t *testing.T) {
+	f, dir := newLocal(t)
+	if _, err := f.WriteFile(bg, "p.sh", strings.NewReader("x"), vfs.WithPerm(0o750)); err != nil {
+		t.Fatal(err)
+	}
+	st, _ := os.Stat(filepath.Join(dir, "p.sh"))
+	if st.Mode().Perm() != 0o750 {
+		t.Fatalf("mode = %v, want 0750", st.Mode().Perm())
+	}
+	mustWrite(t, f, "p.sh", "y") // an existing file keeps its mode
+	st, _ = os.Stat(filepath.Join(dir, "p.sh"))
+	if st.Mode().Perm() != 0o750 {
+		t.Fatalf("after replace mode = %v, want 0750", st.Mode().Perm())
 	}
 }

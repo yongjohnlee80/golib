@@ -379,22 +379,6 @@ func TestVersion(t *testing.T) {
 	}
 }
 
-func TestPerm(t *testing.T) {
-	f, dir := newLocal(t)
-	if _, err := f.WriteFile(bg, "p.sh", strings.NewReader("x"), vfs.WithPerm(0o750)); err != nil {
-		t.Fatal(err)
-	}
-	st, _ := os.Stat(filepath.Join(dir, "p.sh"))
-	if st.Mode().Perm() != 0o750 {
-		t.Fatalf("mode = %v, want 0750", st.Mode().Perm())
-	}
-	mustWrite(t, f, "p.sh", "y") // an existing file keeps its mode
-	st, _ = os.Stat(filepath.Join(dir, "p.sh"))
-	if st.Mode().Perm() != 0o750 {
-		t.Fatalf("after replace mode = %v, want 0750", st.Mode().Perm())
-	}
-}
-
 func TestRenameIntoItself(t *testing.T) {
 	f, _ := newLocal(t)
 	_ = f.MkdirAll(bg, "d/e")
