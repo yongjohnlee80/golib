@@ -15,6 +15,15 @@ on:
     branches: [canary]
   pull_request:
     branches: [main]
+  # Run by hand on a branch (gh workflow run go.yml --ref <branch>): only the windows job runs, so a
+  # Windows change is tested on Windows before it reaches canary. discover runs every package's tests
+  # and lists which pass, to grow .github/windows-packages.txt.
+  workflow_dispatch:
+    inputs:
+      discover:
+        description: run every package's tests and list those that pass on Windows
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -82,6 +91,45 @@ jobs:
       # pressure that catches the common ordering races.
       - name: test
         run: go test -race -count=2 -timeout 20m ./...
+
+  # Windows: golib and its gui module build and vet natively,
+  # and the packages listed in .github/windows-packages.txt, the ones ported so far, run their tests.
+  # The list only grows: a package is added once its tests pass on Windows.
+  windows:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.head_ref == 'canary' || startsWith(github.head_ref, 'release/'))
+    name: windows
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: build
+        run: go build ./...
+      - name: vet
+        run: go vet ./...
+      - name: gui builds and vets on this commit's golib
+        run: |
+          go work init . ./gui
+          (cd gui && go build ./... && go vet ./...)
+      - name: test the ported packages
+        if: ${{ !inputs.discover }}
+        run: |
+          mapfile -t pkgs < <(grep -v '^#' .github/windows-packages.txt | grep .)
+          go test -count=1 -timeout 20m "${pkgs[@]}"
+      - name: discover which packages pass on Windows
+        if: ${{ inputs.discover }}
+        continue-on-error: true
+        run: |
+          go test -count=1 -timeout 30m -json ./... > "$RUNNER_TEMP/win.json" || true
+          echo "== packages that pass on Windows"
+          jq -r 'select(.Action == "pass" and .Test == null) | .Package' "$RUNNER_TEMP/win.json" | sort -u
+          echo "== packages that fail on Windows"
+          jq -r 'select(.Action == "fail" and .Test == null) | .Package' "$RUNNER_TEMP/win.json" | sort -u
 
   # golib/gui: its own module, on Gio, with cgo. The root job never compiles it.
   gui:
