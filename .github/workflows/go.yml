@@ -156,10 +156,12 @@ jobs:
           cache-dependency-path: gui/go.sum
       - name: use this commit's golib
         run: go work init . ./gui
+      - name: every tested gui package is listed
+        run: cd gui && bash ../.github/gui-packages-check.sh ../.github/windows-gui-packages.txt
       - name: test the ported gui packages
         if: ${{ !inputs.discover }}
         run: |
-          mapfile -t pkgs < <(grep -v '^#' .github/windows-gui-packages.txt | grep .)
+          mapfile -t pkgs < <(grep -v '^[#!]' .github/windows-gui-packages.txt | sed 's/[[:space:]]*#.*//' | grep .)
           cd gui && go test -count=3 -timeout 20m "${pkgs[@]}"
       - name: discover which gui packages pass on Windows
         if: ${{ inputs.discover }}
@@ -365,10 +367,12 @@ jobs:
 
       # The rest of the module on macOS: the packages in .github/macos-gui-packages.txt, which may only
       # grow (paths relative to gui/). The goldens are Linux's and skip here.
+      - name: every tested gui package is listed
+        run: bash ../.github/gui-packages-check.sh ../.github/macos-gui-packages.txt
       - name: test the gui packages that pass on macOS
         if: ${{ !inputs.discover }}
         run: |
-          pkgs=$(grep -v '^#' ../.github/macos-gui-packages.txt | grep . | tr '\n' ' ')
+          pkgs=$(grep -v '^[#!]' ../.github/macos-gui-packages.txt | sed 's/[[:space:]]*#.*//' | grep . | tr '\n' ' ')
           go test -race -count=3 -timeout 20m $pkgs
       - name: discover which gui packages pass on macOS
         if: ${{ inputs.discover }}
