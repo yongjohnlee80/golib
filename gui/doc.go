@@ -163,7 +163,7 @@
 //
 //		"github.com/yongjohnlee80/golib/gui"
 //		"github.com/yongjohnlee80/golib/tui"
-//		"github.com/yongjohnlee80/golib/tui/widget"
+//		"github.com/yongjohnlee80/golib/tui/widget/core"
 //	)
 //
 //	func main() {
@@ -172,7 +172,7 @@
 //				gui.WithTitle("Editor Window"),
 //				gui.WithSize(1024, 768),
 //			)
-//			root := widget.NewBox(widget.NewText("Hello, Native GUI!"))
+//			root := core.NewBox(core.NewText("Hello, Native GUI!"))
 //			app := tui.NewApp(root, tui.WithBackend(backend))
 //			return app.Run(context.Background())
 //		})

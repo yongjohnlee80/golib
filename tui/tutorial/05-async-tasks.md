@@ -312,10 +312,10 @@ func (v *Dashboard) HandleEvent(ev tui.Event) bool {
 
 ## 7. The BufferView Log Writer & Pre-Mount Relay
 
-If you want background loggers or process outputs (like `exec.Cmd.Stdout`) to stream directly into a `widget.BufferView`, use `bufferView.Writer()`.
+If you want background loggers or process outputs (like `exec.Cmd.Stdout`) to stream directly into a `core.BufferView`, use `bufferView.Writer()`.
 
 `bufferView.Writer()` is thread-safe, but has one important caveat:
-> **Writes made before the BufferView is mounted reject with `(0, widget.ErrClosed)`.**
+> **Writes made before the BufferView is mounted reject with `(0, core.ErrClosed)`.**
 
 If callers ignore this error, startup logs are lost. To ensure startup logs are never lost before `app.Run` mounts the tree, use a small relay:
 

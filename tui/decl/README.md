@@ -97,11 +97,11 @@ change at runtime, which is what makes it bindable to a source.
 | `ComboBox` | `textRole`, `valueRole`, `placeholderText`, `maxWidth` (default 40 cells) | `model`, `currentIndex` | `currentIndex`, `currentValue` | `activated(index)` | — |
 | `TableView` | golib's `cellCursor`, `sortable` (see below), `delegate` (a row cursor's cells: a `Text` template with a text and an optional colour, no id, handlers or children) | `model`, `currentIndex`; with a cell cursor (`cellCursor: true`), golib's `rowNumbers` (each row's number in a gutter), `copyFormat` (`"tsv"`, the default, or `"csv"`: what `y` copies), `rowCursor` (the cursor covers its whole row; `r` toggles it, and `y` then copies the row), `orderBy` (the sort as ORDER BY text), `filter` (the rows shown, as WHERE text) and `contextMenu` (a right-click menu of the host's rows) (see below) | `currentIndex`; with a cell cursor (`cellCursor: true`), golib's `orderBy`, `orderByError`, `filter` and `filterError` | `activated(index)`, `currentIndexChanged(index)`, golib's `contextMenuRequested(index, x, y)`, golib's `orderByChanged(orderBy)` (see below) | — |
 | `TableViewColumn` | `role`, `title`, `width`, `elideMode` | — | — | — | — |
-| `TabView` | palette (the bar: `window`/`windowText` behind the titles, `button`/`buttonText` for each, `highlight`/`highlightedText` for the current one) | `currentIndex`, `windowButtons` (golib's: `_`, `+` and `x` side by side at the bar's right end, the title bar's minimize, maximize and close; default false) | `currentIndex`, `count` | `currentIndexChanged(index)`, `minimizeRequested` (`_`), `maximizeRequested` (`+`), `closeRequested` (`x`) | the bar's menu: `SetMenu(func(i int) []widget.MenuItemModel)` on the node `Find` returns, from Go (≡ and a right press on a tab open it; a row's action is a `widget.TabsMenuAction`) |
+| `TabView` | palette (the bar: `window`/`windowText` behind the titles, `button`/`buttonText` for each, `highlight`/`highlightedText` for the current one) | `currentIndex`, `windowButtons` (golib's: `_`, `+` and `x` side by side at the bar's right end, the title bar's minimize, maximize and close; default false) | `currentIndex`, `count` | `currentIndexChanged(index)`, `minimizeRequested` (`_`), `maximizeRequested` (`+`), `closeRequested` (`x`) | the bar's menu: `SetMenu(func(i int) []core.MenuItemModel)` on the node `Find` returns, from Go (≡ and a right press on a tab open it; a row's action is a `core.TabsMenuAction`) |
 | `Tab` | `title`; one child, its content | — | — | — | — |
 | `TreeView` | `textRole`, `badgeRole`, `delegate` (each node's row: a `Text` template, as a TableView's) | `model` (a tree model) | — | `activated(index)`, `expanded(index)`, `currentIndexChanged(index)` — an `Index` | `toggleExpanded(index)`, `setCurrentIndex(index)` |
-| `FileDialog` | `title`, `helpText`, `dim`, `fileMode`, `preview`, palette | `currentFolder`, `selectedFile`, `source` (golib's: a `widget.FileSource` the host binds, listed in place of the program's files; a rebinding lists it afresh) | — | `accepted(selectedFile)`, `rejected`, `closed` | `open()`, `close()` |
-| `Drawer` | `modal` (default true), `closeOnQ` (q closes it too; Esc always does: the key commands `tui.drawer.closeOnQ` and `tui.drawer.close`, after its Shortcuts), golib's `resizable` (default false), `windowResize`, `movable` and `moveButton`, and the window controls' `maximizable`, `minimizable`, `closable`, `label`, `key`, `dragModifier` and `resizeButton` (see [Window capability widgets](#window-capability-widgets)); golib's `reserve` (default false: docked and shown, it takes its strip of the Window from the page, between the bars, instead of lying over it; see Reserving Drawers); one child, its content, and any number of Shortcuts; `keyScope` (as the Dialog's) | `edge` (`Tui.Left`, `Right`, `Top`, `Bottom`, or golib's `Center`: floating in the middle, `length` wide and `size` high), `size` (a percentage across the edge), `length` (golib's: a percentage along it, centred; default 100), golib's `minimumSize` (default 10) and `minimumLength` (default 20); a movable Drawer's `floating`, `floatX`, `floatY`, `floatWidth` and `floatHeight` (percentages of the Window) | golib's `covered` (open, and another panel or window stacked above it overlaps it: `widget.OverlayHost.Covered`) | `opened`, `closed`, golib's `resized(size, length)`, a movable Drawer's `placed(x, y, width, height)`, and with window controls `changed(operation, key, x, y, width, height, maximized, minimized)`, as a WindowMod's | `open()`, `close()`, `toggle()`, `resizeBy`, `moveBy`, and with window controls `toggleMaximize()`, `minimize()` and `restore()` |
+| `FileDialog` | `title`, `helpText`, `dim`, `fileMode`, `preview`, palette | `currentFolder`, `selectedFile`, `source` (golib's: a `files.FileSource` the host binds, listed in place of the program's files; a rebinding lists it afresh) | — | `accepted(selectedFile)`, `rejected`, `closed` | `open()`, `close()` |
+| `Drawer` | `modal` (default true), `closeOnQ` (q closes it too; Esc always does: the key commands `tui.drawer.closeOnQ` and `tui.drawer.close`, after its Shortcuts), golib's `resizable` (default false), `windowResize`, `movable` and `moveButton`, and the window controls' `maximizable`, `minimizable`, `closable`, `label`, `key`, `dragModifier` and `resizeButton` (see [Window capability widgets](#window-capability-widgets)); golib's `reserve` (default false: docked and shown, it takes its strip of the Window from the page, between the bars, instead of lying over it; see Reserving Drawers); one child, its content, and any number of Shortcuts; `keyScope` (as the Dialog's) | `edge` (`Tui.Left`, `Right`, `Top`, `Bottom`, or golib's `Center`: floating in the middle, `length` wide and `size` high), `size` (a percentage across the edge), `length` (golib's: a percentage along it, centred; default 100), golib's `minimumSize` (default 10) and `minimumLength` (default 20); a movable Drawer's `floating`, `floatX`, `floatY`, `floatWidth` and `floatHeight` (percentages of the Window) | golib's `covered` (open, and another panel or window stacked above it overlaps it: `core.OverlayHost.Covered`) | `opened`, `closed`, golib's `resized(size, length)`, a movable Drawer's `placed(x, y, width, height)`, and with window controls `changed(operation, key, x, y, width, height, maximized, minimized)`, as a WindowMod's | `open()`, `close()`, `toggle()`, `resizeBy`, `moveBy`, and with window controls `toggleMaximize()`, `minimize()` and `restore()` |
 | `FloatWindow` | golib's: one child, its content; `movable`, `resizable`, `minimizable` (needs `WithWindowCollector`), `label`, `key`, `dragModifier`, `moveButton`, `resizeButton`; no close and no maximize (see [Window capability widgets](#window-capability-widgets)) | `maximumWidth`, `maximumHeight` (cells; 0, the default: none), `floatX`, `floatY`, `floatWidth`, `floatHeight` (percentages of the Window; default the whole of it) | `minimized`, golib's `covered` (as a Drawer's) | `placed(x, y, width, height)`, `changed(operation, key, x, y, width, height, maximized, minimized)` | `moveBy`, `resizeBy`, `minimize()`, `restore()` |
 | `TileManager` | golib's: Tiles and windows (a `Drawer`, a `FloatWindow`: members, see Tiles), at most one at `Tui.Center` | — | — | `tileChanged(key, operation, edge, size, tiled)` (a member's completed operation) | — |
 | `Tile` | golib's, a TileManager's child: one child, its content; `edges` (the edges a re-dock may take, spelt as `panelgeometry`'s and apart by spaces: `"left right"`; `"center"` lets it swap into the centre), `minimizable` (hidden by a dock: WithWindowCollector; never while it is the centre), `key` (default its id) | `edge` (`Tui.Left`, `Right`, `Top`, `Bottom`, or `Center`: the one centre tile), `size` (a percentage across the edge, two decimals kept), `minimumSize` (cells, on both axes), `minimumWidth` and `minimumHeight` (cells on one axis, each over `minimumSize` there; a strip keeps the one across its edge, so a re-dock takes the other, and the centre keeps both), `maximumWidth` and `maximumHeight` (the centre's: the most cells it takes on one axis, 0 for none; the strips beside it there take the rest, and with none it is centred at its maximum) | — | `resized(size)` (a border it owns moved, from whichever tile the drag began in), `docked(edge)` (re-docked or swapped), `changed(operation, maximized, hidden)` | `show()`, `hide()`, `toggle()`, `toggleMaximize()`, `resizeBy` |
@@ -122,7 +122,7 @@ right press on a row, the cursor moved to that row first so the menu acts on wha
 for a right press below the rows, with `index` -1, the cursor left where it is; and for Shift+F10
 or the Menu key while it holds the keyboard, on the cursor row. `x` and `y` are where to open a
 menu, in the view's own cells (the header row is row 0). It opens no menu itself: the program
-opens one there, `widget.NewEditorMenu(view, nil)` with its own rows, say. A `TableView` that does
+opens one there, `editor.NewEditorMenu(view, nil)` with its own rows, say. A `TableView` that does
 not declare the handler leaves a right press unhandled, as before.
 
 **UI text takes `qsTrId("id")`** — Qt's id-based translation, from the program's
@@ -141,7 +141,7 @@ engine's, expanded before anything is built, so they have no widget.
 `tuidecl.Types(controls.Types()...)`: `TextField` (`placeholderText`,
 `echoMode`, golib's `completions` (a model whose rows Tab completes the word
 from); setter and readable `text`; `accepted(text)`, `textEdited(text)`;
-`clear()`), `TextArea` (several lines over `widget.TextArea`: `placeholderText`,
+`clear()`), `TextArea` (several lines over `core.TextArea`: `placeholderText`,
 `wrapMode` (`TextEdit.NoWrap`, the default, or `TextEdit.WordWrap`); setter and
 readable `text`; `clear()`; Enter breaks the line, so a dialog's accept or a
 `Shortcut` reads `text` by id) and `Popup` (`modal`, `dim`; `open()`, `close()`). A `MenuItem`'s
@@ -224,8 +224,8 @@ another; a Tab that is not current is not laid out, painted or focused.
 Ctrl+PageUp and Ctrl+PageDown change tabs from inside the view; with the bar
 focused, ←/→ and `[` `]` do, and so does a click on a title. A host can give the bar
 a menu from Go: the node `Find` returns implements
-`interface{ SetMenu(func(i int) []widget.MenuItemModel) }`, each row's action a
-`widget.TabsMenuAction`. ≡ shows on the bar, and it and a right press on a tab
+`interface{ SetMenu(func(i int) []core.MenuItemModel) }`, each row's action a
+`core.TabsMenuAction`. ≡ shows on the bar, and it and a right press on a tab
 open the host's rows for that tab (its index), under the bar.
 
 ```qml
@@ -290,8 +290,8 @@ A `TableView` shows the model's own columns — a query's result, whatever
 columns it has, redrawn on the same view when they change — unless it declares
 `TableViewColumn`s.
 
-golib's `cellCursor: true` (set at construction) shows the rows through a `widget.TableCore` and
-a `widget.DataTable`: a cursor on cells, scrolled both ways, with vim's keys — counts, h/j/k/l,
+golib's `cellCursor: true` (set at construction) shows the rows through a `table.TableCore` and
+a `table.DataTable`: a cursor on cells, scrolled both ways, with vim's keys — counts, h/j/k/l,
 `w`/`b` by field, `gg`/`G` (`[n]G` to row n), 0/$, `v` cells in reading order, `V` whole rows,
 Ctrl+V a block, `y` copies the selection (or the cell) as TSV and `yy` the cursor's row, Esc ends a
 selection. The mouse selects too: a drag over cells, over the row numbers (whole rows), or over the
@@ -327,14 +327,14 @@ the empty table, with no cursor row and nothing to copy.
 
 golib's `contextMenu: true` opens a menu at a right press, the selection left as it is; its rows are the
 host's, `tuidecl.TableOf(c).Menu().SetRows(…)`, as an `Editor`'s are, and with none the press goes
-on. A model that knows each cell's kind (`widget.TableKinds`) sorts by kind — NULLs last, numbers
+on. A model that knows each cell's kind (`table.TableKinds`) sorts by kind — NULLs last, numbers
 as exact decimals — when the TableView declares no `TableViewColumn`s. A model that
 is a `tuidecl.Fetcher` (Qt's `canFetchMore`/`fetchMore`, asked at the root `Index{}`) is asked
 for more rows as the cursor nears the end of those loaded; the host inserts them when they come.
 `index` in its signals and `currentIndex` are the model's row whatever the sort shows. A
 cell-cursor `TableView` takes no `delegate` and has no `contextMenuRequested` (its menu is
 `contextMenu`), and `sortable`, `rowNumbers`, `orderBy`, `filter` and `contextMenu` need it. A native backend binds its own pixel layout to the `DataTable`
-(`widget.DataTable.BindLayout`; gui's `Native()` style does so for every cell-cursor `TableView`)
+(`table.DataTable.BindLayout`; gui's `Native()` style does so for every cell-cursor `TableView`)
 and draws the same core: the same keys, cursor, sort, paging and signals. A row-cursor
 `TableView` is drawn in cells on either.
 
@@ -439,26 +439,26 @@ scrolls by the arrows or `k`/`j`, `PgUp`/`PgDn` or `Space`, `Ctrl+U`/`Ctrl+D` (h
 `Home`/`End` or `g`/`G`. In a
 terminal it lays the page out in cells: headings bold, links underlined, quotes barred, lists
 hanging, a table's columns lined up when they fit, an image as its alt text. A native backend
-binds its own pixel layout (`widget.HTMLView.BindLayout`) and draws it, with the same selection,
+binds its own pixel layout (`htmlview.HTMLView.BindLayout`) and draws it, with the same selection,
 scroll and signals. Elements may carry `data-src="from-to"`, the source bytes they show:
 `scrolledTo(sourceByte)` reports the block at the top as it scrolls, `scrollToSource(byte)`
 brings one there, and a new `html` keeps the block that was at the top in its place. A host gives
-large pages by id (`tuidecl.FindAs[*widget.HTMLView](p, "preview").SetHTML(page)`), and images
-through `widget.DirImages(root)`, which opens nothing outside root.
+large pages by id (`tuidecl.FindAs[*htmlview.HTMLView](p, "preview").SetHTML(page)`), and images
+through `htmlview.DirImages(root)`, which opens nothing outside root.
 
 **`Image`** is Qt Quick's `Image` without a `source`: the host gives it a PNG by id
-(`tuidecl.FindAs[*widget.Image](p, "preview").SetPNG(png)`), and it shows it over its cells on a
+(`tuidecl.FindAs[*htmlview.Image](p, "preview").SetPNG(png)`), and it shows it over its cells on a
 terminal that draws images (kitty's graphics protocol, `tui.Capabilities.KittyGraphics`). It
 reserves its cells blank; the runtime places the image, places it again when the cells move or the
 PNG changes, and deletes it when the `Image` is hidden or goes. On a terminal without images the
-cells stay blank, so a host shows its fallback there instead. `widget.RasterizeSVG` and
-`widget.RasterizeHTML` make a PNG with optional tools found at runtime (`rsvg-convert`, a headless
+cells stay blank, so a host shows its fallback there instead. `htmlview.RasterizeSVG` and
+`htmlview.RasterizeHTML` make a PNG with optional tools found at runtime (`rsvg-convert`, a headless
 Chromium or Chrome), offline and bounded. A page cannot reach the network (WebRTC included) or this
 host's other files: it is given a content policy admitting only inline scripts and styles and `data:`
 and `blob:` subresources, and a `Page` with `NoScripts` runs none.
-A terminal refuses an image wider or taller than `widget.MaxImagePixels` (10000, kitty's and
+A terminal refuses an image wider or taller than `htmlview.MaxImagePixels` (10000, kitty's and
 Ghostty's limit), and shows nothing. A scrollable `Image` shows a taller PNG, such as a long page from
-`widget.RasterizeHTMLPage`, as strips: `widget.SplitPNG` cuts them off the UI thread, and
+`htmlview.RasterizeHTMLPage`, as strips: `htmlview.SplitPNG` cuts them off the UI thread, and
 `SetStrips` sets them. Only the strip holding the part shown is placed. `SetPNG` cuts a PNG that
 large itself, on the caller's thread. One it cannot cut (an `Image` that does not scroll, or a PNG
 too wide) is scaled down to fit. Any PNG that decodes is placed within the limit; one that does
@@ -709,7 +709,7 @@ Dialog {
 ```
 
 Each button runs its own `onClicked`, then the dialog answers for its role.
-These are the widget's rules (`widget.Modal`), the same for a dialog built in Go.
+These are the widget's rules (`core.Modal`), the same for a dialog built in Go.
 
 A `FileDialog`'s body is a [file view](../widget/README.md#file-widgets), laid
 out as every picker is: the fields over the listing in the left column, the

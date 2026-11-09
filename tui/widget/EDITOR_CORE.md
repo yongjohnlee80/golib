@@ -10,7 +10,7 @@ This page covers the functions a program builds on. Each one is a method on `*Ed
 editors hand theirs out with `Core()`.
 
 ```go
-core := editor.Core() // *widget.EditorCore, the terminal's or the GUI's
+core := editor.Core() // *editor.EditorCore, the terminal's or the GUI's
 ```
 
 Every function runs on the UI loop goroutine, as all widget state does. From another goroutine,
@@ -41,8 +41,8 @@ end is its end, and a line past the last is the last. A range given backwards is
 ## Edits
 
 ```go
-end, err := core.Insert(widget.TextPos{Line: 3, Col: 0}, "## Notes\n")
-err = core.Delete(widget.TextRange{From: a, To: b})
+end, err := core.Insert(editor.TextPos{Line: 3, Col: 0}, "## Notes\n")
+err = core.Delete(editor.TextRange{From: a, To: b})
 end, err = core.Replace(r, "new text")
 ```
 
@@ -116,7 +116,7 @@ revision, and what its highlighter made of each line. An `EditorCore` shows one 
 Every core starts on an empty buffer of its own.
 
 ```go
-notes := widget.NewBuffer(widget.BufferText(text), widget.BufferName("notes.md"))
+notes := editor.NewBuffer(editor.BufferText(text), editor.BufferName("notes.md"))
 core.SetBuffer(notes)   // show it; the buffer left keeps this editor's cursor as a place
 back := core.Buffer()   // the buffer shown now
 notes.Modified()        // per buffer, as Modified/MarkSaved/Revision on the core are for the shown one
@@ -139,9 +139,9 @@ notes.Modified()        // per buffer, as Modified/MarkSaved/Revision on the cor
 ## Find and replace
 
 ```go
-r, ok := core.Find("term", core.Cursor(), widget.FindOptions{IgnoreCase: true, Wrap: true})
-all := core.FindAll("term", widget.FindOptions{})
-n, err := core.ReplaceAll("old", "new", widget.FindOptions{}) // one undo step
+r, ok := core.Find("term", core.Cursor(), editor.FindOptions{IgnoreCase: true, Wrap: true})
+all := core.FindAll("term", editor.FindOptions{})
+n, err := core.ReplaceAll("old", "new", editor.FindOptions{}) // one undo step
 ```
 
 - A term matches whole grapheme clusters within one line.
@@ -156,9 +156,9 @@ n, err := core.ReplaceAll("old", "new", widget.FindOptions{}) // one undo step
 The **active find** is what the editor shows and what `n` and `N` step through:
 
 ```go
-core.SetFind("term", widget.FindOptions{IgnoreCase: true}) // mark it; n / N go through it
+core.SetFind("term", editor.FindOptions{IgnoreCase: true}) // mark it; n / N go through it
 core.FindNext(false)                                       // as n; FindNext(true) is N
-core.SetFind("", widget.FindOptions{})                     // clear it
+core.SetFind("", editor.FindOptions{})                     // clear it
 ```
 
 - Each match on screen takes the `Alert` highlight style, laid over the host's own overlay
@@ -177,7 +177,7 @@ top, visiting each match once, so a replacement that contains the term is never 
 All the replacements of one session undo as a single step:
 
 ```go
-s, ok := core.StartReplace("cat", "dog", widget.FindOptions{}) // the first match, selected
+s, ok := core.StartReplace("cat", "dog", editor.FindOptions{}) // the first match, selected
 for ok {
 	r, _ := s.Current()             // the match to ask about, selected in the editor
 	more, err := s.Answer(ask(r))   // replace (true) or skip (false), then the next match
@@ -214,8 +214,8 @@ err = core.RunCommand("replace a b")  // a verb and its arguments
 **Saving and quitting belong to the host.** The core asks for them through two hooks:
 
 ```go
-widget.CoreOnWrite(func(quit bool) error { ... }) // w: false, wq / x: true
-widget.CoreOnQuit(func(force bool) error { ... }) // q: false, q!: true
+editor.CoreOnWrite(func(quit bool) error { ... }) // w: false, wq / x: true
+editor.CoreOnQuit(func(force bool) error { ... }) // q: false, q!: true
 ```
 
 - `quit` asks the host to quit once *its* write has succeeded. A write may finish later, after a
@@ -226,17 +226,17 @@ widget.CoreOnQuit(func(force bool) error { ... }) // q: false, q!: true
 **Commands are a registry the host composes into.** Every core starts with `DefaultCommands()`:
 
 ```go
-err := core.Commands().Add(widget.Command{
+err := core.Commands().Add(editor.Command{
 	Name:    "table",
 	Aliases: []string{"tbl"},
 	Args:    "<cols> <rows>",            // shown by Tab completion
 	Help:    "insert a Markdown table",  // shown by Tab completion
-	Run: func(x widget.CommandContext) error {
+	Run: func(x editor.CommandContext) error {
 		// x.Core: the editor; x.Args: the words; x.Line: the rest of the line; x.Bang: "table!"
 		return x.Core.Batch(func() error { ... })
 	},
 	// optional: what Tab offers for an argument; the prompt keeps those starting with x.Word
-	Complete: func(x widget.CompleteContext) []string {
+	Complete: func(x editor.CompleteContext) []string {
 		// x.Args: the words before the one being completed; x.Word: that one, as typed so far
 		return []string{"1", "2", "3"}
 	},
@@ -367,14 +367,14 @@ the mode is Normal until the command is complete. `OneShotMode()` says which mod
 
 ```go
 // :upper — upper-case the selection, or the current line.
-core.Commands().Add(widget.Command{
+core.Commands().Add(editor.Command{
 	Name: "upper", Help: "upper-case the selection or the line",
-	Run: func(x widget.CommandContext) error {
+	Run: func(x editor.CommandContext) error {
 		c := x.Core
 		r, ok := c.Selection()
 		if !ok {
 			ln := c.Cursor().Line
-			r = widget.TextRange{From: widget.TextPos{Line: ln}, To: widget.TextPos{Line: ln, Col: 1 << 30}}
+			r = editor.TextRange{From: editor.TextPos{Line: ln}, To: editor.TextPos{Line: ln, Col: 1 << 30}}
 		}
 		_, err := c.Replace(r, strings.ToUpper(c.TextIn(r)))
 		return err

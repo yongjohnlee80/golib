@@ -137,7 +137,7 @@ var routingDocs = []docRequirement{
 	{
 		path: "tui/tutorial/06-floats-and-modals.md",
 		why:  "this page teaches Float as THE way to build a dialog, which stopped being true when the composed Modal landed; a reader following it writes the lifecycle by hand",
-		must: []string{"widget.Modal"},
+		must: []string{"core.Modal"},
 	},
 }
 

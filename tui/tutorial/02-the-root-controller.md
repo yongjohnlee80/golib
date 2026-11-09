@@ -8,8 +8,8 @@ Nothing scrolls, nothing fills, `Ctrl-C` doesn't quit.
 
 ```go
 // WRONG: a bare widget as the app root.
-tabs := widget.NewTabs(widget.WithTab("Items", list))
-app := tui.NewApp(widget.NewBox(tabs), tui.WithBackend(backend)) // renders ~2 rows
+tabs := core.NewTabs(core.WithTab("Items", list))
+app := tui.NewApp(core.NewBox(tabs), tui.WithBackend(backend)) // renders ~2 rows
 ```
 
 Two things went wrong at once:
@@ -70,14 +70,14 @@ func (r *root) HandleEvent(ev tui.Event) bool {
 }
 ```
 
-Wrap your tree in `widget.NewOverlayHost(...)` at the root if you will ever
+Wrap your tree in `core.NewOverlayHost(...)` at the root if you will ever
 show floats (chapter 6) — it costs nothing and saves a refactor:
 
 ```go
 dock := tui.NewDock()
 dock.Pin(tui.DockBottom, statusBar)
 dock.Add(body)
-r.tree = widget.NewOverlayHost(dock)
+r.tree = core.NewOverlayHost(dock)
 ```
 
 ## Component lifecycle in one paragraph

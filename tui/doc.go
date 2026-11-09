@@ -93,7 +93,7 @@
 //  4. Raw dispatch — otherwise the original event goes to
 //     [Component.HandleEvent].
 //
-// The Activatable stage is not a detail: [widget.Button] implements no
+// The Activatable stage is not a detail: [core.Button] implements no
 // HandleAction at all. Its keyboard resolver produces an ActivateAction, no
 // action handler exists to take it, and the fallback reaches Activate. That is
 // how one control serves keyboard, pointer and programmatic activation without
@@ -239,7 +239,7 @@
 //     entered.
 //
 // A dropdown opened inside a dialog is not automatically nested. The shipped
-// widget.Select projects its popup onto the overlay host, so it is a later
+// core.Select projects its popup onto the overlay host, so it is a later
 // layer of that host and takes the STACKED route; where a composite mounts its
 // popup decides which route applies, not how the screen looks.
 //
@@ -265,7 +265,7 @@
 //
 //		"github.com/yongjohnlee80/golib/tui"
 //		"github.com/yongjohnlee80/golib/tui/term"
-//		"github.com/yongjohnlee80/golib/tui/widget"
+//		"github.com/yongjohnlee80/golib/tui/widget/core"
 //	)
 //
 //	func main() {
@@ -275,9 +275,9 @@
 //		}
 //		defer backend.Stop()
 //
-//		input := widget.NewTextInput(widget.WithPlaceholder("Type here..."))
-//		box := widget.NewBox(input, widget.WithTitle("Interactive Form"))
-//		root := widget.NewOverlayHost(box)
+//		input := core.NewTextInput(core.WithPlaceholder("Type here..."))
+//		box := core.NewBox(input, core.WithTitle("Interactive Form"))
+//		root := core.NewOverlayHost(box)
 //
 //		app := tui.NewApp(root, tui.WithBackend(backend))
 //		if err := app.Run(context.Background()); err != nil {

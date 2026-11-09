@@ -2,7 +2,7 @@
 
 `vt` is a terminal emulator's screen model: the bytes a program writes go in, and a grid of cells,
 a scrollback, a cursor, modes and replies come out. It does no I/O, so it is tested by feeding bytes
-and reading the grid, and it serves any host: golib's `widget.Terminal` over a PTY, a test harness,
+and reading the grid, and it serves any host: golib's `terminal.Terminal` over a PTY, a test harness,
 a remote screen.
 
 ## Features

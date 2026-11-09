@@ -10,10 +10,11 @@ go get github.com/yongjohnlee80/golib/tui
 
 ```go
 import (
-    "github.com/yongjohnlee80/golib/tui"        // runtime, tree, events, cells
-    "github.com/yongjohnlee80/golib/tui/style"  // styles, tokens, themes
-    "github.com/yongjohnlee80/golib/tui/term"   // ANSI terminal driver
-    "github.com/yongjohnlee80/golib/tui/widget" // standard widget suite
+    "github.com/yongjohnlee80/golib/tui"               // runtime, tree, events, cells
+    "github.com/yongjohnlee80/golib/tui/style"         // styles, tokens, themes
+    "github.com/yongjohnlee80/golib/tui/term"          // ANSI terminal driver
+    "github.com/yongjohnlee80/golib/tui/widget/core"   // standard widgets: controls, lists, overlays, windows
+    "github.com/yongjohnlee80/golib/tui/widget/editor" // the editor (table, files, htmlview, terminal beside it)
 )
 ```
 
@@ -111,7 +112,7 @@ runtime performs four steps in order:
    nobody handled — `Activatable.Activate`. Either returning `true` consumes it.
 4. **Raw dispatch** — otherwise the original event goes to `HandleEvent`.
 
-The `Activatable` stage is not a detail: **`widget.Button` implements no
+The `Activatable` stage is not a detail: **`core.Button` implements no
 `HandleAction` at all.** Its keyboard resolver produces an `ActivateAction`, no
 action handler takes it, and the fallback reaches `Activate`. That is how one
 control serves keyboard, pointer and programmatic activation without
@@ -130,7 +131,7 @@ innermost first, until one takes it. So a press goes, in order, to the path's
 nodes, then the recogniser, then the unclaimed handlers; a right or middle
 press, a motion and a release are never unclaimed. `HandleUnclaimedPress` runs
 as its node's own handler, so it may take the pointer. A window takes the plain
-drags on its frame there (`widget.WindowCore.BeginFrameDrag`), so a control on
+drags on its frame there (`core.WindowCore.BeginFrameDrag`), so a control on
 the frame keeps its click.
 
 What a **held capture** does with an event depends on who owns it:
@@ -278,7 +279,7 @@ The key map is App-owned as well. Every key a golib widget acts on is a key comm
 ([`tui/keymap`](keymap/README.md)): an id, a scope and its default keys. A widget asks its Context
 which of its commands a key is, instead of switching on raw keys.
 
-- `WithKeymap(m)` sets the bindings: `keymap.Build(widget.KeyCommands() + yours, schemes…)`,
+- `WithKeymap(m)` sets the bindings: `keymap.Build(editor.KeyCommands() + yours, schemes…)`,
   each scheme a user's file in Qt Creator's keyboard-mapping-scheme XML. With none, every command
   keeps its default keys.
 - `app.SetKeymap(m)` may be called from any goroutine; `ApplyKeymap(m)` takes effect in the calling
@@ -307,7 +308,7 @@ import (
 
     "github.com/yongjohnlee80/golib/tui"
     "github.com/yongjohnlee80/golib/tui/term"
-    "github.com/yongjohnlee80/golib/tui/widget"
+    "github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 func main() {
@@ -317,9 +318,9 @@ func main() {
     }
     defer backend.Stop()
 
-    input := widget.NewTextInput(widget.WithPlaceholder("Enter query..."))
-    box := widget.NewBox(input, widget.WithTitle("Search"))
-    root := widget.NewOverlayHost(box)
+    input := core.NewTextInput(core.WithPlaceholder("Enter query..."))
+    box := core.NewBox(input, core.WithTitle("Search"))
+    root := core.NewOverlayHost(box)
 
     app := tui.NewApp(root, tui.WithBackend(backend))
     if err := app.Run(context.Background()); err != nil {

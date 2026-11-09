@@ -25,7 +25,7 @@ error, never a stderr fallback. → [chapter 1](01-getting-started.md)
 
 ## "My startup log lines never show in the log pane"
 
-`BufferView.Writer()` REJECTS writes made before the view mounts (returning `(0, widget.ErrClosed)`). Buffer
+`BufferView.Writer()` REJECTS writes made before the view mounts (returning `(0, core.ErrClosed)`). Buffer
 pre-mount writes and replay them at root Init (`deferredWriter` pattern).
 → [chapter 5](05-async-tasks.md)
 
@@ -50,7 +50,7 @@ root and make `q` close the top float when one is open.
 ## "My ActivateEvent handler fires for the wrong list" (or twice, or late)
 
 Bus events are app-wide and arrive a loop turn later. For a list you own,
-don't subscribe: pass `widget.WithListOnActivate` / `WithListOnCursor`, which
+don't subscribe: pass `core.WithListOnActivate` / `WithListOnCursor`, which
 run at once and only for that list. A subscriber to someone else's widget
 filters on `ev.Owner == theirWidget.NodeID()`.
 → [chapter 4](04-events-focus-keys.md)
@@ -165,6 +165,6 @@ render, or gate on the previous surface closing.
 The default Vim, Nano, and Standard keymaps handle common editing chords. If you
 want a specific chord (such as `KeyHome`, `Ctrl+O`, or an arrow key) to bypass the
 editor and bubble to a parent modal or controller, explicitly bind it to
-`widget.ActUnbound` in `WithCore(CoreKeymap(...))`. Leaving it absent from a custom keymap can
+`editor.ActUnbound` in `WithCore(CoreKeymap(...))`. Leaving it absent from a custom keymap can
 still let structural fallbacks consume it.
 → [chapter 3](03-widgets.md)
