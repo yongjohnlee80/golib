@@ -8,7 +8,7 @@ import (
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // cursorAt is the cursor over cell (x, y) in a frame's areas: the last area over it, else the
@@ -28,10 +28,10 @@ func cursorAt(f []gui.CursorCells, x, y int) pointer.Cursor {
 // north-south and its bottom corners the diagonals, over the frame its content's Box paints, and
 // its title row keeps the arrow.
 func TestAWindowsFrameArrowsAreTheWindowsCursorAreas(t *testing.T) {
-	w := tuiwidget.NewWindowMod(tuiwidget.NewBox(tuiwidget.NewText("win"), tuiwidget.WithBorder(style.BorderNormal)),
-		tuiwidget.WithWindowMove(), tuiwidget.WithWindowResize())
-	f := tuiwidget.NewFloat(w, tuiwidget.WithAnchor(tuiwidget.AtRect(tui.Rect{X: 5, Y: 2, W: 12, H: 6})))
-	host := tuiwidget.NewOverlayHost(tuiwidget.NewText("base"))
+	w := core.NewWindowMod(core.NewBox(core.NewText("win"), core.WithBorder(style.BorderNormal)),
+		core.WithWindowMove(), core.WithWindowResize())
+	f := core.NewFloat(w, core.WithAnchor(core.AtRect(tui.Rect{X: 5, Y: 2, W: 12, H: 6})))
+	host := core.NewOverlayHost(core.NewText("base"))
 	host.Attach(f)
 	p := startPipeOn(t, host, 40, 12, tui.Capabilities{NativeViews: true, FrameDrag: true})
 	p.update(t, f.Show)

@@ -4,14 +4,14 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/terminal"
 )
 
 func TestNativeTerminalTabsPaintOnlyStripChromeAndKeepActionTargetsSeparate(t *testing.T) {
-	tabs := widget.NewTerminalTabs()
+	tabs := terminal.NewTerminalTabs()
 	var added int
-	var menu widget.TerminalTabID
-	tabs.SetActions(func() { added++ }, func(id widget.TerminalTabID) { menu = id })
+	var menu terminal.TerminalTabID
+	tabs.SetActions(func() { added++ }, func(id terminal.TerminalTabID) { menu = id })
 	a, _ := tabs.Add("one")
 	b, _ := tabs.Add("two")
 	app, sb := styledApp(t, tabs, 40, 8, NativeStyle())

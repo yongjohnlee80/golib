@@ -11,7 +11,7 @@ import (
 	"github.com/yongjohnlee80/gio/unit"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/terminal"
 )
 
 // stubTermView is a TerminalView that is a View: what the native style paints a Terminal with.
@@ -26,7 +26,7 @@ func (v *stubTermView) Paint(Canvas)                                            
 // The native style paints a Terminal whose view is a View with that view, over its subtree; a
 // Terminal with no view is left to its cells.
 func TestNativeStylePaintsATerminalByItsView(t *testing.T) {
-	term := widget.NewTerminal()
+	term := terminal.NewTerminal()
 	app, sb := styledApp(t, term, 20, 6, NativeStyle())
 	var id tui.NodeID
 	v := &stubTermView{}
