@@ -2,7 +2,7 @@ package decl
 
 import (
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 type drawerWindowTarget struct {
@@ -116,7 +116,7 @@ func (g *drawerWindowTarget) SetWindowVisible(v bool) bool {
 
 // drawerWindow is a WindowMod method run on the WindowMod a Drawer's window controls are. A Drawer
 // with none refuses it.
-var drawerWindow = windowMethod(func(n *drawerNode) (*widget.WindowMod, error) {
+var drawerWindow = windowMethod(func(n *drawerNode) (*core.WindowMod, error) {
 	if n.windowMods == nil {
 		return nil, ErrWindowOperationUnavailable
 	}

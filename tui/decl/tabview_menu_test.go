@@ -9,7 +9,7 @@ import (
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/controls"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // A host gives a TabView's bar a menu through the node Find returns: ≡ shows on the bar, a press
@@ -20,14 +20,14 @@ func TestAHostGivesATabViewsBarAMenu(t *testing.T) {
 	s := decltest.RunWith(t, 40, 6, func(p *tuidecl.Program) error {
 		c, _ := p.Find("tabs")
 		m, ok := c.(interface {
-			SetMenu(func(i int) []widget.MenuItemModel)
+			SetMenu(func(i int) []core.MenuItemModel)
 		})
 		if !ok {
 			t.Fatalf("the TabView found (%T) takes no menu", c)
 		}
-		m.SetMenu(func(i int) []widget.MenuItemModel {
-			return []widget.MenuItemModel{widget.NewCommand("layout", "Layout",
-				widget.TabsMenuAction{ID: "layout", Run: func(i int) { ran <- i }})}
+		m.SetMenu(func(i int) []core.MenuItemModel {
+			return []core.MenuItemModel{core.NewCommand("layout", "Layout",
+				core.TabsMenuAction{ID: "layout", Run: func(i int) { ran <- i }})}
 		})
 		return nil
 	}, tuidecl.LayoutSource("main.qml", []byte(`import tui 1.0

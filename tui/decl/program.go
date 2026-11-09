@@ -18,7 +18,9 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/i18n"
 	"github.com/yongjohnlee80/golib/tui/keymap"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
+	"github.com/yongjohnlee80/golib/tui/widget/files"
 )
 
 // PROGRAM — a golib/tui application whose screen is a QML document, in one
@@ -77,7 +79,7 @@ func (p *Program) SourceLanguages() *highlight.Catalog { return p.adapter.source
 
 // SyntaxStyles are the syntax roles the root Window's palette carries, as the looks a host
 // outside the tree highlights with — a page's code blocks, as the Editor highlights.
-func (p *Program) SyntaxStyles() widget.SyntaxStyles { return p.adapter.SyntaxStyles() }
+func (p *Program) SyntaxStyles() editor.SyntaxStyles { return p.adapter.SyntaxStyles() }
 
 // ProgramOption configures a Program.
 type ProgramOption func(*programConfig)
@@ -294,7 +296,7 @@ func Types(types ...Type) ProgramOption {
 
 // Files sets the filesystem every FileDialog lists — any fs.FS, remote
 // included. Unset, the local disk.
-func Files(src widget.FileSource) ProgramOption {
+func Files(src files.FileSource) ProgramOption {
 	return func(c *programConfig) { c.adapterOpts = append(c.adapterOpts, WithFileSource(src)) }
 }
 
@@ -729,7 +731,7 @@ func (p *Program) Root() tui.Component { return p.root }
 // Overlay is the root Window's OverlayHost: where a Go program attaches a layer the document does
 // not declare, a native widget over the page (widget.Toasts, say). False when the root owns no
 // overlay (overlayOwner: it is not a Window), or it is not mounted yet.
-func (p *Program) Overlay() (*widget.OverlayHost, bool) {
+func (p *Program) Overlay() (*core.OverlayHost, bool) {
 	o, ok := p.root.(overlayOwner)
 	if !ok {
 		return nil, false
@@ -740,9 +742,9 @@ func (p *Program) Overlay() (*widget.OverlayHost, bool) {
 
 // overlayOwner is a root that owns the document's overlay host: a Window. Program.Overlay asks the
 // capability rather than the node's type.
-type overlayOwner interface{ overlayHost() *widget.OverlayHost }
+type overlayOwner interface{ overlayHost() *core.OverlayHost }
 
-func (w *windowNode) overlayHost() *widget.OverlayHost { return w.host }
+func (w *windowNode) overlayHost() *core.OverlayHost { return w.host }
 
 // ---------------------------------------------------------------- values
 
@@ -770,7 +772,7 @@ func Value(v any) (qml.SpecValue, error) {
 	case Index:
 		// A row, as a view's signal carries it — passed back to the view.
 		return indexValue(x), nil
-	case widget.FileSource:
+	case files.FileSource:
 		// An OBJECT: the files a FileDialog or FolderDialog lists (filedialog.go).
 		return qml.SpecValue{Kind: qml.SpecValueObject, Obj: x}, nil
 	case Keys:

@@ -8,7 +8,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // window_menu_focus_test.go: a menu row that took the keyboard keeps it. After a row runs, the
@@ -18,7 +18,7 @@ import (
 // Editor hands its focus on into its shown document view).
 
 // focusSpot is a focusable cell that shows its name.
-type focusSpot struct{ *widget.Text }
+type focusSpot struct{ *core.Text }
 
 func (*focusSpot) AcceptsFocus() bool { return true }
 
@@ -49,7 +49,7 @@ func (r *redirector) HandleEvent(ev tui.Event) bool {
 // redirecting home with the document's focus, the other spot, and the drawer. It returns the screen and the home.
 func runMenuFocusDoc(t *testing.T) (*decltest.Screen, *redirector) {
 	t.Helper()
-	home := &redirector{inner: &focusSpot{widget.NewText("home")}}
+	home := &redirector{inner: &focusSpot{core.NewText("home")}}
 	var s *decltest.Screen
 	call := func(id, method string) error { return s.Program.Call(id, method) }
 	s = decltest.Run(t, 60, 12,
@@ -64,7 +64,7 @@ func runMenuFocusDoc(t *testing.T) (*decltest.Screen, *redirector) {
 		tuidecl.Types(
 			tuidecl.Type{Name: "Home", Build: func(tuidecl.Build) (tui.Component, []string, error) { return home, nil, nil }},
 			tuidecl.Type{Name: "Spot", Build: func(tuidecl.Build) (tui.Component, []string, error) {
-				return &focusSpot{widget.NewText("in the pane")}, nil, nil
+				return &focusSpot{core.NewText("in the pane")}, nil, nil
 			}}),
 		tuidecl.Handlers(map[string]decl.HandlerFunc{
 			"App.openPane": func([]qml.SpecValue) error {

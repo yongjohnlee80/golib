@@ -6,7 +6,7 @@ import (
 
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // TestAGoProgramAttachesALayerToTheWindow: Program.Overlay is the root Window's OverlayHost, so a
@@ -19,7 +19,7 @@ Window {
     StatusBar { Dock.edge: Tui.Bottom; left: "NORMAL" }
 }`)))
 	s.WaitForText(t, "NORMAL")
-	toasts := widget.NewToasts(widget.WithToastMargin(1))
+	toasts := core.NewToasts(core.WithToastMargin(1))
 	onScreenLoop(t, s, func() {
 		host, ok := s.Program.Overlay()
 		if !ok {
@@ -27,7 +27,7 @@ Window {
 			return
 		}
 		host.Attach(toasts.Float())
-		toasts.Post(widget.Toast{Text: "saved"})
+		toasts.Post(core.Toast{Text: "saved"})
 	})
 	s.WaitForText(t, "saved")
 	rows := strings.Split(s.String(), "\n")

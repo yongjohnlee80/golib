@@ -6,7 +6,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // recordingType is a consumer's type that records the widget it builds in shared state, and whose
@@ -15,12 +15,12 @@ import (
 func recordingType(live *tui.Component) tuidecl.Type {
 	return tuidecl.Type{Name: "Globe", Children: tuidecl.NoChildren(),
 		Build: func(tuidecl.Build) (tui.Component, []string, error) {
-			w := widget.NewText("globe")
+			w := core.NewText("globe")
 			*live = w
 			return w, nil, nil
 		},
 		Destroyed: func(c tui.Component) {
-			w := c.(*widget.Text) // a consumer's hook may assert its own widget, unchecked
+			w := c.(*core.Text) // a consumer's hook may assert its own widget, unchecked
 			if *live == w {
 				*live = nil
 			}

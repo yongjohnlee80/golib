@@ -9,7 +9,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // button_selfdisable_test.go: a Button whose own onClicked turns its enabled binding false (a
@@ -72,7 +72,7 @@ func nextEnabled(t *testing.T, s *decltest.Screen) bool {
 			t.Error("no next")
 			return
 		}
-		on = c.(*widget.Button).Enabled()
+		on = c.(*core.Button).Enabled()
 	})
 	return on
 }
@@ -88,7 +88,7 @@ func TestAButtonsOwnClickMayDisableIt(t *testing.T) {
 		{"key", func(t *testing.T, s *decltest.Screen) {
 			onScreenLoop(t, s, func() {
 				c, _ := s.Program.Find("next")
-				c.(*widget.Button).Context().RequestFocus()
+				c.(*core.Button).Context().RequestFocus()
 			})
 			s.Keys(t, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter})
 		}},

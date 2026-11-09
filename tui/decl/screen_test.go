@@ -12,7 +12,7 @@ import (
 	"github.com/yongjohnlee80/golib/decl"
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // The screen this package exists to prove it can build.
@@ -73,7 +73,7 @@ func TestARealScreenBuildsAndRenders(t *testing.T) {
 	if !ok {
 		t.Fatal("the root node built no component")
 	}
-	if _, isSplit := root.(*widget.Split); !isSplit {
+	if _, isSplit := root.(*core.Split); !isSplit {
 		t.Fatalf("root is %T, want *widget.Split — the constructor that needs its children up front", root)
 	}
 
@@ -151,10 +151,10 @@ func TestConstructorOnlyPropertiesAreNotReApplied(t *testing.T) {
 		if len(b.Children) != 2 {
 			return nil, nil, errors.New("need two children")
 		}
-		return widget.NewSplit(widget.Horizontal, b.Children[0], b.Children[1]), nil, nil
+		return core.NewSplit(core.Horizontal, b.Children[0], b.Children[1]), nil, nil
 	})
 	tuidecl.Register(forgetful, "Text", func(b tuidecl.Build) (tui.Component, []string, error) {
-		return widget.NewText(""), nil, nil
+		return core.NewText(""), nil, nil
 	})
 
 	spec, err := qml.QML{}.Parse([]byte(`import tui 1.0
@@ -200,11 +200,11 @@ func TestAnUnregisteredTypeIsAPositionedError(t *testing.T) {
 	}
 }
 
-func findButton(t *testing.T, tr *decl.Tree, a *tuidecl.Adapter) *widget.Button {
+func findButton(t *testing.T, tr *decl.Tree, a *tuidecl.Adapter) *core.Button {
 	t.Helper()
 	for id := decl.NodeID(1); id <= decl.NodeID(tr.Len()+4); id++ {
 		if c, ok := a.Component(id); ok {
-			if b, isBtn := c.(*widget.Button); isBtn {
+			if b, isBtn := c.(*core.Button); isBtn {
 				return b
 			}
 		}
@@ -331,7 +331,7 @@ func TestTheLabelArrivesThroughApplyNotConstruction(t *testing.T) {
 	var labelAtApply string
 	spy := tuidecl.WithSetters("Button", map[string]tuidecl.Setter{
 		"text": func(c tui.Component, v qml.SpecValue) error {
-			btn := c.(*widget.Button)
+			btn := c.(*core.Button)
 			// What the widget held BEFORE this application is the evidence: an
 			// empty label here means construction did not set it.
 			labelAtApply = btn.Label()
@@ -362,7 +362,7 @@ func TestTheLabelArrivesThroughApplyNotConstruction(t *testing.T) {
 			labelAtApply)
 	}
 	c, _ := a.Component(tr.Root())
-	if got := c.(*widget.Button).Label(); got != "Save" {
+	if got := c.(*core.Button).Label(); got != "Save" {
 		t.Errorf("label after mount = %q, want Save", got)
 	}
 }
@@ -382,7 +382,7 @@ func TestADuplicatedPropertyIsAppliedInDocumentOrder(t *testing.T) {
 		t.Fatalf("mount: %v", err)
 	}
 	c, _ := a.Component(tr.Root())
-	if got := c.(*widget.Button).Label(); got != "second" {
+	if got := c.(*core.Button).Label(); got != "second" {
 		t.Errorf("label = %q, want second — applications run in document order", got)
 	}
 }

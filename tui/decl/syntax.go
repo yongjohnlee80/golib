@@ -11,7 +11,8 @@ import (
 	"github.com/yongjohnlee80/golib/parse/languages"
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // SYNTAX HIGHLIGHTING in QML — KDE KSyntaxHighlighting's type.
@@ -71,11 +72,11 @@ func WithHighlighters(defs ...highlight.Definition) Option {
 // attaches to the core, not to a view of it, so any editor widget holding an
 // EditorCore can carry one.
 type syntaxNode struct {
-	widget.Base
+	core.Base
 	registry          *highlight.Catalog
 	definition        string
-	styles            widget.SyntaxStyles
-	core              *widget.EditorCore
+	styles            editor.SyntaxStyles
+	core              *editor.EditorCore
 	applied           bool
 	appliedDefinition string
 }
@@ -85,7 +86,7 @@ func buildSyntaxHighlighter(b Build) (tui.Component, []string, error) {
 }
 
 // attach binds the highlighter to the core of the Editor it is declared in.
-func (n *syntaxNode) attach(c *widget.EditorCore) {
+func (n *syntaxNode) attach(c *editor.EditorCore) {
 	if n.core != c {
 		n.applied = false
 	}

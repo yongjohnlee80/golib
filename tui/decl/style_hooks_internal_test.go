@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // style_hooks_internal_test.go: a standard type's getters, methods and destroy hook keep their contract
@@ -24,7 +24,7 @@ func calm(fn func()) (err error) {
 }
 
 func TestAStandardTypesHooksRefuseAForeignWidgetWithoutPanicking(t *testing.T) {
-	var foreign tui.Component = widget.NewText("a style's own widget")
+	var foreign tui.Component = core.NewText("a style's own widget")
 	for _, std := range stdTypes() {
 		copied, ok := StandardType(std.Name)
 		if !ok {

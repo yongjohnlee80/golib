@@ -8,7 +8,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 func TestWindowModDeclarationHousesAnExistingZoomPolicy(t *testing.T) {
@@ -69,7 +69,7 @@ Drawer { id: d; modal: false; windowResize: true; edge: Tui.Bottom; size: 30; le
 }
 
 func TestDrawerCollectorMinimizeNeedsNoDefaultTaskbar(t *testing.T) {
-	model := widget.NewMinimizedWindows()
+	model := core.NewMinimizedWindows()
 	s := decltest.Run(t, 40, 15, tuidecl.LayoutSource("window.qml", []byte(`import tui 1.0
 Window { Button { text: "base" }
 Drawer { id: d; modal: false; minimizable: true; closable: true; label: "Notes"

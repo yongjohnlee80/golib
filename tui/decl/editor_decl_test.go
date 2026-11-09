@@ -8,7 +8,8 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // The ADR's document runs under the standard vocabulary: the cell Editor takes mode, carries the
@@ -37,10 +38,10 @@ func TestAnEditorRefusesAModeItDoesNotHave(t *testing.T) {
 // fakeEditor is another package's editor widget: it has the behaviour methods EditorSetters call,
 // and records them.
 type fakeEditor struct {
-	*widget.Text
+	*core.Text
 	mu     sync.Mutex
-	core   *widget.EditorCore
-	keyset widget.Keyset
+	core   *editor.EditorCore
+	keyset editor.Keyset
 	ro     bool
 	value  string
 	cursor int
@@ -48,7 +49,7 @@ type fakeEditor struct {
 	spec   tuidecl.RendererSpec
 }
 
-func (f *fakeEditor) SetKeyset(k widget.Keyset) { f.mu.Lock(); f.keyset = k; f.mu.Unlock() }
+func (f *fakeEditor) SetKeyset(k editor.Keyset) { f.mu.Lock(); f.keyset = k; f.mu.Unlock() }
 func (f *fakeEditor) SetReadOnly(v bool)        { f.mu.Lock(); f.ro = v; f.mu.Unlock() }
 func (f *fakeEditor) SetValue(s string)         { f.mu.Lock(); f.value = s; f.mu.Unlock() }
 func (f *fakeEditor) SetCursorPosition(p int)   { f.mu.Lock(); f.cursor = p; f.mu.Unlock() }
@@ -64,7 +65,7 @@ func TestAStylesEditorSharesTheDeclarationsMeaning(t *testing.T) {
 		if err != nil {
 			return nil, nil, err
 		}
-		f := &fakeEditor{Text: widget.NewText("styled " + d.Text), core: widget.NewEditorCore(d.CoreOptions()...), spec: d.Renderer}
+		f := &fakeEditor{Text: core.NewText("styled " + d.Text), core: editor.NewEditorCore(d.CoreOptions()...), spec: d.Renderer}
 		d.Attach(f.core)
 		mu.Lock()
 		made = f
@@ -100,7 +101,7 @@ Window {
 		}
 		f.mu.Lock()
 		defer f.mu.Unlock()
-		return f.keyset == widget.KeysetNano && f.ro && f.cursor == 2 && f.mode == "Rendered"
+		return f.keyset == editor.KeysetNano && f.ro && f.cursor == 2 && f.mode == "Rendered"
 	})
 	mu.Lock()
 	defer mu.Unlock()

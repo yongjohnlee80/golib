@@ -14,7 +14,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // overlay_test.go holds WithOverlay to ADR D4's rows: a QML dialog opened
@@ -29,17 +29,17 @@ type goScreen struct {
 	be      *tui.TestBackend
 	tree    *decl.Tree
 	adapter *tuidecl.Adapter
-	input   *widget.TextInput
+	input   *core.TextInput
 	yes, no atomic.Int32
 }
 
 func runGoScreen(t *testing.T, doc string) *goScreen {
 	t.Helper()
-	g := &goScreen{t: t, be: tui.NewTestBackend(50, 12), input: widget.NewTextInput()}
+	g := &goScreen{t: t, be: tui.NewTestBackend(50, 12), input: core.NewTextInput()}
 	// The overlay the dialogs open on is the Go program's, so it exists
 	// before the adapter is given it; the QML part joins its base below.
 	base := tui.NewFlex(tui.Vertical)
-	host := widget.NewOverlayHost(base)
+	host := core.NewOverlayHost(base)
 	g.adapter = tuidecl.New(tuidecl.StdRegistry(), append(tuidecl.StdProperties(),
 		tuidecl.WithErrorSink(func(err error) { t.Errorf("handler: %v", err) }),
 		tuidecl.WithOverlay(host))...)
@@ -167,7 +167,7 @@ func TestH3ADocumentThatIsOnlyADialog(t *testing.T) {
 
 // H4 — under a Window, a dialog opens on the Window's host, not the adapter's.
 func TestH4AWindowsDialogsStillOpenOnTheWindow(t *testing.T) {
-	elsewhere := widget.NewOverlayHost(widget.NewText("never mounted"))
+	elsewhere := core.NewOverlayHost(core.NewText("never mounted"))
 	s := decltest.Run(t, 40, 8, tuidecl.LayoutSource("m.qml", []byte("import tui 1.0\nWindow {\n Text { text: \"body\" }\n"+
 		" Dialog { id: d; title: \"Here\"; Text { text: \"on the window\" } } }")),
 		tuidecl.AdapterOptions(tuidecl.WithOverlay(elsewhere)))

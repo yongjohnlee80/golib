@@ -8,7 +8,8 @@ import (
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/table"
 )
 
 // A TableView with a cellCursor shows its model through a TableCore and a DataTable: a cursor on
@@ -26,19 +27,19 @@ import (
 // modelTable is a TableView's model as a TableCore's source.
 type modelTable struct{ n *tableViewNode }
 
-func (s modelTable) Fields() []widget.TableField {
+func (s modelTable) Fields() []core.TableField {
 	n := s.n
 	if len(n.declared) > 0 {
-		out := make([]widget.TableField, len(n.declared))
+		out := make([]core.TableField, len(n.declared))
 		for i, d := range n.declared {
-			out[i] = widget.TableField{Title: d.title, Width: d.width}
+			out[i] = core.TableField{Title: d.title, Width: d.width}
 		}
 		return out
 	}
 	if n.mv.model == nil {
 		return nil
 	}
-	out := make([]widget.TableField, n.mv.model.ColumnCount(nil))
+	out := make([]core.TableField, n.mv.model.ColumnCount(nil))
 	for c := range out {
 		out[c].Title = n.mv.model.HeaderData(c)
 	}
@@ -73,24 +74,24 @@ func (p pagedModelTable) FetchMore(int) { p.f.FetchMore(Index{}) }
 // kindedModelTable and kindedPagedModelTable add the model's cell kinds.
 type kindedModelTable struct {
 	modelTable
-	k widget.TableKinds
+	k table.TableKinds
 }
 
-func (s kindedModelTable) Kind(row, col int) widget.TableCellKind { return s.k.Kind(row, col) }
+func (s kindedModelTable) Kind(row, col int) table.TableCellKind { return s.k.Kind(row, col) }
 
 type kindedPagedModelTable struct {
 	pagedModelTable
-	k widget.TableKinds
+	k table.TableKinds
 }
 
-func (s kindedPagedModelTable) Kind(row, col int) widget.TableCellKind { return s.k.Kind(row, col) }
+func (s kindedPagedModelTable) Kind(row, col int) table.TableCellKind { return s.k.Kind(row, col) }
 
 // cellSource is the node's model as a source: a pager when the model is a Fetcher, and with its
 // kinds when it has them and the columns are its own (a declared column names a role, not one of
 // the model's columns, so its kinds are not the model's).
-func (n *tableViewNode) cellSource() widget.TableSource {
+func (n *tableViewNode) cellSource() table.TableSource {
 	f, paged := n.mv.model.(Fetcher)
-	k, kinded := n.mv.model.(widget.TableKinds)
+	k, kinded := n.mv.model.(table.TableKinds)
 	kinded = kinded && len(n.declared) == 0
 	switch {
 	case paged && kinded:
@@ -105,12 +106,12 @@ func (n *tableViewNode) cellSource() widget.TableSource {
 
 // buildCells makes the node's DataTable.
 func (n *tableViewNode) buildCells(sortable bool) {
-	core := widget.NewTableCore(nil,
-		widget.TableSortable(sortable),
-		widget.TableOnActivate(func(row int) { n.activated(numberValue(row)) }),
-		widget.TableOnCursor(func(row int) { n.moved(numberValue(row)) }),
-		widget.TableOnSort(n.sortChanged))
-	n.grid = widget.NewDataTable(core)
+	core := table.NewTableCore(nil,
+		table.TableSortable(sortable),
+		table.TableOnActivate(func(row int) { n.activated(numberValue(row)) }),
+		table.TableOnCursor(func(row int) { n.moved(numberValue(row)) }),
+		table.TableOnSort(n.sortChanged))
+	n.grid = table.NewDataTable(core)
 	n.show(gridShown{n.grid})
 	n.mv.changed = n.followCells
 }
@@ -141,7 +142,7 @@ func (n *tableViewNode) setOrderBy(text string) {
 // says why.
 func (n *tableViewNode) applyOrder() {
 	core := n.grid.Core()
-	keys, err := widget.ParseTableOrder(n.orderBy, core.Fields())
+	keys, err := table.ParseTableOrder(n.orderBy, core.Fields())
 	if err != nil {
 		n.orderErr = err.Error()
 		return
@@ -162,7 +163,7 @@ func (n *tableViewNode) setFilter(text string) {
 // filterErr says why.
 func (n *tableViewNode) applyFilter() {
 	core := n.grid.Core()
-	p, err := widget.ParseTableWhere(n.filter, core.Fields())
+	p, err := table.ParseTableWhere(n.filter, core.Fields())
 	if err != nil {
 		n.filterErr = err.Error()
 		return
@@ -173,11 +174,11 @@ func (n *tableViewNode) applyFilter() {
 
 // sortChanged writes a sort the view made itself (the s key, a field removed) back to orderBy,
 // and raises orderByChanged.
-func (n *tableViewNode) sortChanged(keys []widget.TableSortKey) {
+func (n *tableViewNode) sortChanged(keys []table.TableSortKey) {
 	if n.ordering {
 		return
 	}
-	text := widget.FormatTableOrder(keys, n.grid.Core().Fields())
+	text := table.FormatTableOrder(keys, n.grid.Core().Fields())
 	n.orderErr = ""
 	if text == n.orderBy {
 		return
@@ -207,7 +208,7 @@ func cellsSetter[V any](name string, read func(qml.SpecValue) (V, error), apply 
 
 // TableOf is the DataTable a TableView with a cellCursor shows, nil for any other component: what
 // a style wrapping TableView binds a native view to.
-func TableOf(c tui.Component) *widget.DataTable {
+func TableOf(c tui.Component) *table.DataTable {
 	if n, ok := c.(*tableViewNode); ok {
 		return n.grid
 	}
@@ -362,7 +363,7 @@ type tableShown interface {
 }
 
 // listShown is a TableView's row list.
-type listShown struct{ t *widget.Table[int] }
+type listShown struct{ t *table.Table[int] }
 
 func (s listShown) component() tui.Component { return s.t }
 
@@ -385,7 +386,7 @@ func (s listShown) restyle(p palette) {
 }
 
 // gridShown is a TableView's cell grid (cellCursor: true).
-type gridShown struct{ g *widget.DataTable }
+type gridShown struct{ g *table.DataTable }
 
 func (s gridShown) component() tui.Component { return s.g }
 
@@ -401,7 +402,7 @@ func (s gridShown) setCurrent(row int) { s.g.Core().SelectSourceRow(row) }
 
 func (s gridShown) restyle(p palette) {
 	vs := p.viewStyles()
-	st := widget.DataTableStyles{Cell: vs.Row, Cursor: vs.CursorRow, CursorBlurred: vs.CursorBlurred, Selected: vs.SelectedRow}
+	st := table.DataTableStyles{Cell: vs.Row, Cursor: vs.CursorRow, CursorBlurred: vs.CursorBlurred, Selected: vs.SelectedRow}
 	if p.has(roleBase, roleText) {
 		st.Header = p.look(roleBase, roleText).Bold(true) // ruled off, not underlined
 	}

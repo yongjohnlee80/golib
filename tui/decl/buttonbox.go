@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // DIALOG BUTTON BOX — Qt's DialogButtonBox: declarative button containers for dialogs.
@@ -22,7 +22,7 @@ import (
 // # Architectural Role in Dialogs
 //
 // A DialogButtonBox serves as a declaration-only node within a [Dialog]. When the parent
-// Dialog constructs its underlying [widget.Modal], it extracts the child Buttons from the
+// Dialog constructs its underlying [core.Modal], it extracts the child Buttons from the
 // DialogButtonBox, assigns each button its declared role, and installs them into the modal card.
 //
 // # Button Roles and Lifecycle Signals
@@ -50,18 +50,18 @@ import (
 var buttonRoles = Enum{Scope: "DialogButtonBox", Values: []string{"AcceptRole", "RejectRole", "DestructiveRole", "ActionRole"}}
 
 // boxRoles are Qt's roles, as the widget has them: the Modal answers for each.
-var boxRoles = map[string]widget.ButtonRole{
-	"AcceptRole":      widget.ButtonRoleAccept,
-	"RejectRole":      widget.ButtonRoleReject,
-	"DestructiveRole": widget.ButtonRoleDestructive,
-	"ActionRole":      widget.ButtonRoleAction,
+var boxRoles = map[string]core.ButtonRole{
+	"AcceptRole":      core.ButtonRoleAccept,
+	"RejectRole":      core.ButtonRoleReject,
+	"DestructiveRole": core.ButtonRoleDestructive,
+	"ActionRole":      core.ButtonRoleAction,
 }
 
 // buttonBoxNode is a declared DialogButtonBox, before its Dialog takes it: its
 // Buttons, each carrying its role.
 type buttonBoxNode struct {
-	widget.Base
-	buttons []*widget.Button
+	core.Base
+	buttons []*core.Button
 }
 
 func (*buttonBoxNode) Layout(c tui.Constraints) tui.Size { return c.Constrain(tui.Size{}) }
@@ -71,7 +71,7 @@ func (*buttonBoxNode) Render(tui.Surface)                {}
 func buildButtonBox(b Build) (tui.Component, []string, error) {
 	n := &buttonBoxNode{}
 	for i, c := range b.Children {
-		btn, ok := c.(*widget.Button)
+		btn, ok := c.(*core.Button)
 		if !ok {
 			return nil, nil, fmt.Errorf("a DialogButtonBox holds Buttons only (at %s)", b.Pos)
 		}

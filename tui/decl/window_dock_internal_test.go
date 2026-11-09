@@ -4,13 +4,13 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // syncDock makes the dock hold exactly the items it is given: two children dropped together, one
 // after the other, both go, and what stays keeps its place.
 func TestSyncDockDropsNeighbouringChildren(t *testing.T) {
-	one, two, body := widget.NewText("alpha"), widget.NewText("bravo"), widget.NewText("charlie")
+	one, two, body := core.NewText("alpha"), core.NewText("bravo"), core.NewText("charlie")
 	w := &windowNode{}
 	w.syncDock([]docked{{one, tui.DockTop}, {two, tui.DockTop}, {body, tui.DockCenter}})
 	w.syncDock([]docked{{body, tui.DockCenter}})

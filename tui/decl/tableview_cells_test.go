@@ -9,7 +9,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/table"
 )
 
 func key(code rune) tui.KeyEvent { return tui.KeyEvent{Kind: tui.KeyPress, Code: code} }
@@ -132,7 +132,7 @@ func TestACellCursorTableViewRefusesWhatItCannotShow(t *testing.T) {
 // A style wraps a standard type's Build without replacing it: a TableView read privately keeps its
 // node, and the wrap sees the DataTable a cellCursor view shows.
 func TestAStyleWrapsATableViewItCannotReplace(t *testing.T) {
-	var wrapped *widget.DataTable
+	var wrapped *table.DataTable
 	st := tuidecl.Style{Name: "probe", Wrap: map[string]func(tui.Component){
 		"TableView": func(c tui.Component) { wrapped = tuidecl.TableOf(c) },
 	}}

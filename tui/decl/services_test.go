@@ -8,19 +8,19 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // dock is a consumer's own minimized-window collector: it collects and presents as
 // MinimizedWindows does, and is not one.
-type dock struct{ *widget.MinimizedWindows }
+type dock struct{ *core.MinimizedWindows }
 
 // A WindowTaskbar presents any collector that presents its entries (widget.WindowEntries), not
 // only a *widget.MinimizedWindows. Before, it asserted the concrete type and refused a consumer's
 // own.
 func TestAWindowTaskbarTakesAConsumersCollector(t *testing.T) {
 	s := decltest.Run(t, 30, 3, tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nFlex { WindowTaskbar { }\n Text { text: \"body\" } }")),
-		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(dock{widget.NewMinimizedWindows()})))
+		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(dock{core.NewMinimizedWindows()})))
 	s.WaitForText(t, "body")
 }
 
@@ -44,7 +44,7 @@ func TestABuilderTakesItsServicesByType(t *testing.T) {
 			}
 			_, has := tuidecl.Service[*testing.T](b)
 			missing = !has
-			return widget.NewText(g.hello + " " + w.Word()), nil, nil
+			return core.NewText(g.hello + " " + w.Word()), nil, nil
 		}}
 	s := decltest.Run(t, 30, 3, tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nSign { }")),
 		tuidecl.Types(sign),
@@ -66,7 +66,7 @@ func TestANilServiceIsAbsent(t *testing.T) {
 			_, hasWord = tuidecl.Service[word](b)
 			_, hasGreeter = tuidecl.Service[*greeter](b)
 			asked = true
-			return widget.NewText("signed"), nil, nil
+			return core.NewText("signed"), nil, nil
 		}}
 	s := decltest.Run(t, 30, 3, tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nSign { }")),
 		tuidecl.Types(sign),
@@ -78,7 +78,7 @@ func TestANilServiceIsAbsent(t *testing.T) {
 }
 
 // nilDock is a consumer's collector held by pointer: a nil *nilDock is a collector in type only.
-type nilDock struct{ *widget.MinimizedWindows }
+type nilDock struct{ *core.MinimizedWindows }
 
 // A WindowTaskbar given a consumer's typed-nil collector is refused at its build, as a nil
 // MinimizedWindows is, rather than taken and dereferenced later.
@@ -99,7 +99,7 @@ func TestATypedNilWindowCollectorIsNone(t *testing.T) {
 Window { Text { text: "page" }
  Drawer { modal: false; minimizable: true; Text { text: "drawer" } } }`)),
 		tuidecl.AppOptions(tui.WithBackend(tui.NewTestBackend(30, 4))),
-		tuidecl.AdapterOptions(tuidecl.WithWindowCollector((*widget.MinimizedWindows)(nil))))
+		tuidecl.AdapterOptions(tuidecl.WithWindowCollector((*core.MinimizedWindows)(nil))))
 	if err == nil || !strings.Contains(err.Error(), "minimizable Drawer requires modal: false and WithWindowCollector") {
 		t.Errorf("a minimizable Drawer with a typed-nil collector: %v; want refused, as with none", err)
 	}

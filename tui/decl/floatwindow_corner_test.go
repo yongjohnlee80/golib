@@ -10,7 +10,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // floatwindow_corner_test.go: a component a Go program puts over a FloatWindow's content
@@ -33,8 +33,8 @@ Window {
 
 // cornerCard is AutoDoc's find card's shape: a framed count with an X, its clicks counted.
 type cornerCard struct {
-	box    *widget.Box
-	x      *widget.Button
+	box    *core.Box
+	x      *core.Button
 	clicks atomic.Int64
 }
 
@@ -45,12 +45,12 @@ func runCorner(t *testing.T) (*decltest.Screen, *cornerCard) {
 		tuidecl.Singleton("demo", "1.0", "App"),
 		tuidecl.Sources(map[string]any{"App.fwTiled": false}),
 		tuidecl.Handlers(map[string]decl.HandlerFunc{}),
-		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(widget.NewMinimizedWindows())))
+		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(core.NewMinimizedWindows())))
 	s.WaitForText(t, "FW")
-	c := &cornerCard{x: widget.NewButton("X")}
+	c := &cornerCard{x: core.NewButton("X")}
 	row := tui.NewFlex(tui.Horizontal)
-	row.Add(widget.NewText("3 of 9 "), c.x)
-	c.box = widget.NewBox(row, widget.WithTitle("CARD"))
+	row.Add(core.NewText("3 of 9 "), c.x)
+	c.box = core.NewBox(row, core.WithTitle("CARD"))
 	onScreenLoop(t, s, func() {
 		n, _ := s.Program.Find("fw")
 		n.(interface {
@@ -123,7 +123,7 @@ func TestAFloatWindowsContentStillOpensItsMenuOverTheWindow(t *testing.T) {
 
 // sizeProbe is a component that asks for 3×1 and records the constraints it is laid out with.
 type sizeProbe struct {
-	widget.Base
+	core.Base
 	mu   sync.Mutex
 	last tui.Constraints
 }
@@ -168,10 +168,10 @@ Window { Text { text: "page" }
   Frame { title: "FW"; Button { id: one; text: "One" } } } }`
 	s := decltest.Run(t, 80, 24, tuidecl.LayoutSource("main.qml", []byte(doc)))
 	s.WaitForText(t, "One")
-	x := widget.NewButton("X")
+	x := core.NewButton("X")
 	row := tui.NewFlex(tui.Horizontal)
-	row.Add(widget.NewText("3 of 9 "), x) // wide enough for the box's title
-	card := widget.NewBox(row, widget.WithTitle("CARD"))
+	row.Add(core.NewText("3 of 9 "), x) // wide enough for the box's title
+	card := core.NewBox(row, core.WithTitle("CARD"))
 	onScreenLoop(t, s, func() {
 		n, _ := s.Program.Find("fw")
 		n.(interface {

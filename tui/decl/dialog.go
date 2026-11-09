@@ -7,7 +7,8 @@ import (
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/files"
 )
 
 // DIALOGS — Qt Quick Controls' Dialog, over golib's Modal.
@@ -56,19 +57,19 @@ type standardButton struct {
 
 // qtButton is one of Qt's standard buttons, labelled and given its answer by golib's own
 // standard button, so a QML dialog and a Go one read and answer alike in every language.
-func qtButton(name string, bit int64, std widget.StandardButton) standardButton {
-	return standardButton{name: name, bit: bit, msg: std.Message(), accept: std.Role() == widget.ButtonRoleAccept}
+func qtButton(name string, bit int64, std core.StandardButton) standardButton {
+	return standardButton{name: name, bit: bit, msg: std.Message(), accept: std.Role() == core.ButtonRoleAccept}
 }
 
 // dialogStandardButtons are Qt's, with Qt's flag values, in the order they are
 // laid out: the affirmative first, as the question is read.
 var dialogStandardButtons = []standardButton{
-	qtButton("Ok", 0x00000400, widget.StandardOk),
-	qtButton("Save", 0x00000800, widget.StandardSave),
-	qtButton("Yes", 0x00004000, widget.StandardYes),
-	qtButton("No", 0x00010000, widget.StandardNo),
-	qtButton("Cancel", 0x00400000, widget.StandardCancel),
-	qtButton("Close", 0x00200000, widget.StandardClose),
+	qtButton("Ok", 0x00000400, core.StandardOk),
+	qtButton("Save", 0x00000800, core.StandardSave),
+	qtButton("Yes", 0x00004000, core.StandardYes),
+	qtButton("No", 0x00010000, core.StandardNo),
+	qtButton("Cancel", 0x00400000, core.StandardCancel),
+	qtButton("Close", 0x00200000, core.StandardClose),
 }
 
 // dialogButtons is the flag set a document combines: `Dialog.Yes | Dialog.No`.
@@ -84,15 +85,15 @@ var dialogButtons = func() flagSet {
 // takes no place in the layout: its Window gives it the overlay host, and it
 // opens there.
 type dialogNode struct {
-	modal *widget.Modal
-	host  *widget.OverlayHost
+	modal *core.Modal
+	host  *core.OverlayHost
 	// afterClose is the Window's, run once the dialog has gone: the keyboard
 	// goes back to where the document says it lives.
 	afterClose func()
 	hooks      dialogHooks
 	// chooser is a FileDialog's body, nil for a Dialog; selected is the file it
 	// starts from, as its selectedFile says.
-	chooser  widget.FileChooser
+	chooser  files.FileChooser
 	selected string
 	// folder is a FileDialog's or FolderDialog's currentFolder as last set, so a
 	// source set after it lists it in the new source too
@@ -137,7 +138,7 @@ var errDialogOutsideWindow error = outsideWindow{"a Dialog"}
 
 // SetOverlay implements [Overlaid]: the Window's host, and what the Window
 // runs once the dialog has closed.
-func (d *dialogNode) SetOverlay(host *widget.OverlayHost, afterClose func()) {
+func (d *dialogNode) SetOverlay(host *core.OverlayHost, afterClose func()) {
 	d.host, d.afterClose = host, afterClose
 }
 
@@ -150,7 +151,7 @@ var _ Overlaid = (*dialogNode)(nil)
 // the question, and nobody answered it.
 func releaseDialog(c tui.Component) {
 	if d, ok := c.(*dialogNode); ok && d.modal.IsOpen() {
-		d.modal.Dismiss(widget.DismissProgrammatic)
+		d.modal.Dismiss(core.DismissProgrammatic)
 	}
 }
 
@@ -198,25 +199,25 @@ func (d *dialogNode) setHelpMessage(m tui.Message) {
 
 // close hides the dialog without answering it.
 func (d *dialogNode) close() error {
-	d.modal.Dismiss(widget.DismissProgrammatic)
+	d.modal.Dismiss(core.DismissProgrammatic)
 	return nil
 }
 
 // accept closes the dialog with the affirmative answer.
-func (d *dialogNode) accept() { d.modal.Dismiss(widget.DismissAccept) }
+func (d *dialogNode) accept() { d.modal.Dismiss(core.DismissAccept) }
 
 // dismissed is the ONE place a way out becomes a signal. The Modal dismissed
 // with its answer — a button's role, or Escape — and close() with none; a
 // Destructive answer (DismissDiscard) is closed only, as close() is.
-func (d *dialogNode) dismissed(reason widget.DismissReason) {
+func (d *dialogNode) dismissed(reason core.DismissReason) {
 	switch reason {
-	case widget.DismissAccept:
+	case core.DismissAccept:
 		var args []qml.SpecValue
 		if d.hooks.acceptArgs != nil {
 			args = d.hooks.acceptArgs()
 		}
 		d.accepted(args...)
-	case widget.DismissCancel, widget.DismissEscape:
+	case core.DismissCancel, core.DismissEscape:
 		d.rejected()
 	}
 	d.closed()
@@ -233,7 +234,7 @@ type dialogSpec struct {
 	closeOnQ                          bool
 	width                             int
 	maxWidthPercent, maxHeightPercent int
-	align                             widget.ButtonAlign
+	align                             core.ButtonAlign
 	// buttons are laid out in this order; the one at defaultAt is the one
 	// Enter answers with, -1 for none (a Dialog's defaultButton).
 	buttons   []standardButton
@@ -266,52 +267,52 @@ func newDialog(b Build, s dialogSpec) *dialogNode {
 	// itself; when another control leaves Enter unclaimed, the dialog answers
 	// with only the button `defaultButton` names. A box's buttons carry their
 	// roles and no implicit default.
-	buttons := make([]*widget.Button, 0, len(s.buttons))
+	buttons := make([]*core.Button, 0, len(s.buttons))
 	for i, sb := range s.buttons {
-		role := widget.ButtonRoleReject
+		role := core.ButtonRoleReject
 		if sb.accept {
-			role = widget.ButtonRoleAccept
+			role = core.ButtonRoleAccept
 		}
 		// Labelled by its message: the label and its mnemonic follow the App's language.
-		opts := []widget.ButtonOption{widget.WithRole(role), widget.WithLabelMessage(sb.msg),
-			widget.WithDefault(i == s.defaultAt)}
-		buttons = append(buttons, widget.NewButton("", opts...))
+		opts := []core.ButtonOption{core.WithRole(role), core.WithLabelMessage(sb.msg),
+			core.WithDefault(i == s.defaultAt)}
+		buttons = append(buttons, core.NewButton("", opts...))
 	}
 	if s.box != nil {
 		buttons = append(buttons, s.box.buttons...)
 	}
-	opts := []widget.ModalOption{
-		widget.WithModalTitle(s.title.Plain),
-		widget.WithButtons(buttons...),
-		widget.WithModalRule(len(buttons) > 0 || !s.help.Empty()),
-		widget.WithModalWidth(s.width),
-		widget.WithModalMaxSizePercent(s.maxWidthPercent, s.maxHeightPercent),
-		widget.WithScrim(s.dim),
-		widget.WithButtonAlign(s.align),
-		widget.WithOnDismiss(d.dismissed),
+	opts := []core.ModalOption{
+		core.WithModalTitle(s.title.Plain),
+		core.WithButtons(buttons...),
+		core.WithModalRule(len(buttons) > 0 || !s.help.Empty()),
+		core.WithModalWidth(s.width),
+		core.WithModalMaxSizePercent(s.maxWidthPercent, s.maxHeightPercent),
+		core.WithScrim(s.dim),
+		core.WithButtonAlign(s.align),
+		core.WithOnDismiss(d.dismissed),
 	}
 	if s.closeOnQ {
-		opts = append(opts, widget.WithModalDismissKeys('q'))
+		opts = append(opts, core.WithModalDismissKeys('q'))
 	}
 	if s.help.Plain != "" {
-		opts = append(opts, widget.WithModalFooter(s.help.Plain))
+		opts = append(opts, core.WithModalFooter(s.help.Plain))
 	}
 	if s.title.IsMessage() {
-		opts = append(opts, widget.WithModalTitleMessage(s.title.Message))
+		opts = append(opts, core.WithModalTitleMessage(s.title.Message))
 	}
 	if s.hooks.gate != nil {
-		opts = append(opts, widget.WithAcceptGate(s.hooks.gate))
+		opts = append(opts, core.WithAcceptGate(s.hooks.gate))
 	}
 	d.shortcuts, d.keyScope = s.shortcuts, s.keyScope
 	if len(s.shortcuts) > 0 {
 		shortcuts, scope := s.shortcuts, s.keyScope
-		opts = append(opts, widget.WithModalKeys(func(k tui.KeyEvent) bool {
+		opts = append(opts, core.WithModalKeys(func(k tui.KeyEvent) bool {
 			return fireShortcut(d.modal.Context(), scope, shortcuts, k)
-		}), widget.WithModalKeyBinder(func(m *keymap.Map) []keymap.Binding {
+		}), core.WithModalKeyBinder(func(m *keymap.Map) []keymap.Binding {
 			return shortcutBindings(m, scope, shortcuts)
 		}))
 	}
-	d.modal = widget.NewModal(s.body, opts...)
+	d.modal = core.NewModal(s.body, opts...)
 	if s.help.IsMessage() {
 		d.modal.SetFooterMessage(s.help.Message)
 	}
@@ -323,7 +324,7 @@ func buildDialog(b Build) (tui.Component, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	s := dialogSpec{body: body, dim: true, align: widget.ButtonsCenter, shortcuts: shortcuts, box: box, defaultAt: -1}
+	s := dialogSpec{body: body, dim: true, align: core.ButtonsCenter, shortcuts: shortcuts, box: box, defaultAt: -1}
 	var flags, defaultFlag int64
 	consumed, err := b.ReadProps(map[string]field{
 		"title":            into(&s.title, textOf),

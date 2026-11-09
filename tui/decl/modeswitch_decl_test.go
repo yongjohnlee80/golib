@@ -9,7 +9,8 @@ import (
 
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
+	"github.com/yongjohnlee80/golib/tui/widget/table"
 )
 
 // withTable gives the Editors declared with ids e and f a table document view, turned on, as a host
@@ -21,7 +22,7 @@ func withTable(p *tuidecl.Program) error {
 		if !ok {
 			continue
 		}
-		ed.SetDocumentView(widget.NewTableDocument(ed.Core(), ','))
+		ed.SetDocumentView(table.NewTableDocument(ed.Core(), ','))
 		ed.SetRenderedDocument(true)
 	}
 	return nil
@@ -31,7 +32,7 @@ func withTable(p *tuidecl.Program) error {
 func switchRows(s *decltest.Screen) []int {
 	var rows []int
 	for y, r := range strings.Split(s.String(), "\n") {
-		if strings.Contains(r, widget.ModeSwitchRaw) {
+		if strings.Contains(r, editor.ModeSwitchRaw) {
 			rows = append(rows, y)
 		}
 	}
@@ -42,7 +43,7 @@ func switchDoc(body string) tuidecl.ProgramOption {
 	return tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nWindow {\n"+body+"\n}"))
 }
 
-const sw = widget.ModeSwitchRaw + widget.ModeSwitchSep + widget.ModeSwitchRendered
+const sw = editor.ModeSwitchRaw + editor.ModeSwitchSep + editor.ModeSwitchRendered
 
 // An Editor's modeSwitch places the switch: "title" on its Frame's title row (the Frame holds it
 // in its title slot, built from the tree as written), true and "row" on the editor's own first
@@ -65,7 +66,7 @@ func TestAnEditorsModeSwitchPlacesTheSwitch(t *testing.T) {
 			s := decltest.RunWith(t, 50, 6, withTable, switchDoc(c.body))
 			if c.onRow < 0 {
 				s.WaitForText(t, "a,b")
-				if strings.Contains(s.String(), widget.ModeSwitchRaw) {
+				if strings.Contains(s.String(), editor.ModeSwitchRaw) {
 					t.Fatalf("modeSwitch false: a switch is drawn:\n%s", s)
 				}
 				return
@@ -78,7 +79,7 @@ func TestAnEditorsModeSwitchPlacesTheSwitch(t *testing.T) {
 					break
 				}
 			}
-			if got != c.onRow || strings.Count(s.String(), widget.ModeSwitchRaw) != 1 {
+			if got != c.onRow || strings.Count(s.String(), editor.ModeSwitchRaw) != 1 {
 				t.Fatalf("the switch on row %d (want %d), once:\n%s", got, c.onRow, s)
 			}
 			if c.onTitle && !strings.HasPrefix(row(s, 0), "┌ notes.csv ") {
@@ -125,7 +126,7 @@ func TestAFrameHoldsTheSwitchOfItsEditorBelowAFlex(t *testing.T) {
 			textRow = y
 		}
 	}
-	if textRow < 0 || strings.Contains(rows[textRow], widget.ModeSwitchRaw) {
+	if textRow < 0 || strings.Contains(rows[textRow], editor.ModeSwitchRaw) {
 		t.Errorf("the Editor's first row %d holds its text, no switch:\n%s", textRow, s)
 	}
 }
@@ -165,7 +166,7 @@ func TestANestedFrameHoldsItsOwnEditorsSwitch(t *testing.T) {
 	s.WaitForText(t, sw)
 	rows := strings.Split(s.String(), "\n")
 	got := switchRows(s)
-	if len(got) != 1 || !strings.Contains(rows[got[0]], "inner") || strings.Contains(rows[0], widget.ModeSwitchRaw) {
+	if len(got) != 1 || !strings.Contains(rows[got[0]], "inner") || strings.Contains(rows[0], editor.ModeSwitchRaw) {
 		t.Fatalf("the switch on rows %v; want the inner frame's title row alone:\n%s", got, s)
 	}
 }

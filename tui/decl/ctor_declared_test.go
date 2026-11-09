@@ -7,7 +7,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // ctor_declared_test.go: a property a builder reads is one its Type declares. A reload decides
@@ -45,7 +45,7 @@ func TestABuilderReadingAnUndeclaredPropertyIsRefused(t *testing.T) {
 				"label": tuidecl.StringField(&label),
 				"unit":  tuidecl.StringField(&unit),
 			})
-			return widget.NewText(label), consumed, err
+			return core.NewText(label), consumed, err
 		},
 	}
 	_, _, _, err := extended(t, "import tui 1.0\nMeter { label: \"m\" }", meter)

@@ -10,7 +10,10 @@ import (
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
+	"github.com/yongjohnlee80/golib/tui/widget/files"
+	"github.com/yongjohnlee80/golib/tui/widget/terminal"
 )
 
 // PALETTE PROPAGATION — Qt's rule: "Items propagate explicit palette properties
@@ -315,7 +318,7 @@ func (a *Adapter) paletteRelease(child decl.NodeID) {
 // golib's own.
 
 func restyleText(c tui.Component, p palette) {
-	c.(*widget.Text).WithStyle(p.look(roleWindow, roleWindowText))
+	c.(*core.Text).WithStyle(p.look(roleWindow, roleWindowText))
 }
 
 func restyleSplit(c tui.Component, p palette) {
@@ -329,26 +332,26 @@ func restyleSplit(c tui.Component, p palette) {
 	if fg, ok := p[roleMid]; ok {
 		st = st.Foreground(fg)
 	}
-	c.(*widget.Split).WithDividerStyle(st)
+	c.(*core.Split).WithDividerStyle(st)
 }
 
 func restyleFrame(c tui.Component, p palette) {
 	st, focused := p.frameStyles()
-	c.(*widget.Box).WithStyle(st).WithFocusedStyle(focused)
+	c.(*core.Box).WithStyle(st).WithFocusedStyle(focused)
 }
 
 // restyleEditor gives the Editor the palette's looks, and its frame's tabs (Editor.Tabs)
 // TerminalTabs's: the bar in window, a tab in button, the active one in highlight.
 func restyleEditor(c tui.Component, p palette) {
 	st, _ := p.editorStyles()
-	e := c.(*widget.Editor)
+	e := c.(*editor.Editor)
 	e.WithStyles(st)
 	e.Tabs().SetStyles(p.look(roleWindow, roleWindowText), p.look(roleButton, roleButtonText), p.look(roleHighlight, roleHighlightedText))
 }
 
 func restyleStatusBar(c tui.Component, p palette) {
 	st, _ := p.barStyle()
-	c.(*widget.StatusBar).WithBarStyle(st)
+	c.(*core.StatusBar).WithBarStyle(st)
 }
 
 func restyleMenuBar(c tui.Component, p palette) {
@@ -359,7 +362,7 @@ func restyleMenuBar(c tui.Component, p palette) {
 // restyleTerminal paints the program's default colours in the palette's text on base, as an
 // Editor's page is: the terminal sits on the page's colours. Without them, the theme's.
 func restyleTerminal(c tui.Component, p palette) {
-	c.(*widget.Terminal).SetDefaultLook(p.look(roleBase, roleText))
+	c.(*terminal.Terminal).SetDefaultLook(p.look(roleBase, roleText))
 }
 
 // restyleButton gives a Button's access key the accent's look, or with none the plain underline.
@@ -369,7 +372,7 @@ func restyleTerminal(c tui.Component, p palette) {
 // so a Button that sets them paints nothing different. Its color property is how a document colours
 // one button.
 func restyleButton(c tui.Component, p palette) {
-	b := c.(*widget.Button)
+	b := c.(*core.Button)
 	hk, _ := p.hotkey() // zero without an accent: the underline
 	if st := b.ButtonStyle(); st != nil || hk != (style.Style{}) {
 		b.WithStyle(st.WithHotkey(hk))
@@ -387,7 +390,7 @@ func restyleDialog(c tui.Component, p palette) {
 		return
 	}
 	st, _ := p.browserStyles()
-	if v, ok := d.chooser.(widget.FileChooserStyler); ok {
+	if v, ok := d.chooser.(files.FileChooserStyler); ok {
 		v.SetPaneStyles(st)
 		v.SetPreviewSourceHighlighting(d.highlighters, p.syntaxStyles())
 	}

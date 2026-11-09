@@ -6,7 +6,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // StdRegistry returns a registry covering the standard widget vocabulary: a
@@ -107,9 +107,9 @@ var tuiFlags = []flagSet{dialogButtons, windowModifierFlags}
 
 // ---------------------------------------------------------------- core
 
-var orientations = enum[widget.Orientation]{values: map[string]widget.Orientation{
-	"Horizontal": widget.Horizontal,
-	"Vertical":   widget.Vertical,
+var orientations = enum[core.Orientation]{values: map[string]core.Orientation{
+	"Horizontal": core.Horizontal,
+	"Vertical":   core.Vertical,
 }}
 
 var directions = enum[tui.Direction]{values: map[string]tui.Direction{
@@ -120,7 +120,7 @@ var directions = enum[tui.Direction]{values: map[string]tui.Direction{
 func coreTypes() []Type {
 	return []Type{
 		{Name: "Split", Children: Exactly(2), Build: buildSplit, Ctor: []string{"orientation"}, restyle: restyleSplit, Setters: map[string]Setter{
-			"ratio": setter("a Split", numberOf, (*widget.Split).SetRatio),
+			"ratio": setter("a Split", numberOf, (*core.Split).SetRatio),
 		}},
 		{Name: "Flex", Build: buildFlex, Ctor: []string{"direction"}, Adopt: adoptFlexChild},
 		// Qt's Flow: a row that wraps. spacing is the gap on a line and, unless rowSpacing sets its
@@ -131,18 +131,18 @@ func coreTypes() []Type {
 				"rowSpacing": setter("a Flow", cellsOf, (*tui.Flow).SetRowSpacing),
 			}},
 		{Name: "Button", Build: buildButton, Ctor: []string{"flat"}, restyle: restyleButton, Setters: map[string]Setter{
-			"enabled": setter("a Button", boolOf, (*widget.Button).SetEnabled),
+			"enabled": setter("a Button", boolOf, (*core.Button).SetEnabled),
 			// golib's: the label's colour over its look, as a Text's color
-			"color": setter("a Button", colorOf, (*widget.Button).SetColor),
+			"color": setter("a Button", colorOf, (*core.Button).SetColor),
 			// Qt's AbstractButton.text: `&` marks the mnemonic, "&Save".
-			"text": textSetter("a Button", setButtonText, (*widget.Button).SetLabelMessage),
+			"text": textSetter("a Button", setButtonText, (*core.Button).SetLabelMessage),
 		}},
 		{Name: "Text", Build: buildText, Ctor: []string{"wrapMode"}, restyle: restyleText, Setters: map[string]Setter{
-			"text":  textSetter("a Text", (*widget.Text).SetText, (*widget.Text).SetTextMessage),
-			"color": setter("a Text", colorOf, (*widget.Text).SetColor),
+			"text":  textSetter("a Text", (*core.Text).SetText, (*core.Text).SetTextMessage),
+			"color": setter("a Text", colorOf, (*core.Text).SetColor),
 			// Qt's font group: the text bold, or italic
-			"font.bold":   setter("a Text", boolOf, (*widget.Text).SetBold),
-			"font.italic": setter("a Text", boolOf, (*widget.Text).SetItalic),
+			"font.bold":   setter("a Text", boolOf, (*core.Text).SetBold),
+			"font.italic": setter("a Text", boolOf, (*core.Text).SetItalic),
 		}},
 	}
 }
@@ -153,14 +153,14 @@ func coreTypes() []Type {
 // The orientation is REPORTED consumed: there is no SetOrientation, so an engine
 // that re-applied it would find no setter and fail the mount.
 func buildSplit(b Build) (tui.Component, []string, error) {
-	o := widget.Horizontal
+	o := core.Horizontal
 	consumed, err := b.ReadProps(map[string]field{
 		"orientation": into(&o, orientations.read),
 	})
 	if err != nil {
 		return nil, nil, err
 	}
-	return widget.NewSplit(o, b.Children[0], b.Children[1]), consumed, nil
+	return core.NewSplit(o, b.Children[0], b.Children[1]), consumed, nil
 }
 
 // buildFlex takes its direction at construction and its children afterwards.
@@ -242,11 +242,11 @@ func buildButton(b Build) (tui.Component, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	opts := []widget.ButtonOption{widget.WithOnActivate(b.Emitter("clicked"))}
+	opts := []core.ButtonOption{core.WithOnActivate(b.Emitter("clicked"))}
 	if flat {
-		opts = append(opts, widget.WithButtonDecoration("", ""))
+		opts = append(opts, core.WithButtonDecoration("", ""))
 	}
-	return widget.NewButton("", opts...), consumed, nil
+	return core.NewButton("", opts...), consumed, nil
 }
 
 // wrapModes are Qt's Text.wrapMode values this toolkit has.
@@ -254,9 +254,9 @@ func buildButton(b Build) (tui.Component, []string, error) {
 // NoWrap is golib's Truncate: one line, newlines flattened, an ellipsis at the
 // edge. WordWrap keeps the author's newlines and soft-wraps at the width it is
 // given — what any multi-line message, a dialog's say, has to be.
-var wrapModes = enum[widget.WrapMode]{values: map[string]widget.WrapMode{
-	"NoWrap":   widget.Truncate,
-	"WordWrap": widget.Wrap,
+var wrapModes = enum[core.WrapMode]{values: map[string]core.WrapMode{
+	"NoWrap":   core.Truncate,
+	"WordWrap": core.Wrap,
 }}
 
 // buildText consumes its wrap mode and its colours, which golib takes at
@@ -266,16 +266,16 @@ var wrapModes = enum[widget.WrapMode]{values: map[string]widget.WrapMode{
 // that names no background paints the terminal's — so text on a coloured card
 // is given that card's colours, or it sits in a strip of the terminal's.
 func buildText(b Build) (tui.Component, []string, error) {
-	mode := widget.Truncate
+	mode := core.Truncate
 	consumed, err := b.ReadProps(map[string]field{"wrapMode": into(&mode, wrapModes.read)})
 	if err != nil {
 		return nil, nil, err
 	}
-	return widget.NewText("", widget.WithWrapMode(mode)), consumed, nil
+	return core.NewText("", core.WithWrapMode(mode)), consumed, nil
 }
 
 // setButtonText sets a Button's text, `&` marking its mnemonic as Qt's does.
-func setButtonText(b *widget.Button, text string) {
+func setButtonText(b *core.Button, text string) {
 	label, key, _ := tui.ParseMnemonic(text)
 	b.SetLabel(label)
 	b.SetMnemonic(key)

@@ -9,7 +9,8 @@ import (
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // bench_test.go measures what the QML layer costs: mounting a document,
@@ -139,15 +140,15 @@ func BenchmarkEditorScreen(b *testing.B) {
 	b.Run("native", func(b *testing.B) {
 		b.ReportAllocs()
 		for range b.N {
-			menu := widget.NewMenu()
-			_ = menu.SetModel([]widget.MenuItemModel{
-				widget.NewSubmenu("file", "File", []widget.MenuItemModel{
-					widget.NewCommand("open", "Open", nil), widget.NewCommand("save", "Save", nil)}),
-				widget.NewSubmenu("help", "Help", []widget.MenuItemModel{widget.NewCommand("about", "About", nil)}),
+			menu := core.NewMenu()
+			_ = menu.SetModel([]core.MenuItemModel{
+				core.NewSubmenu("file", "File", []core.MenuItemModel{
+					core.NewCommand("open", "Open", nil), core.NewCommand("save", "Save", nil)}),
+				core.NewSubmenu("help", "Help", []core.MenuItemModel{core.NewCommand("about", "About", nil)}),
 			})
-			bar := widget.NewMenuBar(menu)
-			frame := widget.NewBox(widget.NewEditor(), widget.WithTitle("untitled"))
-			status := widget.NewStatusBar()
+			bar := core.NewMenuBar(menu)
+			frame := core.NewBox(editor.NewEditor(), core.WithTitle("untitled"))
+			status := core.NewStatusBar()
 			status.SetLeft("NORMAL")
 			status.SetCenter("untitled")
 			status.SetRight("1:1")
@@ -155,7 +156,7 @@ func BenchmarkEditorScreen(b *testing.B) {
 			dock.Pin(tui.DockTop, bar)
 			dock.Add(frame)
 			dock.Pin(tui.DockBottom, status)
-			_ = widget.NewOverlayHost(dock)
+			_ = core.NewOverlayHost(dock)
 		}
 	})
 	b.Run("qml", func(b *testing.B) {

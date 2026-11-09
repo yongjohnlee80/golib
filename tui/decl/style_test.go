@@ -10,7 +10,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // recTB records CheckStyle's errors instead of failing the test.
@@ -63,7 +63,7 @@ func TestCheckStylePassesACopyAndNamesADifference(t *testing.T) {
 
 func TestWithStyleRefuses(t *testing.T) {
 	src := tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nText { text: \"x\" }"))
-	build := func(tuidecl.Build) (tui.Component, []string, error) { return widget.NewText("styled"), nil, nil }
+	build := func(tuidecl.Build) (tui.Component, []string, error) { return core.NewText("styled"), nil, nil }
 	for _, c := range []struct {
 		style tuidecl.Style
 		want  error
@@ -87,7 +87,7 @@ func TestWithStyleRefuses(t *testing.T) {
 func TestAStylesEditorIsTheDocumentsEditor(t *testing.T) {
 	styled := editorCopy(t)
 	styled.Build = func(tuidecl.Build) (tui.Component, []string, error) {
-		return widget.NewText("the styled editor"), []string{"text", "wrap"}, nil
+		return core.NewText("the styled editor"), []string{"text", "wrap"}, nil
 	}
 	styled.Setters = map[string]tuidecl.Setter{}
 	for name := range editorCopy(t).Setters {
@@ -134,12 +134,12 @@ func TestAWindowModIsReachedThroughItsBehavior(t *testing.T) {
 	if !tuidecl.Replaceable("WindowMod") {
 		t.Error(`Replaceable("WindowMod") = false`)
 	}
-	var mod tui.Component = widget.NewWindowMod(widget.NewText("x"))
-	b, ok := mod.(interface{ WindowBehavior() *widget.WindowCore })
+	var mod tui.Component = core.NewWindowMod(core.NewText("x"))
+	b, ok := mod.(interface{ WindowBehavior() *core.WindowCore })
 	if !ok {
 		t.Fatal("a WindowMod has no WindowBehavior")
 	}
-	if b.WindowBehavior() != mod.(*widget.WindowMod).Core() {
+	if b.WindowBehavior() != mod.(*core.WindowMod).Core() {
 		t.Error("a WindowMod's WindowBehavior is not its Core")
 	}
 }
@@ -152,7 +152,7 @@ func TestCheckStyleNamesACopiedGetterThatRefusesTheStylesWidget(t *testing.T) {
 	if !ok {
 		t.Fatal("no standard ListView")
 	}
-	list.Build = func(tuidecl.Build) (tui.Component, []string, error) { return widget.NewText("list"), nil, nil }
+	list.Build = func(tuidecl.Build) (tui.Component, []string, error) { return core.NewText("list"), nil, nil }
 	r := &recTB{}
 	decltest.CheckStyle(r, tuidecl.Style{Name: "odd", Types: []tuidecl.Type{list}})
 	if !r.has(`style "odd", ListView: getter currentIndex refuses the style's widget`) {

@@ -10,7 +10,7 @@ import (
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui/key"
 	"github.com/yongjohnlee80/golib/tui/keymap"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // CheckKeymap checks a program's keys without running it, as Check checks its layout: it builds the
@@ -57,7 +57,7 @@ func CheckKeymap(opts ...ProgramOption) (warnings []keymap.Problem, err error) {
 // default keys.
 func programWarnings(m *keymap.Map) []keymap.Problem {
 	golib := map[string]bool{}
-	for _, c := range widget.KeyCommands() {
+	for _, c := range editor.KeyCommands() {
 		golib[c.ID] = true
 	}
 	golibDefault := func(id string) bool { return golib[id] && m.SourceOf(id).Kind == keymap.FromDefault }

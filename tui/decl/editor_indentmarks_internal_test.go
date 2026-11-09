@@ -4,13 +4,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // indentMarks takes its three names and refuses anything else by naming the choices.
 func TestIndentMarksReadsItsThreeNames(t *testing.T) {
-	for name, want := range map[string]widget.IndentMarks{
-		"off": widget.IndentMarksOff, "cursorLine": widget.IndentMarksCursorLine, "all": widget.IndentMarksAll,
+	for name, want := range map[string]editor.IndentMarks{
+		"off": editor.IndentMarksOff, "cursorLine": editor.IndentMarksCursorLine, "all": editor.IndentMarksAll,
 	} {
 		if got, err := indentMarks.read(strValue(name)); err != nil || got != want {
 			t.Errorf("indentMarks %q = %v, %v; want %v", name, got, err, want)

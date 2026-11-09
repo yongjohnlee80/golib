@@ -9,7 +9,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // THE WINDOW — the top-level surface a document mounts into.
@@ -32,7 +32,7 @@ import (
 // windowNode is the component a `Window` declaration builds.
 type windowNode struct {
 	ctx  *tui.Context
-	host *widget.OverlayHost
+	host *core.OverlayHost
 	dock *tui.Dock
 
 	// focus is the document's `focus: true` target, or nil; focusPending is
@@ -197,7 +197,7 @@ func (w *windowNode) syncDock(items []docked) {
 		for _, it := range items {
 			w.dock.Pin(it.edge, it.comp)
 		}
-		w.host = widget.NewOverlayHost(w.dock)
+		w.host = core.NewOverlayHost(w.dock)
 		return
 	}
 	keep := map[tui.Component]bool{}
@@ -240,7 +240,7 @@ func (w *windowNode) Init(ctx *tui.Context) {
 	// for it (a pane it opened, its focus waiting for the pane's first layout),
 	// keeps it: restoring then would undo the row (a menu bar's own leave has
 	// already given the keyboard back before its row ran).
-	tui.SubscribeScoped(ctx, func(ev widget.MenuActivatedEvent) {
+	tui.SubscribeScoped(ctx, func(ev core.MenuActivatedEvent) {
 		if ev.Handled && !ctx.FocusPending() && w.keyboardLeftOn(ev.Owner) {
 			w.restoreFocus()
 		}
@@ -385,15 +385,15 @@ func (w *windowNode) HandleEvent(ev tui.Event) bool {
 // it when focused), "hotkey" (Alt and a category's mnemonic, which openHotkey has opened), "leave"
 // (widget.MenuClose while it is focused), or "".
 func windowMenuKey(ctx *tui.Context, k tui.KeyEvent, focused bool, openHotkey func(rune) bool) string {
-	cmd, ok := ctx.KeyCommand(k, widget.WindowMenu, widget.MenuClose)
+	cmd, ok := ctx.KeyCommand(k, core.WindowMenu, core.MenuClose)
 	switch {
-	case ok && cmd.ID == widget.WindowMenu.ID:
+	case ok && cmd.ID == core.WindowMenu.ID:
 		return "toggle"
 	case k.Mods&shortcutMods == tui.ModAlt:
 		if openHotkey(k.Code) {
 			return "hotkey"
 		}
-	case ok && cmd.ID == widget.MenuClose.ID && focused:
+	case ok && cmd.ID == core.MenuClose.ID && focused:
 		return "leave"
 	}
 	return ""
@@ -403,13 +403,13 @@ func windowMenuKey(ctx *tui.Context, k tui.KeyEvent, focused bool, openHotkey fu
 // mounted, and the access keys of its categories.
 type menuBarNode struct {
 	ctx  *tui.Context
-	bar  *widget.MenuBar
-	menu *widget.Menu
+	bar  *core.MenuBar
+	menu *core.Menu
 	// rows are the bar's Menus, and triggers each row's onTriggered by its
 	// action — both as the last projection left them (see project).
 	rows     []*menuNode
 	triggers map[tui.ActionID]func()
-	byID     map[widget.ItemID]*menuNode
+	byID     map[core.ItemID]*menuNode
 	// leave gives the keyboard back before a row's onTriggered runs; the
 	// Window that adopts the bar sets it.
 	leave func()
@@ -419,13 +419,13 @@ type menuBarNode struct {
 	autoHide, shown bool
 	// pendingOpen is the category an Alt+letter asked for while the bar was
 	// hidden: it opens once the bar is laid out again, and has a place.
-	pendingOpen widget.ItemID
+	pendingOpen core.ItemID
 }
 
 // menuCategory is one top-level Menu's access key.
 type menuCategory struct {
 	hotkey rune
-	id     widget.ItemID
+	id     core.ItemID
 }
 
 // accessKeys is each top-level Menu's access key as the bar shows it now. A title from a
@@ -577,7 +577,7 @@ func (w *windowNode) heldShortcuts() (keymap.Scope, []*shortcutNode) {
 func (w *windowNode) KeyBindings(m *keymap.Map) []keymap.Binding {
 	out := shortcutBindings(m, keymap.Global, w.shortcuts)
 	if len(w.menus) > 0 {
-		out = append(out, tui.BindingsOf(m, widget.WindowMenu)...)
+		out = append(out, tui.BindingsOf(m, core.WindowMenu)...)
 	}
 	return out
 }

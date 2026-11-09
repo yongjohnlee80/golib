@@ -5,7 +5,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // ---------------------------------------------------------------- TabView
@@ -25,8 +25,8 @@ import (
 // anywhere inside the view; with the bar focused, ←/→ and [ ] do, and a click
 // on a title does.
 type tabViewNode struct {
-	widget.Base
-	tabs    *widget.Tabs
+	core.Base
+	tabs    *core.Tabs
 	pages   []*tabNode
 	changed func(args ...qml.SpecValue)
 	// set is whether currentIndex has been given its value at construction: every later setting is
@@ -70,17 +70,17 @@ func buildTabView(b Build) (tui.Component, []string, error) {
 		return nil, nil, fmt.Errorf("a TabView needs at least one Tab (at %s)", b.Pos)
 	}
 	n := &tabViewNode{changed: b.EmitterWith("currentIndexChanged")}
-	var opts []widget.TabsOption
+	var opts []core.TabsOption
 	for _, c := range b.Children {
 		page, ok := c.(*tabNode)
 		if !ok {
 			return nil, nil, fmt.Errorf("a TabView holds Tabs only (at %s)", b.Pos)
 		}
 		n.pages = append(n.pages, page)
-		opts = append(opts, widget.WithTab(page.title, page))
+		opts = append(opts, core.WithTab(page.title, page))
 	}
-	n.tabs = widget.NewTabs(append(opts, widget.WithKeepMounted(true),
-		widget.WithTabsOnChange(n.tabChanged))...)
+	n.tabs = core.NewTabs(append(opts, core.WithKeepMounted(true),
+		core.WithTabsOnChange(n.tabChanged))...)
 	n.tabs.SetOnWindowButton(windowButtonSignals(b))
 	return n, nil, nil
 }
@@ -88,7 +88,7 @@ func buildTabView(b Build) (tui.Component, []string, error) {
 // SetMenu gives the TabView's bar a menu (widget.Tabs.SetMenu): ≡ and a right press on a tab open
 // build's rows for that tab. It is the host's, through the node Program.Find returns, since a
 // document can't carry the Go function that builds the rows.
-func (n *tabViewNode) SetMenu(build func(i int) []widget.MenuItemModel) { n.tabs.SetMenu(build) }
+func (n *tabViewNode) SetMenu(build func(i int) []core.MenuItemModel) { n.tabs.SetMenu(build) }
 
 func (n *tabViewNode) Init(ctx *tui.Context) {
 	n.Base.Init(ctx)

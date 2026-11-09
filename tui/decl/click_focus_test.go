@@ -9,7 +9,7 @@ import (
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/controls"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // click_focus_test.go: a click takes the keyboard, as any floating window's does: a press on the
@@ -45,7 +45,7 @@ func runClick(t *testing.T, tiled bool) *clickRig {
 		tuidecl.Types(controls.Types()...),
 		tuidecl.Sources(map[string]any{"App.fwTiled": tiled}),
 		tuidecl.Handlers(map[string]decl.HandlerFunc{}),
-		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(widget.NewMinimizedWindows())))
+		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(core.NewMinimizedWindows())))
 	r.s.WaitForText(t, "FW")
 	return r
 }

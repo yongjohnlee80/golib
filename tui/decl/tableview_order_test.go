@@ -10,7 +10,8 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // rowsInOrder reports whether the screen shows the names top to bottom in this order.
@@ -172,9 +173,9 @@ func TestACellCursorTableViewOpensTheHostsMenu(t *testing.T) {
 		if !ok || tuidecl.TableOf(c) == nil || tuidecl.TableOf(c).Menu() == nil {
 			return errors.New("no menu on the TableView")
 		}
-		tuidecl.TableOf(c).Menu().SetRows(func() []widget.MenuItemModel {
-			return []widget.MenuItemModel{widget.NewCommand("t.copy", "Copy rows", widget.CoreMenuAction{
-				ID: "t.copy", Run: func(*widget.EditorCore) { ran <- true }})}
+		tuidecl.TableOf(c).Menu().SetRows(func() []core.MenuItemModel {
+			return []core.MenuItemModel{core.NewCommand("t.copy", "Copy rows", editor.CoreMenuAction{
+				ID: "t.copy", Run: func(*editor.EditorCore) { ran <- true }})}
 		})
 		return nil
 	},

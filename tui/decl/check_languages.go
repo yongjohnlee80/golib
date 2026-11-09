@@ -10,7 +10,7 @@ import (
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/i18n"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // CheckLanguages judges a program's catalogs against its screens, in every language they
@@ -147,7 +147,7 @@ func walkLevels(name string, rows []*menuNode, set *i18n.Set, fn func(level stri
 
 // rowKey is a row's label and the key it answers to in lang, as the App shows it: a message
 // keeps English's letter wherever English carries it.
-func rowKey(m widget.MenuItemModel, set *i18n.Set, lang string) (string, rune) {
+func rowKey(m core.MenuItemModel, set *i18n.Set, lang string) (string, rune) {
 	if m.LabelMsg == (tui.Message{}) {
 		return m.Label, m.Hotkey
 	}
