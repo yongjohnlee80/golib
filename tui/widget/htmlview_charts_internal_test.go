@@ -1,7 +1,6 @@
 package widget
 
 import (
-	"slices"
 	"strings"
 	"testing"
 
@@ -18,11 +17,11 @@ const mixedChart = `{"data":{"values":[{"m":"Jan","v":3,"w":1},{"m":"Feb","v":5,
 // row of it, painted and panned as a diagram's grid; never its source.
 func TestAVegaLitePreIsDrawnAsAChart(t *testing.T) {
 	c := layCells(t, `<p>before</p><pre class="vega-lite">`+mixedChart+`</pre><p>after</p>`, 60)
-	var pic *chartPicture
+	var pic CellPicture // the page's only picture: the chart
 	n := 0
 	for _, r := range c.rows {
-		if p, ok := r.grid.(*chartPicture); ok {
-			pic, n = p, n+1
+		if r.grid != nil {
+			pic, n = r.grid, n+1
 		}
 	}
 	if n == 0 {
@@ -67,9 +66,9 @@ func TestAVegaLiteSpecOutsideTheSubsetIsTheNotice(t *testing.T) {
 	}
 }
 
-// A pie on the page wears the page's chart series: its picture's theme is the diagrams' with the
-// series a chart on the page takes (chartTheme, the page's code colours), so its slices are those
-// colours, the first slice the first series'.
+// A pie on the page wears the page's chart series (chartTheme, the page's code colours): its first
+// slice is painted in the first series' colour. That a pie laid from those syntax styles takes
+// exactly that series is the editor's (TestAPieLaidFromSyntaxWearsTheChartSeries).
 func TestAPiesSlicesWearThePagesChartSeries(t *testing.T) {
 	c := newCellHTML(func(s string) int { return len([]rune(s)) })
 	var styles SyntaxStyles
@@ -82,18 +81,16 @@ func TestAPiesSlicesWearThePagesChartSeries(t *testing.T) {
   "Cats" : 85
   "Rats" : 15</pre>`))
 	c.SetWidth(60)
-	var pic *mermaidPicture
+	held := false
 	for _, r := range c.rows {
-		if p, ok := r.grid.(*mermaidPicture); ok {
-			pic = p
-		}
+		held = held || r.grid != nil
 	}
-	if pic == nil {
+	if !held {
 		t.Fatalf("no row holds the pie: %v", c.rowTexts())
 	}
 	want := c.chartTheme().Series
-	if len(want) < 3 || !slices.Equal(pic.th.Series, want) {
-		t.Fatalf("the pie's series are %v, want the page's chart series %v", pic.th.Series, want)
+	if len(want) < 3 {
+		t.Fatalf("the page's chart series are %v, want three or more", want)
 	}
 	s := newRecordSurface(60, len(c.rows))
 	c.PaintCells(s, 0, 60, DocPos{}, DocPos{})
