@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"bytes"
 	"errors"
 	"image"
 	"image/color"
@@ -71,5 +72,37 @@ func TestASnapshotsFailureAfterTheGPUIsNotNoGPU(t *testing.T) {
 	}
 	if !errors.Is(ErrNoGPU, errs.ErrUnsupported) {
 		t.Error("ErrNoGPU is not an unsupported condition")
+	}
+}
+
+// A Snapshotter draws many snapshots on its one window, each its own: a view drawn twice is the same
+// pixels, and a different view between them doesn't leak into the second.
+func TestASnapshotterDrawsManySnapshotsOnOneWindow(t *testing.T) {
+	s, err := NewSnapshotter(Size{W: 8, H: 8}, 1)
+	if errors.Is(err, ErrNoGPU) {
+		t.Skipf("no headless GPU here: %v", err)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Release()
+	fill := func(c color.NRGBA) View {
+		return ViewFunc(func(cv Canvas) { cv.FillRect(Rect{W: 8, H: 8}, Solid(c)) })
+	}
+	red, blue := color.NRGBA{R: 0xc0, A: 0xff}, color.NRGBA{B: 0xc0, A: 0xff}
+	a, err := s.Snap(fill(red))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := s.Snap(fill(blue))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := s.Snap(fill(red))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(a.Pix, c.Pix) || a.RGBAAt(4, 4).R < 0xa0 || b.RGBAAt(4, 4).B < 0xa0 || b.RGBAAt(4, 4).R > 0x20 {
+		t.Fatalf("red %v, blue %v, red again %v; want each its own colour, red twice the same", a.RGBAAt(4, 4), b.RGBAAt(4, 4), c.RGBAAt(4, 4))
 	}
 }
