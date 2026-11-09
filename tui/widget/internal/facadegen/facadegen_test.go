@@ -51,7 +51,7 @@ func hide() {}
 
 func (b *Box) Size() int { return b.n }
 `)
-	facade, vars, err := Generate(dir)
+	facade, vars, err := Generate(dir, Packages[0])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func (b *Box) Size() int { return b.n }
 // that does not compile.
 func TestGenerateRefusesAnUnexportedNameInASignature(t *testing.T) {
 	dir := writeCore(t, "package core\n\ntype secret int\n\nfunc Open() secret { return 0 }\n")
-	if _, _, err := Generate(dir); err == nil || !strings.Contains(err.Error(), "secret") {
+	if _, _, err := Generate(dir, Packages[0]); err == nil || !strings.Contains(err.Error(), "secret") {
 		t.Fatalf("Generate = %v, want it to refuse secret", err)
 	}
 }
@@ -93,10 +93,10 @@ func TestGenerateRefusesAnUnexportedNameInASignature(t *testing.T) {
 // TestGenerateReportsAMissingOrBrokenCore: a folder that is not there, or a file that does not
 // parse, is an error.
 func TestGenerateReportsAMissingOrBrokenCore(t *testing.T) {
-	if _, _, err := Generate(filepath.Join(t.TempDir(), "none")); err == nil {
+	if _, _, err := Generate(filepath.Join(t.TempDir(), "none"), Packages[0]); err == nil {
 		t.Error("a missing folder generated a facade")
 	}
-	if _, _, err := Generate(writeCore(t, "package core\n\nfunc (")); err == nil {
+	if _, _, err := Generate(writeCore(t, "package core\n\nfunc ("), Packages[0]); err == nil {
 		t.Error("a file that does not parse generated a facade")
 	}
 }
