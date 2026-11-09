@@ -8,7 +8,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // TILES — golib's tile manager (widget.Tiles) as a document writes it: a
@@ -49,12 +49,12 @@ import (
 // window wraps, so it is mounted in the tree under its id, and a program finds its window through
 // it (WindowBehavior).
 type tileNode struct {
-	widget.Base
+	core.Base
 	content tui.Component
 	key     string
-	place   widget.TilePlace
-	tiles   *widget.Tiles // the manager it was added to; nil until the TileManager is built
-	tile    *widget.Tile
+	place   core.TilePlace
+	tiles   *core.Tiles // the manager it was added to; nil until the TileManager is built
+	tile    *core.Tile
 	resized func(args ...qml.SpecValue)
 	docked  func(args ...qml.SpecValue)
 	changed func(args ...qml.SpecValue)
@@ -82,7 +82,7 @@ func buildTile(b Build) (tui.Component, []string, error) {
 // (TilePlace's Min, MinW and MinH); maximumWidth and maximumHeight, each 0 for none, the most the
 // centre takes on one (MaxW and MaxH).
 type tilePlaceSpec struct {
-	place                                 widget.TilePlace
+	place                                 core.TilePlace
 	edges                                 string
 	size, minimum, minW, minH, maxW, maxH float64
 }
@@ -97,20 +97,20 @@ func (s *tilePlaceSpec) fields() map[string]field {
 }
 
 // specOf is a place as its fields hold it, for a live change to be read over.
-func specOf(p widget.TilePlace) tilePlaceSpec {
+func specOf(p core.TilePlace) tilePlaceSpec {
 	return tilePlaceSpec{place: p, size: p.Size, minimum: float64(p.Min), minW: float64(p.MinW), minH: float64(p.MinH),
 		maxW: float64(p.MaxW), maxH: float64(p.MaxH)}
 }
 
 // done is the place read: its edges parsed, its size and minimum finite and at least 0. who names
 // what wrote it, for the error.
-func (s *tilePlaceSpec) done(who string) (widget.TilePlace, error) {
+func (s *tilePlaceSpec) done(who string) (core.TilePlace, error) {
 	var err error
 	if s.place.Edges, err = tileEdges(s.edges); err != nil {
-		return widget.TilePlace{}, fmt.Errorf("%s: %w", who, err)
+		return core.TilePlace{}, fmt.Errorf("%s: %w", who, err)
 	}
 	if !finite(s.size) || !finite(s.minimum) || !finite(s.minW) || !finite(s.minH) || !finite(s.maxW) || !finite(s.maxH) {
-		return widget.TilePlace{}, fmt.Errorf("%s: size, the minimums and the maximums are finite numbers", who)
+		return core.TilePlace{}, fmt.Errorf("%s: size, the minimums and the maximums are finite numbers", who)
 	}
 	s.place.Size, s.place.Min = max(s.size, 0), max(int(s.minimum), 0)
 	s.place.MinW, s.place.MinH = max(int(s.minW), 0), max(int(s.minH), 0)
@@ -157,7 +157,7 @@ func (n *tileNode) Layout(c tui.Constraints) tui.Size {
 func (n *tileNode) Render(tui.Surface) {}
 
 // WindowBehavior is the tile's window: a dock reads whether it is hidden there.
-func (n *tileNode) WindowBehavior() *widget.WindowCore {
+func (n *tileNode) WindowBehavior() *core.WindowCore {
 	if n.tile == nil {
 		return nil
 	}
@@ -245,7 +245,7 @@ func (n *tileNode) setMaximumAxis(cells float64, horizontal bool) {
 	n.tiles.SetMaxSize(n.key, tui.Size{W: p.MaxW, H: p.MaxH})
 }
 
-func (n *tileNode) window() (*widget.WindowMod, error) {
+func (n *tileNode) window() (*core.WindowMod, error) {
 	if n.tile == nil {
 		return nil, ErrWindowOperationUnavailable
 	}
@@ -281,8 +281,8 @@ var tileWindow = windowMethod((*tileNode).window)
 // overlay: the Window collects them (OverlayContainer) and gives each its overlay. origin is where
 // the Window's Dock placed it, the frame its members' tile rects are offset into.
 type tileManagerNode struct {
-	widget.Base
-	tiles   *widget.Tiles
+	core.Base
+	tiles   *core.Tiles
 	members []Overlaid
 	origin  tui.Point
 	changed func(args ...qml.SpecValue)
@@ -335,20 +335,20 @@ func (m *tileManagerNode) allowedIn(self, parent string) error {
 func buildTileManager(b Build) (tui.Component, []string, error) {
 	n := &tileManagerNode{changed: b.EmitterWith("tileChanged")}
 	byKey := map[string]*tileNode{}
-	opts := []widget.TilesOption{
-		widget.WithTilesChanged(func(e widget.TilesChangedEvent) {
+	opts := []core.TilesOption{
+		core.WithTilesChanged(func(e core.TilesChangedEvent) {
 			if t := byKey[e.Key]; t != nil {
 				t.emit(e)
 				return
 			}
 			n.memberChanged(e)
 		}),
-		widget.WithTilesOrigin(func() tui.Point { return n.origin }),
+		core.WithTilesOrigin(func() tui.Point { return n.origin }),
 	}
 	if b.WindowCollector != nil {
-		opts = append(opts, widget.WithTilesCollector(b.WindowCollector))
+		opts = append(opts, core.WithTilesCollector(b.WindowCollector))
 	}
-	n.tiles = widget.NewTiles(opts...)
+	n.tiles = core.NewTiles(opts...)
 	keys, centre := map[string]bool{}, false
 	for i, c := range b.Children {
 		m, err := n.adopt(b, i, c, byKey)
@@ -394,7 +394,7 @@ func (n *tileManagerNode) adopt(b Build, i int, c tui.Component, byKey map[strin
 		return memberSpec{}, fmt.Errorf("a TileManager's Drawer (child %d) is placed and sized by its tile: no reserve, and "+
 			"windowResize rather than resizable's grip", i)
 	}
-	spec := tilePlaceSpec{place: widget.TilePlace{Edge: tui.DockLeft}}
+	spec := tilePlaceSpec{place: core.TilePlace{Edge: tui.DockLeft}}
 	m := memberSpec{key: w.tileKey(), tiled: true}
 	fields := spec.fields()
 	fields["tiled"] = into(&m.tiled, boolOf)
@@ -419,7 +419,7 @@ func (n *tileManagerNode) adopt(b Build, i int, c tui.Component, byKey map[strin
 // wants to tile.
 type memberSpec struct {
 	key   string
-	place widget.TilePlace
+	place core.TilePlace
 	tiled bool
 }
 
@@ -479,7 +479,7 @@ func (n *tileManagerNode) memberSet(key string, w tileMember, prop string, v qml
 
 // memberChanged raises tileChanged for a member's completed operation: its key, the operation, its
 // tile's edge and size, and whether it is tiled now.
-func (n *tileManagerNode) memberChanged(e widget.TilesChangedEvent) {
+func (n *tileManagerNode) memberChanged(e core.TilesChangedEvent) {
 	tiled := false
 	if t := n.tiles.Tile(e.Key); t != nil {
 		tiled = t.Governed()
@@ -489,11 +489,11 @@ func (n *tileManagerNode) memberChanged(e widget.TilesChangedEvent) {
 
 // emit raises the Tile's signals for a completed operation: resized for a border it owns, docked
 // for a re-dock or swap, and changed for every one.
-func (n *tileNode) emit(e widget.TilesChangedEvent) {
+func (n *tileNode) emit(e core.TilesChangedEvent) {
 	switch e.Operation {
-	case widget.WindowResize:
+	case core.WindowResize:
 		n.resized(floatValue(e.Size))
-	case widget.WindowMove:
+	case core.WindowMove:
 		n.docked(strValue(edgeName(e.Edge)))
 	}
 	n.changed(strValue(e.Operation.String()), boolValue(e.Maximized), boolValue(e.Hidden))
@@ -525,7 +525,7 @@ var tileType = Type{
 		"show":           NoArgMethod((*tileNode).show),
 		"hide":           NoArgMethod((*tileNode).hide),
 		"toggle":         NoArgMethod((*tileNode).toggle),
-		"toggleMaximize": tileWindow(windowInvoke(widget.WindowMaximizeAction{})),
+		"toggleMaximize": tileWindow(windowInvoke(core.WindowMaximizeAction{})),
 		"resizeBy":       tileWindow(windowStep(false)),
 	},
 }

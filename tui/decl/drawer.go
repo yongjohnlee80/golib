@@ -7,7 +7,7 @@ import (
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // DRAWERS — Qt Quick Controls' Drawer: a panel that opens over the Window from one of its edges,
@@ -44,9 +44,9 @@ import (
 
 // drawerNode is a Drawer: its Float, the overlay it is on (OverlayLayer), and where it opens from.
 type drawerNode struct {
-	widget.Base
+	core.Base
 	OverlayLayer
-	float   *widget.Float
+	float   *core.Float
 	frame   *drawerFrame
 	edge    tui.DockEdge
 	size    int
@@ -60,16 +60,16 @@ type drawerNode struct {
 	keyScope keymap.Scope
 	// resizable: the content is in grip, and the frame sizes it from size and length
 	resizable          bool
-	grip               *widget.Resizable
+	grip               *core.Resizable
 	minSize, minLength int
 	resized            func(args ...qml.SpecValue)
 	win                tui.Size // the Window the frame last laid the panel out in
 	windowResize       bool
 	windowConfig       windowModConfig
-	windowCollector    widget.WindowCollector
+	windowCollector    core.WindowCollector
 	windowEmit         func(...qml.SpecValue)
 	windowTarget       *drawerWindowTarget
-	windowMods         *widget.WindowMod
+	windowMods         *core.WindowMod
 	modal              bool
 	closeOnQ           bool
 	// movable: a move or resize floats it at frac, percentages of the Window (x, y, w, h), until
@@ -134,7 +134,7 @@ func buildDrawer(b Build) (tui.Component, []string, error) {
 	n.windowTarget = &drawerWindowTarget{owner: n}
 	n.frame.Label("Drawer")
 	n.frame.Add(n.wrapped())
-	n.float = widget.NewFloat(n.frame, widget.WithModal(modal))
+	n.float = core.NewFloat(n.frame, core.WithModal(modal))
 	n.OverlayLayer = NewOverlayLayer(n.float, "a Drawer")
 	n.place()
 	if b.Overlay != nil {
@@ -152,25 +152,25 @@ func (n *drawerNode) wrapped() tui.Component {
 	content := n.content
 	// a hollow square at the corner, the same in a terminal and a window (a full block is a cell
 	// tall, not square; a corner-pointing triangle read as a stray glyph against the frame)
-	handle := widget.HandleBottomRight
+	handle := core.HandleBottomRight
 	switch n.edge {
 	case tui.DockRight:
-		handle = widget.HandleBottomLeft
+		handle = core.HandleBottomLeft
 	case tui.DockBottom:
-		handle = widget.HandleTopRight
+		handle = core.HandleTopRight
 	}
 	n.grip = nil
 	if n.resizable && !n.windowResize {
-		n.grip = widget.NewResizable(content, widget.WithHandles(handle), widget.WithHandleGlyph(drawerGrip), widget.WithResizeEnd(n.dragEnded))
+		n.grip = core.NewResizable(content, core.WithHandles(handle), core.WithHandleGlyph(drawerGrip), core.WithResizeEnd(n.dragEnded))
 		content = n.grip
 	}
 	if !n.windowControls() {
 		return content
 	}
 	opts := append(n.windowConfig.options(n.windowCollector, n.windowChanged),
-		widget.WithWindowTarget(n.windowTarget), widget.WithWindowResizeHandle(handle))
+		core.WithWindowTarget(n.windowTarget), core.WithWindowResizeHandle(handle))
 	if n.windowConfig.close {
-		opts = append(opts, widget.WithWindowCloseHandler(func() bool {
+		opts = append(opts, core.WithWindowCloseHandler(func() bool {
 			shown := n.float.Shown()
 			if shown {
 				n.float.SetVisible(true)
@@ -179,7 +179,7 @@ func (n *drawerNode) wrapped() tui.Component {
 			return shown
 		}))
 	}
-	n.windowMods = widget.NewWindowMod(content, opts...)
+	n.windowMods = core.NewWindowMod(content, opts...)
 	return n.windowMods
 }
 
@@ -190,7 +190,7 @@ func (n *drawerNode) windowControls() bool {
 func (n *drawerNode) heldShortcuts() (keymap.Scope, []*shortcutNode) { return n.keyScope, n.shortcuts }
 
 // WindowBehavior exposes capabilities to a separate declarative presentation.
-func (n *drawerNode) WindowBehavior() *widget.WindowCore {
+func (n *drawerNode) WindowBehavior() *core.WindowCore {
 	if n.windowMods == nil {
 		return nil
 	}
@@ -226,21 +226,21 @@ func (n *drawerNode) Release() {
 	n.place()
 }
 
-func (n *drawerNode) windowChanged(e widget.WindowChangedEvent) {
+func (n *drawerNode) windowChanged(e core.WindowChangedEvent) {
 	if n.governed() { // its TileManager owns its geometry: its own place is kept for Release
 		n.windowEmit(windowChangedArgs(e)...)
 		return
 	}
 	switch {
-	case n.movable && (e.Operation == widget.WindowMove || e.Operation == widget.WindowResize):
+	case n.movable && (e.Operation == core.WindowMove || e.Operation == core.WindowResize):
 		// a movable Drawer floats where a move or resize ended, as percentages of the Window: the
 		// drag's rectangle is done with first, or place would keep it at those cells
 		n.windowTarget.preview, n.windowTarget.moving = nil, nil
-		x, y, w, h := widget.FractionOf(e.Bounds, n.area())
+		x, y, w, h := core.FractionOf(e.Bounds, n.area())
 		n.floating, n.frac = true, [4]float64{x, y, w, h}
 		n.place()
 		n.placed(floatValue(x), floatValue(y), floatValue(w), floatValue(h))
-	case e.Operation == widget.WindowResize:
+	case e.Operation == core.WindowResize:
 		n.windowTarget.preview = nil
 		n.dragEnded(tui.Size{W: e.Bounds.W, H: e.Bounds.H})
 	}
@@ -249,7 +249,7 @@ func (n *drawerNode) windowChanged(e widget.WindowChangedEvent) {
 
 func (n *drawerNode) stopWindowDrag() {
 	if n.windowMods != nil {
-		n.windowMods.Core().HandleAction(tui.ActionInvocation{Action: widget.WindowDragCancelAction{}, Origin: tui.OriginProgrammatic})
+		n.windowMods.Core().HandleAction(tui.ActionInvocation{Action: core.WindowDragCancelAction{}, Origin: tui.OriginProgrammatic})
 	}
 	n.windowTarget.preview = nil
 	if n.windowTarget.moving != nil {
@@ -464,15 +464,15 @@ func (f *drawerFrame) HandleEvent(ev tui.Event) bool {
 // closes reports whether k is one of the Drawer's own closing keys.
 func (f *drawerFrame) closes(k tui.KeyEvent) bool {
 	cmd, ok := f.ctx.KeyCommand(k, f.closeCommands()...)
-	return ok && (cmd.ID == widget.DrawerClose.ID || cmd.ID == widget.DrawerCloseOnQ.ID)
+	return ok && (cmd.ID == core.DrawerClose.ID || cmd.ID == core.DrawerCloseOnQ.ID)
 }
 
 // closeCommands are the Drawer's own closing commands: Esc, and q with closeOnQ.
 func (f *drawerFrame) closeCommands() []keymap.Command {
 	if f.owner.closeOnQ {
-		return []keymap.Command{widget.DrawerClose, widget.DrawerCloseOnQ}
+		return []keymap.Command{core.DrawerClose, core.DrawerCloseOnQ}
 	}
-	return []keymap.Command{widget.DrawerClose}
+	return []keymap.Command{core.DrawerClose}
 }
 
 // drawerType is the Drawer's entry in the standard vocabulary.
@@ -499,9 +499,9 @@ var drawerType = Type{
 		"open":           NoArgMethod((*drawerNode).open),
 		"close":          NoArgMethod((*drawerNode).close),
 		"toggle":         NoArgMethod((*drawerNode).toggle),
-		"toggleMaximize": drawerWindow(windowInvoke(widget.WindowMaximizeAction{})),
-		"minimize":       drawerWindow(windowInvoke(widget.WindowMinimizeAction{})),
-		"restore":        drawerWindow(windowInvoke(widget.WindowRestoreAction{})),
+		"toggleMaximize": drawerWindow(windowInvoke(core.WindowMaximizeAction{})),
+		"minimize":       drawerWindow(windowInvoke(core.WindowMinimizeAction{})),
+		"restore":        drawerWindow(windowInvoke(core.WindowRestoreAction{})),
 		"resizeBy":       drawerWindow(windowStep(false)),
 		"moveBy":         drawerWindow(windowStep(true)),
 	},

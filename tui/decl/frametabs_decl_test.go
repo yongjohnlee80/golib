@@ -6,7 +6,7 @@ import (
 
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // withTabs gives the Editor declared with id e a table document view, as withTable does, and two
@@ -17,7 +17,7 @@ func withTabs(p *tuidecl.Program) error {
 	}
 	c, _ := p.Find("e")
 	if ed, ok := tuidecl.EditorOf(c); ok {
-		ed.Tabs().SetTabs([]widget.StripTab{{ID: "1", Label: "alpha"}, {ID: "2", Label: "beta"}})
+		ed.Tabs().SetTabs([]core.StripTab{{ID: "1", Label: "alpha"}, {ID: "2", Label: "beta"}})
 		ed.Tabs().SetActive("1")
 	}
 	return nil

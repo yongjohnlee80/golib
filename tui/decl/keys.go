@@ -13,7 +13,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/key"
 	"github.com/yongjohnlee80/golib/tui/keymap"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // KEY MAPS — overridable keys.
@@ -137,7 +137,7 @@ func Keymap(fsys fs.FS, file string) ProgramOption {
 // loadKeymap is golib's commands and the host's with every Keymap layer over them, as a new Map: a
 // reload builds a fresh one, so a refused reload leaves the App's untouched.
 func loadKeymap(c programConfig) (*keymap.Map, error) {
-	cmds := append(widget.KeyCommands(), c.keyCommands...)
+	cmds := append(editor.KeyCommands(), c.keyCommands...)
 	var schemes []*keymap.Scheme
 	for _, f := range c.keymapFiles {
 		src, err := fs.ReadFile(f.fsys, f.file)

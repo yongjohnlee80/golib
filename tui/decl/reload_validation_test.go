@@ -7,7 +7,7 @@ import (
 	"github.com/yongjohnlee80/golib/decl"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // Program.Reload is held to what a hot reload is: a keyId Shortcut naming no declared key command
@@ -143,7 +143,7 @@ func TestAReloadWithAnInstanceStillChecksItsKeyIds(t *testing.T) {
 		tuidecl.Sources(map[string]any{"App.status": "ready"}),
 		tuidecl.Commands(map[string]func() error{"App.saved": func() error { return nil }}),
 		tuidecl.KeyCommands(demoSave),
-		tuidecl.Types(tuidecl.Instance("Preview", widget.NewText("preview"))))
+		tuidecl.Types(tuidecl.Instance("Preview", core.NewText("preview"))))
 	s.WaitForText(t, "preview")
 	var err error
 	onScreenLoop(t, s, func() { _, err = s.Program.Reload(window("demo.nothing")) })

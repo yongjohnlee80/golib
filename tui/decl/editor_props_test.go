@@ -9,7 +9,8 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
+	"github.com/yongjohnlee80/golib/tui/widget/htmlview"
 )
 
 // TestAnEditorsRulerAndCursorPositionFromTheDocument: `ruler` draws the guide at that column past
@@ -31,7 +32,7 @@ func TestAnEditorsRulerAndCursorPositionFromTheDocument(t *testing.T) {
 	at := func() [2]int {
 		var got [2]int
 		onScreenLoop(t, s, func() {
-			e, ok := tuidecl.FindAs[*widget.Editor](s.Program, "ed")
+			e, ok := tuidecl.FindAs[*editor.Editor](s.Program, "ed")
 			if !ok {
 				t.Error("no editor ed") // on the UI loop: Fatal would not end the test
 				return
@@ -79,7 +80,7 @@ func TestAnEditorSaysItsCursorMoved(t *testing.T) {
 	s.Keys(t, decltest.Rune('j'))
 	s.WaitFor(t, "j reported", func(string) bool { return moves.Load() == 1 })
 	onScreenLoop(t, s, func() {
-		e, ok := tuidecl.FindAs[*widget.Editor](s.Program, "ed")
+		e, ok := tuidecl.FindAs[*editor.Editor](s.Program, "ed")
 		if !ok {
 			t.Error("no editor ed")
 			return
@@ -98,7 +99,7 @@ func TestAnImageMountsFromTheDocument(t *testing.T) {
 	var found bool
 	for range 100 {
 		onScreenLoop(t, s, func() {
-			img, ok := tuidecl.FindAs[*widget.Image](s.Program, "pic")
+			img, ok := tuidecl.FindAs[*htmlview.Image](s.Program, "pic")
 			found = ok
 			if ok {
 				cols, rows = img.Cells()
@@ -176,7 +177,7 @@ func TestAnEditorThatKeepsItsPlace(t *testing.T) {
 				tuidecl.Sources(map[string]any{"App.text": text("l")}))
 			s.WaitForText(t, "l0")
 			onScreenLoop(t, s, func() {
-				e, _ := tuidecl.FindAs[*widget.Editor](s.Program, "ed")
+				e, _ := tuidecl.FindAs[*editor.Editor](s.Program, "ed")
 				e.Core().SetLine(12, 0) // shown from line 8: the cursor on the last of five rows
 			})
 			s.WaitFor(t, "line 8 at the top", func(string) bool { return strings.HasPrefix(row(s, 0), "l8") })
@@ -188,7 +189,7 @@ func TestAnEditorThatKeepsItsPlace(t *testing.T) {
 			s.WaitFor(t, c.wantTop+" at the top", func(string) bool { return strings.HasPrefix(row(s, 0), c.wantTop) })
 			var line int
 			onScreenLoop(t, s, func() {
-				e, _ := tuidecl.FindAs[*widget.Editor](s.Program, "ed")
+				e, _ := tuidecl.FindAs[*editor.Editor](s.Program, "ed")
 				line, _ = e.Core().Line()
 			})
 			if line != c.wantLine {

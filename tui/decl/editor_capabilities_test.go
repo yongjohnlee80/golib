@@ -8,12 +8,13 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // styledEditor is a style's own editor widget: not a *widget.Editor, but with every view capability
 // one has (here through the Editor it wraps).
-type styledEditor struct{ *widget.Editor }
+type styledEditor struct{ *editor.Editor }
 
 // A style's Editor, a copy of the standard type whose Build makes its own widget, takes the view
 // properties as the standard one does: they set capabilities (widget.LineNumberer, ViewChooser and
@@ -28,21 +29,21 @@ func TestAStylesEditorTakesTheViewProperties(t *testing.T) {
 	ed.Enums = nil // the standard Editor publishes Editor.Rendered; a second scope of one name is refused
 	var made *styledEditor
 	ed.Build = func(b tuidecl.Build) (tui.Component, []string, error) {
-		made = &styledEditor{widget.NewEditor()}
+		made = &styledEditor{editor.NewEditor()}
 		return made, nil, nil
 	}
 	s := decltest.Run(t, 40, 4, tuidecl.LayoutSource("main.qml", []byte(`import tui 1.0
 StyledEditor { lineNumbers: true; lineNumberColor: "red"; ruler: 30; wrap: true; cursorColor: "blue"
     contextMenu: true; renderedEnabled: false; view: Editor.Rendered }`)),
 		tuidecl.Types(ed))
-	var view widget.EditorView
+	var view editor.EditorView
 	var built bool
 	onScreenLoop(t, s, func() {
 		if built = made != nil; built {
 			view = made.View()
 		}
 	})
-	if !built || view != widget.ViewRendered {
+	if !built || view != editor.ViewRendered {
 		t.Errorf("the style's Editor (built %v) has view %v; want Rendered, set through ViewChooser", built, view)
 	}
 }
@@ -50,9 +51,9 @@ StyledEditor { lineNumbers: true; lineNumberColor: "red"; ruler: 30; wrap: true;
 // A setter typed on a capability names it when a widget lacks it. Before, the name came from a zero
 // value's type, and an interface's zero is nil: "not a <nil>".
 func TestASettersRefusalNamesItsCapability(t *testing.T) {
-	set := tuidecl.EnumSetter(tuidecl.EditorViews, func(widget.ViewChooser, string) {})
-	err := set(widget.NewText("x"), qml.SpecValue{Kind: qml.SpecValueString, Raw: "Editor.Rendered"})
-	want := "not a " + reflect.TypeFor[widget.ViewChooser]().String() // the capability as it is named
+	set := tuidecl.EnumSetter(tuidecl.EditorViews, func(editor.ViewChooser, string) {})
+	err := set(core.NewText("x"), qml.SpecValue{Kind: qml.SpecValueString, Raw: "Editor.Rendered"})
+	want := "not a " + reflect.TypeFor[editor.ViewChooser]().String() // the capability as it is named
 	if err == nil || err.Error() != want {
 		t.Errorf("a Text given view: %v; want %q", err, want)
 	}

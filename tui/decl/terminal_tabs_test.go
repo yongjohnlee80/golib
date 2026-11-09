@@ -13,7 +13,8 @@ import (
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
 	tuikey "github.com/yongjohnlee80/golib/tui/key"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/terminal"
 )
 
 func TestDeclaredTerminalTabsKeepOwnedProcessesThroughHideAndPaletteChanges(t *testing.T) {
@@ -21,8 +22,8 @@ func TestDeclaredTerminalTabsKeepOwnedProcessesThroughHideAndPaletteChanges(t *t
 		" palette.base: App.base; palette.text: \"white\"\n Text { text: \"page\" }\n" +
 		" Drawer { id: d; modal: false; edge: Tui.Bottom; size: 60; length: 100\n TerminalTabs { id: terminals } } }"
 	s := decltest.Run(t, 60, 16, tuidecl.LayoutSource("main.qml", []byte(layout)), tuidecl.Singleton("demo", "1.0", "App"), tuidecl.Sources(map[string]any{"App.base": "blue"}))
-	var tabs *widget.TerminalTabs
-	var a, b widget.TerminalTabID
+	var tabs *terminal.TerminalTabs
+	var a, b terminal.TerminalTabID
 	onScreenLoop(t, s, func() {
 		c, ok := s.Program.Find("terminals")
 		if !ok {
@@ -39,8 +40,8 @@ func TestDeclaredTerminalTabsKeepOwnedProcessesThroughHideAndPaletteChanges(t *t
 		}
 		// the red line comes in a later write than the first, as a program's output may: the cell
 		// is read once it is on screen, not once the first line is
-		a, _ = tabs.Add("first", widget.WithCommand("/bin/sh", "-c", "printf 'first output\\n'; sleep 0.2; printf '\\033[31mred words\\033[0m\\n'; read x; printf 'delivered:%s\\n' \"$x\"; read x"))
-		b, _ = tabs.Add("second", widget.WithCommand("/bin/sh", "-c", "printf 'second output\\n'; read x"))
+		a, _ = tabs.Add("first", terminal.WithCommand("/bin/sh", "-c", "printf 'first output\\n'; sleep 0.2; printf '\\033[31mred words\\033[0m\\n'; read x; printf 'delivered:%s\\n' \"$x\"; read x"))
+		b, _ = tabs.Add("second", terminal.WithCommand("/bin/sh", "-c", "printf 'second output\\n'; read x"))
 		if err := tabs.Start(a); err != nil {
 			t.Error(err)
 		}
@@ -88,7 +89,7 @@ func TestDeclaredTerminalTabsKeepOwnedProcessesThroughHideAndPaletteChanges(t *t
 		}
 	})
 	s.WaitForText(t, "second output")
-	var result *widget.TerminalTabRemovalResult
+	var result *terminal.TerminalTabRemovalResult
 	onScreenLoop(t, s, func() {
 		var err error
 		result, err = tabs.Remove(b)
@@ -103,13 +104,13 @@ func TestDeclaredTerminalTabsKeepOwnedProcessesThroughHideAndPaletteChanges(t *t
 	}
 	s.WaitForText(t, "delivered:hidden task")
 	onScreenLoop(t, s, func() {
-		if err := tabs.SendText(b, "stale"); !errors.Is(err, widget.ErrTerminalTabUnknown) {
+		if err := tabs.SendText(b, "stale"); !errors.Is(err, terminal.ErrTerminalTabUnknown) {
 			t.Errorf("removed ID accepted: %v", err)
 		}
 		if _, err := s.Program.Reload([]byte(strings.Replace(layout, "TerminalTabs { id: terminals }", "Text { id: replacement; text: \"replaced\" }", 1))); err != nil {
 			t.Error(err)
 		}
-		if err := tabs.SendText(a, "destroyed"); !errors.Is(err, widget.ErrTerminalShutdown) {
+		if err := tabs.SendText(a, "destroyed"); !errors.Is(err, terminal.ErrTerminalShutdown) {
 			t.Errorf("destroyed owner accepted input: %v", err)
 		}
 	})
@@ -238,9 +239,9 @@ func TestADrawersTerminalTabsMenuMaximizesTheDrawer(t *testing.T) {
 			t.Error("no TerminalTabs")
 			return
 		}
-		tabs.SetMenu(func(widget.TerminalTabID) []widget.MenuItemModel {
-			return []widget.MenuItemModel{widget.NewCommand("max", "Maximize", widget.TerminalTabsMenuAction{ID: "max",
-				Run: func(widget.TerminalTabID) { errs = append(errs, s.Program.Call("d", "toggleMaximize")) }})}
+		tabs.SetMenu(func(terminal.TerminalTabID) []core.MenuItemModel {
+			return []core.MenuItemModel{core.NewCommand("max", "Maximize", terminal.TerminalTabsMenuAction{ID: "max",
+				Run: func(terminal.TerminalTabID) { errs = append(errs, s.Program.Call("d", "toggleMaximize")) }})}
 		})
 		if err := s.Program.Call("d", "open"); err != nil {
 			t.Error(err)

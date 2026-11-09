@@ -7,7 +7,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // tiles_centremember_test.go: a member at the centre is a member first. It minimizes as any member
@@ -36,7 +36,7 @@ func runCentreMember(t *testing.T) *decltest.Screen {
 	s := decltest.Run(t, 60, 24, tuidecl.LayoutSource("main.qml", []byte(centreMemberDoc)),
 		tuidecl.Singleton("demo", "1.0", "App"),
 		tuidecl.Sources(map[string]any{"App.pageTiled": false, "App.sideTiled": false}),
-		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(widget.NewMinimizedWindows())))
+		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(core.NewMinimizedWindows())))
 	s.WaitForText(t, "PAGE")
 	return s
 }
@@ -47,7 +47,7 @@ func minimized(t *testing.T, s *decltest.Screen, id string) bool {
 	var on bool
 	onScreenLoop(t, s, func() {
 		c, _ := s.Program.Find(id)
-		on = c.(interface{ WindowBehavior() *widget.WindowCore }).WindowBehavior().State().Minimized
+		on = c.(interface{ WindowBehavior() *core.WindowCore }).WindowBehavior().State().Minimized
 	})
 	return on
 }
@@ -133,7 +133,7 @@ func runAlong(t *testing.T, c alongCase, todosMin string) *decltest.Screen {
 	doc := strings.NewReplacer("EX;", c.ex+";", "TODOSEDGE;", c.todosEdge+";", "TODOS;", todosMin+";", "PAGE;", c.page+";").Replace(alongDoc)
 	s := decltest.Run(t, c.w, c.h, tuidecl.LayoutSource("main.qml", []byte(doc)),
 		tuidecl.Singleton("demo", "1.0", "App"),
-		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(widget.NewMinimizedWindows())))
+		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(core.NewMinimizedWindows())))
 	s.WaitForText(t, "PAGE")
 	return s
 }
@@ -177,7 +177,7 @@ func TestAMembersEdgeNeverLeavesTheCentre(t *testing.T) {
 	s := decltest.Run(t, 60, 24, tuidecl.LayoutSource("main.qml", []byte(doc)),
 		tuidecl.Singleton("demo", "1.0", "App"),
 		tuidecl.Sources(map[string]any{"App.pageTiled": true, "App.sideTiled": false, "App.pageEdge": "center"}),
-		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(widget.NewMinimizedWindows())))
+		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(core.NewMinimizedWindows())))
 	waitScreenRect(t, s, "page", tui.Rect{X: 0, Y: 0, W: 60, H: 24})
 	set(t, s, "App.pageEdge", "left")
 	call(t, s, "side", "open")
@@ -209,7 +209,7 @@ func TestAMemberBroughtBackIsTheMostRecentlyInPlay(t *testing.T) {
 	s := decltest.Run(t, 80, 24, tuidecl.LayoutSource("main.qml", []byte(orderDoc)),
 		tuidecl.Singleton("demo", "1.0", "App"),
 		tuidecl.Sources(map[string]any{"App.aMin": 20, "App.bMin": 20}),
-		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(widget.NewMinimizedWindows())))
+		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(core.NewMinimizedWindows())))
 	s.WaitForText(t, "PAGE")
 	call(t, s, "a", "open")
 	call(t, s, "b", "open")

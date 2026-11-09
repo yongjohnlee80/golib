@@ -9,11 +9,11 @@ import (
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // clock is a consumer's non-visual declaration: a timer, never on screen.
-type clock struct{ widget.Base }
+type clock struct{ core.Base }
 
 func (*clock) Layout(c tui.Constraints) tui.Size { return c.Constrain(tui.Size{}) }
 func (*clock) Render(tui.Surface)                {}

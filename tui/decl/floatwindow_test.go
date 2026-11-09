@@ -9,7 +9,7 @@ import (
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/controls"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // floatWindowScreen runs src (a Window's body) on a 40 by 10 screen, App.max its maximum width's
@@ -29,7 +29,7 @@ func windowRect(t *testing.T, s *decltest.Screen, id string) (r tui.Rect) {
 	t.Helper()
 	onScreenLoop(t, s, func() {
 		c, _ := s.Program.Find(id)
-		w, ok := c.(interface{ WindowBehavior() *widget.WindowCore })
+		w, ok := c.(interface{ WindowBehavior() *core.WindowCore })
 		if !ok {
 			t.Errorf("%s (%T) is no window", id, c)
 			return
@@ -74,7 +74,7 @@ func TestAFloatWindowOpensWithItsWindowAndNeverCloses(t *testing.T) {
 			t.Errorf("the field (%T) has no context", c)
 			return
 		}
-		f, ok := in.Context().Ancestor(func(v tui.Component) bool { _, ok := v.(*widget.Float); return ok }).(*widget.Float)
+		f, ok := in.Context().Ancestor(func(v tui.Component) bool { _, ok := v.(*core.Float); return ok }).(*core.Float)
 		floating = ok && f.Floating()
 	})
 	if !floating {

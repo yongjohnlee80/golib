@@ -10,7 +10,7 @@ import (
 	"github.com/yongjohnlee80/golib/decl"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 const windowChangedDoc = `import tui 1.0
@@ -35,7 +35,7 @@ func TestAWindowModAndADrawerRaiseChangedAlike(t *testing.T) {
 		tuidecl.Singleton("demo", "1.0", "App"),
 		tuidecl.Handlers(map[string]decl.HandlerFunc{"App.log": rec.handler}),
 		// a maximizable WindowMod zooms a target (WindowCore.Bind requires one); a Drawer is its own
-		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(widget.NewMinimizedWindows()),
+		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(core.NewMinimizedWindows()),
 			tuidecl.WithWindowTargets(map[string]any{"wm": &windowZoomFixture{}})))
 	s.WaitForText(t, "page")
 	onScreenLoop(t, s, func() {
@@ -85,7 +85,7 @@ Window {
 }`)),
 		tuidecl.Singleton("demo", "1.0", "App"),
 		tuidecl.Handlers(map[string]decl.HandlerFunc{"App.log": rec.handler}),
-		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(widget.NewMinimizedWindows())))
+		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(core.NewMinimizedWindows())))
 	s.WaitForText(t, "page")
 	onScreenLoop(t, s, func() {
 		if err := s.Program.Call("dr", "open"); err != nil {

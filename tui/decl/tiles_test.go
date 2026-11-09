@@ -10,7 +10,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // tiles_test.go: a TileManager of Tiles, as a document writes it: laid out by the manager, its
@@ -61,7 +61,7 @@ func runTiles(t *testing.T) (*decltest.Screen, *calls) {
 		tuidecl.Singleton("demo", "1.0", "App"),
 		tuidecl.Sources(map[string]any{"App.exSize": 25}),
 		tuidecl.Handlers(map[string]decl.HandlerFunc{"App.log": rec.handler}),
-		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(widget.NewMinimizedWindows())))
+		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(core.NewMinimizedWindows())))
 	s.WaitForText(t, "RESULTS")
 	return s, rec
 }
@@ -116,7 +116,7 @@ func TestATilesHideIsItsWindowsMinimize(t *testing.T) {
 	var minimized bool
 	onScreenLoop(t, s, func() {
 		c, _ := s.Program.Find("ex")
-		minimized = c.(interface{ WindowBehavior() *widget.WindowCore }).WindowBehavior().State().Minimized
+		minimized = c.(interface{ WindowBehavior() *core.WindowCore }).WindowBehavior().State().Minimized
 	})
 	if !minimized {
 		t.Fatal("the explorer's window is not minimized")

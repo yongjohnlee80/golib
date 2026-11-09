@@ -8,7 +8,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // tiles_maxaxes_test.go: the centre's maximum. A page as wide as its ruler takes at most
@@ -45,7 +45,7 @@ func runMaxAxes(t *testing.T, sources map[string]any) *decltest.Screen {
 	s := decltest.Run(t, 80, 24, tuidecl.LayoutSource("main.qml", []byte(maxAxesDoc)),
 		tuidecl.Singleton("demo", "1.0", "App"),
 		tuidecl.Sources(all),
-		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(widget.NewMinimizedWindows())))
+		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(core.NewMinimizedWindows())))
 	s.WaitForText(t, "PAGE")
 	return s
 }
@@ -167,7 +167,7 @@ func TestAMemberAtTheCentreTakesItsMaximumHeightLive(t *testing.T) {
 	s := decltest.Run(t, 80, 24, tuidecl.LayoutSource("main.qml", []byte(doc)),
 		tuidecl.Singleton("demo", "1.0", "App"),
 		tuidecl.Sources(map[string]any{"App.pageW": 40, "App.pageH": 0, "App.pageMinW": 5, "App.agTiled": true, "App.agMinW": 5, "App.exTiled": true}),
-		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(widget.NewMinimizedWindows())))
+		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(core.NewMinimizedWindows())))
 	waitScreenRect(t, s, "pg", tui.Rect{X: 20, Y: 0, W: 40, H: 24})
 	set(t, s, "App.pageH", 12)
 	waitScreenRect(t, s, "pg", tui.Rect{X: 20, Y: 6, W: 40, H: 12})

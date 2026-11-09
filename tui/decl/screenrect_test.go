@@ -8,7 +8,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // screenrect_test.go: ScreenRect, where a window is drawn, in the Window's frame. Under a bar docked
@@ -39,7 +39,7 @@ func coreBounds(t *testing.T, s *decltest.Screen, id string) (r tui.Rect) {
 	t.Helper()
 	onScreenLoop(t, s, func() {
 		c, _ := s.Program.Find(id)
-		r = c.(interface{ WindowBehavior() *widget.WindowCore }).WindowBehavior().Bounds()
+		r = c.(interface{ WindowBehavior() *core.WindowCore }).WindowBehavior().Bounds()
 	})
 	return r
 }
@@ -53,7 +53,7 @@ func TestAFloatWindowsScreenRectIsWhereItIsDrawnTiledOrFloating(t *testing.T) {
 		tuidecl.Singleton("demo", "1.0", "App"),
 		tuidecl.Sources(map[string]any{"App.fwTiled": true}),
 		tuidecl.Handlers(map[string]decl.HandlerFunc{"App.log": rec.handler}),
-		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(widget.NewMinimizedWindows())))
+		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(core.NewMinimizedWindows())))
 	titleAt(t, s, "FLOAT", 2, 1)
 	titleAt(t, s, "PAGE", 22, 1)
 	if r, on := screenRect(t, s, "fw"); !on || r != (tui.Rect{X: 0, Y: 1, W: 20, H: 23}) {
@@ -77,7 +77,7 @@ func TestAFloatWindowsScreenRectIsWhereItIsDrawnTiledOrFloating(t *testing.T) {
 		var min bool
 		onScreenLoop(t, s, func() {
 			c, _ := s.Program.Find("fw")
-			min = c.(interface{ WindowBehavior() *widget.WindowCore }).WindowBehavior().State().Minimized
+			min = c.(interface{ WindowBehavior() *core.WindowCore }).WindowBehavior().State().Minimized
 		})
 		return min
 	})

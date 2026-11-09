@@ -2,7 +2,7 @@ package decl
 
 import (
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // SCREEN RECT — where a window is drawn, for a Go program that compares windows by place (a
@@ -27,7 +27,7 @@ func (n *drawerNode) ScreenRect() (tui.Rect, bool) { return screenRect(n.float, 
 // screenRect is where float last laid its content out, whose Context is content, while the content
 // is on screen. The Float fills its Window's overlay, which the Window lays out over its whole
 // rectangle, so the Float's cells are the Window's.
-func screenRect(float *widget.Float, content *tui.Context) (tui.Rect, bool) {
+func screenRect(float *core.Float, content *tui.Context) (tui.Rect, bool) {
 	r := float.ContentRect()
 	if content == nil || !content.Visible() || r.Empty() {
 		return tui.Rect{}, false

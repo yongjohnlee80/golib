@@ -7,7 +7,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // A type states how many children it takes (Type.Children), and the adapter refuses another count
@@ -19,7 +19,7 @@ func TestATypesArityIsCheckedWithItsPosition(t *testing.T) {
 	pair := tuidecl.Type{Name: "Pair", Children: tuidecl.Exactly(2).Because("a left and a right"),
 		Build: func(b tuidecl.Build) (tui.Component, []string, error) {
 			built++
-			return widget.NewText("pair"), nil, nil
+			return core.NewText("pair"), nil, nil
 		}}
 	for doc, want := range map[string]string{
 		"Pair { Text { } }":                 "Pair needs exactly 2 children, got 1 (at main.qml:2:1); a left and a right",
@@ -47,7 +47,7 @@ func TestAnEnumWithoutAScopeIsRefused(t *testing.T) {
 		}
 	}()
 	odd := tuidecl.Type{Name: "Odd", Enums: []tuidecl.Enum{{Values: []string{"A"}}},
-		Build: func(tuidecl.Build) (tui.Component, []string, error) { return widget.NewText("odd"), nil, nil }}
+		Build: func(tuidecl.Build) (tui.Component, []string, error) { return core.NewText("odd"), nil, nil }}
 	_, _ = tuidecl.NewProgram(tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nOdd { }")),
 		tuidecl.Types(odd), tuidecl.AppOptions(tui.WithBackend(tui.NewTestBackend(10, 2))))
 }

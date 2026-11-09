@@ -12,7 +12,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // extend_test.go holds the consumer's API to what a consumer would do with it:
@@ -23,13 +23,13 @@ import (
 
 // gauge is a consumer's own widget: a label and a value, drawn as text.
 type gauge struct {
-	*widget.Text
+	*core.Text
 	label string
 	value float64
 	unit  string
 }
 
-func newGauge() *gauge { return &gauge{Text: widget.NewText("")} }
+func newGauge() *gauge { return &gauge{Text: core.NewText("")} }
 
 func (g *gauge) SetLabel(s string)  { g.label = s; g.show() }
 func (g *gauge) SetValue(v float64) { g.value = v; g.show() }
@@ -66,7 +66,7 @@ var pickerType = tuidecl.Type{
 	Name: "Picker",
 	Build: func(b tuidecl.Build) (tui.Component, []string, error) {
 		emit := b.EmitterWith("picked")
-		return widget.NewButton("pick", widget.WithOnActivate(func() {
+		return core.NewButton("pick", core.WithOnActivate(func() {
 			emit(qml.SpecValue{Kind: qml.SpecValueString, Raw: "the-choice"})
 		})), nil, nil
 	},
@@ -129,7 +129,7 @@ func TestACustomWidgetBindsAndIsCalledByID(t *testing.T) {
 	// A handler calls its method by id.
 	btn, _ := tr.NodeByID("go")
 	c, _ := a.Component(btn)
-	onLoop(t, app, func() { c.(*widget.Button).Activate(tui.OriginProgrammatic) })
+	onLoop(t, app, func() { c.(*core.Button).Activate(tui.OriginProgrammatic) })
 	waitFor(t, func() bool { return strings.Contains(be.String(), "CPU=0") })
 }
 
@@ -151,7 +151,7 @@ func TestACustomSignalPassesItsParameter(t *testing.T) {
 	}
 	root, _ := a.Component(tr.Root())
 	_, app := startApp(t, root)
-	onLoop(t, app, func() { root.(*widget.Button).Activate(tui.OriginProgrammatic) })
+	onLoop(t, app, func() { root.(*core.Button).Activate(tui.OriginProgrammatic) })
 	waitFor(t, func() bool { return len(*picked) == 1 })
 	if (*picked)[0] != "the-choice" {
 		t.Fatalf("choose got %q", (*picked)[0])
@@ -175,7 +175,7 @@ func TestACustomWidgetIsRefusedLikeABuiltIn(t *testing.T) {
 
 // TestAnInstanceIsTheHostsWidgetPlacedOnce.
 func TestAnInstanceIsTheHostsWidgetPlacedOnce(t *testing.T) {
-	mine := widget.NewText("host-built")
+	mine := core.NewText("host-built")
 	tr, a, _, err := extended(t, "Flex {\n Preview { }\n}", tuidecl.Instance("Preview", mine))
 	if err != nil {
 		t.Fatalf("mount: %v", err)
@@ -185,7 +185,7 @@ func TestAnInstanceIsTheHostsWidgetPlacedOnce(t *testing.T) {
 	waitFor(t, func() bool { return strings.Contains(be.String(), "host-built") })
 
 	// Placed twice: refused, by name and position.
-	_, _, _, err = extended(t, "Flex {\n Solo { }\n Solo { }\n}", tuidecl.Instance("Solo", widget.NewText("x")))
+	_, _, _, err = extended(t, "Flex {\n Solo { }\n Solo { }\n}", tuidecl.Instance("Solo", core.NewText("x")))
 	if err == nil || !strings.Contains(err.Error(), "Solo is the host's one Solo") {
 		t.Fatalf("placing an Instance twice: err = %v, want it refused by name", err)
 	}
@@ -254,9 +254,9 @@ func TestAnEnumIsPublishedUnderItsScopeAndReadAtRuntime(t *testing.T) {
 	gauge := tuidecl.Type{
 		Name:  "Gauge",
 		Enums: []tuidecl.Enum{mode},
-		Build: func(tuidecl.Build) (tui.Component, []string, error) { return widget.NewText(""), nil, nil },
+		Build: func(tuidecl.Build) (tui.Component, []string, error) { return core.NewText(""), nil, nil },
 		Setters: map[string]tuidecl.Setter{
-			"style": tuidecl.EnumSetter(mode, func(x *widget.Text, v string) { x.SetText(v) }),
+			"style": tuidecl.EnumSetter(mode, func(x *core.Text, v string) { x.SetText(v) }),
 		},
 	}
 	s := decltest.Run(t, 20, 2,

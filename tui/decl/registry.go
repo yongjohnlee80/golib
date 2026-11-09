@@ -9,7 +9,8 @@ import (
 	"github.com/yongjohnlee80/golib/parse"
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/files"
 )
 
 // Build is everything a builder is handed to make one widget.
@@ -52,7 +53,7 @@ type Build struct {
 	Emitters map[string]func(args ...qml.SpecValue) error
 	// Files is the filesystem file widgets list: the adapter's, set with
 	// [WithFileSource]; the local disk when unset.
-	Files widget.FileSource
+	Files files.FileSource
 	// SourceLanguages is the program's finalized, immutable provider catalog.
 	SourceLanguages *highlight.Catalog
 
@@ -65,13 +66,13 @@ type Build struct {
 	// Overlay is the adapter's WithOverlay host: where a component that opens
 	// over the screen ([Overlaid]) goes when no Window gives it one. Nil when
 	// the adapter was given none.
-	Overlay *widget.OverlayHost
+	Overlay *core.OverlayHost
 	// WindowCollector is the caller's optional minimized-window model.
-	WindowCollector widget.WindowCollector
+	WindowCollector core.WindowCollector
 	// WindowTarget is an explicitly injected target for this declaration's ID.
 	WindowTarget any
 	// WindowCore resolves a declared capability widget for separate presentation.
-	WindowCore func(string) (*widget.WindowCore, bool)
+	WindowCore func(string) (*core.WindowCore, bool)
 	// highlighters are the adapter's syntax definitions, for SyntaxHighlighter.
 	highlighters *highlight.Repository
 	// services are the adapter's WithService values, by type: what Service[T] reads.

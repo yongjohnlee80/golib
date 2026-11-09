@@ -2,7 +2,7 @@ package decl
 
 import (
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // A Drawer's geometry: its panel in cells and in percentages of the Window, where its Float is
@@ -51,11 +51,11 @@ func (n *drawerNode) place() {
 	if n.movable && !n.windowTarget.maximized {
 		switch {
 		case n.windowTarget.moving != nil:
-			n.float.SetAnchor(widget.AtRect(*n.windowTarget.moving))
+			n.float.SetAnchor(core.AtRect(*n.windowTarget.moving))
 			n.float.SetSizeFraction(0, 0)
 			return
 		case n.floating:
-			n.float.SetAnchor(widget.AtFraction(n.frac[0], n.frac[1], n.frac[2], n.frac[3]))
+			n.float.SetAnchor(core.AtFraction(n.frac[0], n.frac[1], n.frac[2], n.frac[3]))
 			n.float.SetSizeFraction(0, 0)
 			return
 		}
@@ -63,7 +63,7 @@ func (n *drawerNode) place() {
 	if n.reserve && n.edge != tui.DockCenter {
 		// over its strip, wherever the Window's Dock placed it this pass; maximized, it fills the
 		// Window as any window does, the strip kept beneath
-		n.float.SetAnchor(widget.AtLive(n.liveSlot, n.edgeAnchor()))
+		n.float.SetAnchor(core.AtLive(n.liveSlot, n.edgeAnchor()))
 		n.float.SetSizeFraction(0, 0)
 		return
 	}
@@ -74,19 +74,19 @@ func (n *drawerNode) place() {
 	}
 	switch n.edge {
 	case tui.DockRight:
-		n.float.SetAnchor(widget.Right)
+		n.float.SetAnchor(core.Right)
 		n.float.SetSizeFraction(n.size, n.length)
 	case tui.DockTop:
-		n.float.SetAnchor(widget.Top)
+		n.float.SetAnchor(core.Top)
 		n.float.SetSizeFraction(n.length, n.size)
 	case tui.DockBottom:
-		n.float.SetAnchor(widget.Bottom)
+		n.float.SetAnchor(core.Bottom)
 		n.float.SetSizeFraction(n.length, n.size)
 	case tui.DockCenter:
-		n.float.SetAnchor(widget.Center)
+		n.float.SetAnchor(core.Center)
 		n.float.SetSizeFraction(n.length, n.size)
 	default:
-		n.float.SetAnchor(widget.Left)
+		n.float.SetAnchor(core.Left)
 		n.float.SetSizeFraction(n.size, n.length)
 	}
 }
@@ -95,7 +95,7 @@ func (n *drawerNode) place() {
 func (n *drawerNode) placeAnchor() { n.float.SetAnchor(n.edgeAnchor()) }
 
 // edgeAnchor is the Float's anchor at the Drawer's edge.
-func (n *drawerNode) edgeAnchor() widget.Anchor { return edgeAnchorOf(n.edge, widget.Center) }
+func (n *drawerNode) edgeAnchor() core.Anchor { return edgeAnchorOf(n.edge, core.Center) }
 
 // reserving reports whether the Drawer takes its strip of the Window from the page now: reserve set,
 // at an edge, open, docked, and not minimized. Maximized it keeps the strip, so the page beneath
@@ -132,7 +132,7 @@ func (n *drawerNode) dockedCells(win tui.Size) tui.Size {
 
 // floatRect is a floating Drawer's rectangle in the Window, in cells.
 func (n *drawerNode) floatRect() tui.Rect {
-	return widget.FractionRect(n.frac[0], n.frac[1], n.frac[2], n.frac[3], n.area())
+	return core.FractionRect(n.frac[0], n.frac[1], n.frac[2], n.frac[3], n.area())
 }
 
 // area is the Window the Drawer is over, as a rectangle: where its Float last laid out, else where

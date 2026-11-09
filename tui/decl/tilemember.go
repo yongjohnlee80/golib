@@ -2,7 +2,7 @@ package decl
 
 import (
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // TILE MEMBERS — a window a TileManager governs without owning its node (widget.GovernedWindow): a
@@ -14,7 +14,7 @@ import (
 // one), and told its tile's edge before it is added, for the docked anchor it falls back to while
 // its tile has no cells.
 type tileMember interface {
-	widget.GovernedWindow
+	core.GovernedWindow
 	tileKey() string
 	setTileEdge(tui.DockEdge)
 }
@@ -47,22 +47,22 @@ func (g *tileGovernance) governed() bool { return g.gov != nil }
 // governedAnchor is the Float's anchor while governed: over the tile, and while it has no cells
 // docked at the tile's edge (a corner for the fill member's), so a governed window reads docked and
 // never floats with a shadow.
-func (g *tileGovernance) governedAnchor() widget.Anchor {
-	return widget.AtLive(g.gov, edgeAnchorOf(g.govEdge, widget.TopLeft))
+func (g *tileGovernance) governedAnchor() core.Anchor {
+	return core.AtLive(g.gov, edgeAnchorOf(g.govEdge, core.TopLeft))
 }
 
 // edgeAnchorOf is the anchor at edge e, centre for tui.DockCenter.
-func edgeAnchorOf(e tui.DockEdge, centre widget.Anchor) widget.Anchor {
+func edgeAnchorOf(e tui.DockEdge, centre core.Anchor) core.Anchor {
 	switch e {
 	case tui.DockRight:
-		return widget.Right
+		return core.Right
 	case tui.DockTop:
-		return widget.Top
+		return core.Top
 	case tui.DockBottom:
-		return widget.Bottom
+		return core.Bottom
 	case tui.DockCenter:
 		return centre
 	default:
-		return widget.Left
+		return core.Left
 	}
 }

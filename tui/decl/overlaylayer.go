@@ -3,7 +3,7 @@ package decl
 import (
 	"errors"
 
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // ErrOutsideWindow is what opening an [OverlayLayer] returns when it is attached to no overlay: the
@@ -15,19 +15,19 @@ var ErrOutsideWindow = errors.New("tui/decl: an overlay layer opened outside a W
 // node goes, and opens it there. Embed one, made by NewOverlayLayer, and the type implements
 // [Overlaid]; its Destroyed hook calls Detach.
 type OverlayLayer struct {
-	float *widget.Float
-	host  *widget.OverlayHost
+	float *core.Float
+	host  *core.OverlayHost
 	what  string // the type as a document names it, "a Popup": for ErrOutsideWindow's message
 }
 
 // NewOverlayLayer is the layer of float for a type a document calls what ("a Drawer").
-func NewOverlayLayer(float *widget.Float, what string) OverlayLayer {
+func NewOverlayLayer(float *core.Float, what string) OverlayLayer {
 	return OverlayLayer{float: float, what: what}
 }
 
 // SetOverlay implements [Overlaid]: the Float becomes one of the host's layers, hidden until
 // opened. Attached to another host first, it leaves that one.
-func (l *OverlayLayer) SetOverlay(host *widget.OverlayHost, _ func()) {
+func (l *OverlayLayer) SetOverlay(host *core.OverlayHost, _ func()) {
 	if l.host == host {
 		return
 	}

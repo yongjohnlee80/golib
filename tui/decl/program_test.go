@@ -14,7 +14,7 @@ import (
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // program_test.go holds NewProgram to the one-call promise: a QML screen,
@@ -82,7 +82,7 @@ func TestAProgramRunsAQMLScreenInOneCall(t *testing.T) {
 	screenHas(t, be, "hello from a component")
 
 	// A command, by its button: it sets a source, and the binding follows.
-	btn, ok := tuidecl.FindAs[*widget.Button](p, "go")
+	btn, ok := tuidecl.FindAs[*core.Button](p, "go")
 	if !ok {
 		t.Fatal("FindAs found no Button with id go")
 	}
@@ -124,7 +124,7 @@ func TestAProgramNeverDropsAHandlerError(t *testing.T) {
 	}
 	done := make(chan error, 1)
 	go func() { done <- p.Run(context.Background()) }()
-	btn, _ := tuidecl.FindAs[*widget.Button](p, "go")
+	btn, _ := tuidecl.FindAs[*core.Button](p, "go")
 	p.Post(func() { btn.Activate(tui.OriginProgrammatic); p.Quit() })
 	select {
 	case err := <-done:
@@ -167,7 +167,7 @@ func TestCommandsRefuseArgumentsTheyDoNotTake(t *testing.T) {
 	}
 	done := make(chan error, 1)
 	go func() { done <- p.Run(context.Background()) }()
-	btn, _ := tuidecl.FindAs[*widget.Button](p, "go")
+	btn, _ := tuidecl.FindAs[*core.Button](p, "go")
 	p.Post(func() { btn.Activate(tui.OriginProgrammatic); p.Quit() })
 	<-done
 	if len(sunk) != 1 || !strings.Contains(sunk[0].Error(), "takes no arguments") {

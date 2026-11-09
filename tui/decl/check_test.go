@@ -10,7 +10,7 @@ import (
 	"github.com/yongjohnlee80/golib/decl"
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // check_test.go holds Check to its promise: every document a program can load
@@ -279,7 +279,7 @@ func TestCheckMountsAComponentAloneWithoutAWindowType(t *testing.T) {
 				return nil, nil, fmt.Errorf("no property %s", p.Name)
 			}
 		}
-		return widget.NewText("x"), []string{"text"}, nil
+		return core.NewText("x"), []string{"text"}, nil
 	})
 	err := tuidecl.Check(tuidecl.WithRegistry(reg), tuidecl.Layout(files, "main.qml"),
 		tuidecl.Components(files, "ui", "demo.ui", "1.0"))

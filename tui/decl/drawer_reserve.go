@@ -2,7 +2,7 @@ package decl
 
 import (
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // RESERVING DRAWERS — golib's: reserve: true makes a Drawer take its strip of the Window from the
@@ -30,7 +30,7 @@ import (
 // reserves, nothing otherwise. It draws nothing: the Drawer is over it, anchored where the Dock
 // placed it this pass (Dock.OnPlaced, widget.AtLive).
 type reserveSlot struct {
-	widget.Base
+	core.Base
 	d   *drawerNode
 	win tui.Size // the Window's size, set by the Window before each layout
 }

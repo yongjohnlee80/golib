@@ -9,7 +9,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // floatwindow_governed_test.go: a FloatWindow declared in a TileManager, as a document writes it
@@ -39,13 +39,13 @@ func runFloatMember(t *testing.T) (*decltest.Screen, *calls) {
 		tuidecl.Singleton("demo", "1.0", "App"),
 		tuidecl.Sources(map[string]any{"App.fwTiled": true}),
 		tuidecl.Handlers(map[string]decl.HandlerFunc{"App.log": rec.handler}),
-		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(widget.NewMinimizedWindows())))
+		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(core.NewMinimizedWindows())))
 	s.WaitForText(t, "PAGE")
 	return s, rec
 }
 
 // innerFloat is the Float the FloatWindow's content is in, read on the loop by fn.
-func innerFloat(t *testing.T, s *decltest.Screen, fn func(f *widget.Float)) {
+func innerFloat(t *testing.T, s *decltest.Screen, fn func(f *core.Float)) {
 	t.Helper()
 	onScreenLoop(t, s, func() {
 		c, _ := s.Program.Find("inner")
@@ -54,7 +54,7 @@ func innerFloat(t *testing.T, s *decltest.Screen, fn func(f *widget.Float)) {
 			t.Errorf("inner (%T) has no context", c)
 			return
 		}
-		if f, ok := in.Context().Ancestor(func(v tui.Component) bool { _, ok := v.(*widget.Float); return ok }).(*widget.Float); ok {
+		if f, ok := in.Context().Ancestor(func(v tui.Component) bool { _, ok := v.(*core.Float); return ok }).(*core.Float); ok {
 			fn(f)
 		}
 	})
@@ -71,7 +71,7 @@ func innerFloating(t *testing.T, s *decltest.Screen) (on bool) {
 			t.Errorf("inner (%T) has no context", c)
 			return
 		}
-		f, ok := in.Context().Ancestor(func(v tui.Component) bool { _, ok := v.(*widget.Float); return ok }).(*widget.Float)
+		f, ok := in.Context().Ancestor(func(v tui.Component) bool { _, ok := v.(*core.Float); return ok }).(*core.Float)
 		on = ok && f.Floating()
 	})
 	return on
@@ -95,7 +95,7 @@ func TestAWantedFloatWindowThatDoesNotFitIsNeverGoverned(t *testing.T) {
 	changes := 0
 	s := decltest.RunWith(t, 80, 24, func(p *tuidecl.Program) error {
 		c, _ := p.Find("fw")
-		w, ok := c.(interface{ WindowBehavior() *widget.WindowCore })
+		w, ok := c.(interface{ WindowBehavior() *core.WindowCore })
 		if !ok {
 			t.Fatalf("fw (%T) has no window", c)
 		}
@@ -105,7 +105,7 @@ func TestAWantedFloatWindowThatDoesNotFitIsNeverGoverned(t *testing.T) {
 		tuidecl.Singleton("demo", "1.0", "App"),
 		tuidecl.Sources(map[string]any{"App.fwTiled": true}),
 		tuidecl.Handlers(map[string]decl.HandlerFunc{"App.log": (&calls{}).handler}),
-		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(widget.NewMinimizedWindows())))
+		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(core.NewMinimizedWindows())))
 	titleAt(t, s, "FLOAT", 42, 5)
 	titleAt(t, s, "PAGE", 2, 0)
 	onScreenLoop(t, s, func() {})
@@ -197,7 +197,7 @@ func TestAGovernedFloatWindowsMaximumDoesNotHoldItsTile(t *testing.T) {
 		tuidecl.Singleton("demo", "1.0", "App"),
 		tuidecl.Sources(map[string]any{"App.fwTiled": true}),
 		tuidecl.Handlers(map[string]decl.HandlerFunc{"App.log": rec.handler}),
-		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(widget.NewMinimizedWindows())))
+		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(core.NewMinimizedWindows())))
 	titleAt(t, s, "PAGE", 22, 0)
 	altDrag(t, s, tui.MouseRight, 19, 10, 31, 10)
 	titleAt(t, s, "PAGE", 34, 0)
@@ -255,13 +255,13 @@ func TestAGovernedFloatWindowWithNoCellsFollowsItsTilesEdge(t *testing.T) {
 		tuidecl.Singleton("demo", "1.0", "App"),
 		tuidecl.Sources(map[string]any{"App.fwTiled": true, "App.fwEdge": "left", "App.fwSize": 25}),
 		tuidecl.Handlers(map[string]decl.HandlerFunc{"App.log": (&calls{}).handler}),
-		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(widget.NewMinimizedWindows())))
+		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(core.NewMinimizedWindows())))
 	titleAt(t, s, "FLOAT", 2, 0)
 	floatAt := func(what string, ok func(r tui.Rect) bool) {
 		t.Helper()
 		s.WaitFor(t, what, func(string) bool {
 			var r tui.Rect
-			innerFloat(t, s, func(f *widget.Float) { r = f.ContentRect() })
+			innerFloat(t, s, func(f *core.Float) { r = f.ContentRect() })
 			return r.W > 0 && ok(r)
 		})
 	}

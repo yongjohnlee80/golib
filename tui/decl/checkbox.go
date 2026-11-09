@@ -2,7 +2,7 @@ package decl
 
 import (
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // CHECKBOX — Qt Quick Controls' CheckBox: a box and its text, checked or not.
@@ -17,7 +17,7 @@ import (
 type checkBoxNode struct {
 	tui.MultiChild
 	ctx     *tui.Context
-	btn     *widget.Button
+	btn     *core.Button
 	text    UIText
 	shown   string // text as last resolved: a message in the App's language
 	checked bool
@@ -29,8 +29,8 @@ type checkBoxNode struct {
 // path, as a Button's label does.
 func buildCheckBox(b Build) (tui.Component, []string, error) {
 	n := &checkBoxNode{toggled: b.Emitter("toggled"), clicked: b.Emitter("clicked")}
-	n.btn = widget.NewButton("", widget.WithButtonDecoration("", ""), widget.WithOnActivate(n.activated),
-		widget.WithButtonStyle(checkBoxStyle(palette{})))
+	n.btn = core.NewButton("", core.WithButtonDecoration("", ""), core.WithOnActivate(n.activated),
+		core.WithButtonStyle(checkBoxStyle(palette{})))
 	n.Label("CheckBox")
 	n.Add(n.btn)
 	n.relabel()
@@ -109,10 +109,10 @@ func (n *checkBoxNode) setChecked(v bool) {
 
 // checkBoxStyle is a box in its surroundings' colours: focus reverses them, as a Button's does,
 // and a disabled box is faint.
-func checkBoxStyle(p palette) *widget.ButtonStyle {
+func checkBoxStyle(p palette) *core.ButtonStyle {
 	normal := p.look(roleWindow, roleWindowText)
 	focused := normal.Reverse(true).Bold(true)
-	st := widget.NewButtonStyleFull(normal, focused, normal.Faint(true), focused.Underline(true))
+	st := core.NewButtonStyleFull(normal, focused, normal.Faint(true), focused.Underline(true))
 	if hk, ok := p.hotkey(); ok {
 		st = st.WithHotkey(hk)
 	}

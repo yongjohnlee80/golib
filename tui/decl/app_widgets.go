@@ -7,7 +7,10 @@ import (
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
+	"github.com/yongjohnlee80/golib/tui/widget/htmlview"
+	"github.com/yongjohnlee80/golib/tui/widget/terminal"
 )
 
 // THE APPLICATION VOCABULARY — what an editor-shaped program is made of.
@@ -91,10 +94,10 @@ var drawerEdges = enum[tui.DockEdge]{values: map[string]tui.DockEdge{
 	"Center": tui.DockCenter,
 }}
 
-var keysets = enum[widget.Keyset]{values: map[string]widget.Keyset{
-	"Vim":      widget.KeysetVim,
-	"Nano":     widget.KeysetNano,
-	"Standard": widget.KeysetStandard,
+var keysets = enum[editor.Keyset]{values: map[string]editor.Keyset{
+	"Vim":      editor.KeysetVim,
+	"Nano":     editor.KeysetNano,
+	"Standard": editor.KeysetStandard,
 }}
 
 // ---------------------------------------------------------------- Frame
@@ -106,11 +109,11 @@ func buildFrame(b Build) (tui.Component, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	var opts []widget.BoxOption
+	var opts []core.BoxOption
 	if title.Plain != "" {
-		opts = append(opts, widget.WithTitle(title.Plain))
+		opts = append(opts, core.WithTitle(title.Plain))
 	}
-	box := widget.NewBox(b.Children[0], opts...)
+	box := core.NewBox(b.Children[0], opts...)
 	if title.IsMessage() {
 		box.SetTitleMessage(title.Message)
 	}
@@ -153,7 +156,7 @@ func frameEditor(c tui.Component) (titleSwitcher, bool) {
 			found = append(found, sw)
 			return
 		}
-		if _, nested := c.(*widget.Box); nested {
+		if _, nested := c.(*core.Box); nested {
 			return
 		}
 		if ct, ok := c.(tui.Container); ok {
@@ -170,15 +173,15 @@ func frameEditor(c tui.Component) (titleSwitcher, bool) {
 }
 
 func buildScrollView(b Build) (tui.Component, []string, error) {
-	return widget.NewScrollView(b.Children[0]), nil, nil
+	return core.NewScrollView(b.Children[0]), nil, nil
 }
 
 // ---------------------------------------------------------------- Editor
 
 // EditorOf returns the editor an `Editor` declaration built, for a host that
 // reaches it through [decl.Tree.NodeByID] and [Adapter.Component].
-func EditorOf(c tui.Component) (*widget.Editor, bool) {
-	e, ok := c.(*widget.Editor)
+func EditorOf(c tui.Component) (*editor.Editor, bool) {
+	e, ok := c.(*editor.Editor)
 	return e, ok
 }
 
@@ -201,25 +204,25 @@ func buildTerminal(b Build) (tui.Component, []string, error) {
 		return nil, nil, err
 	}
 	exited, titled, moded := b.EmitterWith("exited"), b.EmitterWith("titleChanged"), b.EmitterWith("modeChanged")
-	opts := []widget.TerminalOption{
-		widget.WithVimKeys(vimKeys),
-		widget.WithThemeColors(themeColors),
-		widget.WithOnExit(func(code int) {
+	opts := []terminal.TerminalOption{
+		terminal.WithVimKeys(vimKeys),
+		terminal.WithThemeColors(themeColors),
+		terminal.WithOnExit(func(code int) {
 			exited(numberValue(code))
 		}),
-		widget.WithOnTitle(func(title string) { titled(strValue(title)) }),
-		widget.WithOnMode(func(m widget.TerminalMode) { moded(strValue(strings.ToLower(m.String()))) }),
+		terminal.WithOnTitle(func(title string) { titled(strValue(title)) }),
+		terminal.WithOnMode(func(m terminal.TerminalMode) { moded(strValue(strings.ToLower(m.String()))) }),
 	}
 	if command != "" {
-		opts = append(opts, widget.WithCommand(command))
+		opts = append(opts, terminal.WithCommand(command))
 	}
 	if dir != "" {
-		opts = append(opts, widget.WithDir(dir))
+		opts = append(opts, terminal.WithDir(dir))
 	}
 	if scrollback >= 0 {
-		opts = append(opts, widget.WithScrollback(int(scrollback)))
+		opts = append(opts, terminal.WithScrollback(int(scrollback)))
 	}
-	return widget.NewTerminal(opts...), consumed, nil
+	return terminal.NewTerminal(opts...), consumed, nil
 }
 
 // ---------------------------------------------------------------- StatusBar
@@ -233,7 +236,7 @@ func buildStatusBar(b Build) (tui.Component, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	sb := widget.NewStatusBar()
+	sb := core.NewStatusBar()
 	for i, c := range b.Children {
 		if err := adoptStatusBarChild(sb, c, b.ChildAttached[i]); err != nil {
 			return nil, nil, fmt.Errorf("%w (at %s)", err, b.Pos)
@@ -245,7 +248,7 @@ func buildStatusBar(b Build) (tui.Component, []string, error) {
 // adoptStatusBarChild adds one child to a StatusBar: permanent, at the right end, unless its
 // StatusBar.permanent is false.
 func adoptStatusBarChild(parent, child tui.Component, attached map[string]qml.SpecValue) error {
-	sb := parent.(*widget.StatusBar)
+	sb := parent.(*core.StatusBar)
 	permanent := true
 	if v, ok := attached["StatusBar.permanent"]; ok {
 		var err error
@@ -264,13 +267,13 @@ func adoptStatusBarChild(parent, child tui.Component, attached map[string]qml.Sp
 // statusSegment adapts one of the StatusBar's segment setters, which take an
 // optional per-segment style this vocabulary does not set: the bar's palette
 // colours every segment.
-func statusSegment(set func(*widget.StatusBar, string, ...style.Style)) func(*widget.StatusBar, string) {
-	return func(sb *widget.StatusBar, text string) { set(sb, text) }
+func statusSegment(set func(*core.StatusBar, string, ...style.Style)) func(*core.StatusBar, string) {
+	return func(sb *core.StatusBar, text string) { set(sb, text) }
 }
 
 // statusMessage is statusSegment for a catalog message.
-func statusMessage(set func(*widget.StatusBar, tui.Message, ...style.Style)) func(*widget.StatusBar, tui.Message) {
-	return func(sb *widget.StatusBar, m tui.Message) { set(sb, m) }
+func statusMessage(set func(*core.StatusBar, tui.Message, ...style.Style)) func(*core.StatusBar, tui.Message) {
+	return func(sb *core.StatusBar, m tui.Message) { set(sb, m) }
 }
 
 // dialogMethods are what a handler can call on any dialog by its id.
@@ -284,22 +287,22 @@ var dialogMethods = map[string]Method{
 func buildHTMLView(b Build) (tui.Component, []string, error) {
 	consumed, err := b.ReadProps(map[string]field{})
 	link, scrolled := b.EmitterWith("linkActivated"), b.EmitterWith("scrolledTo")
-	v := widget.NewHTMLView(
-		widget.WithOnLink(func(href string) { link(strValue(href)) }),
-		widget.WithOnScroll(func(at int) { scrolled(numberValue(at)) }),
+	v := htmlview.NewHTMLView(
+		htmlview.WithOnLink(func(href string) { link(strValue(href)) }),
+		htmlview.WithOnScroll(func(at int) { scrolled(numberValue(at)) }),
 	)
 	return v, consumed, err
 }
 
 // frameType is the Frame type.
 var frameType = Type{Name: "Frame", Children: Exactly(1), Build: buildFrame, Ctor: []string{"title"}, restyle: restyleFrame, Setters: map[string]Setter{
-	"title": textSetter("a Frame", (*widget.Box).SetTitle, (*widget.Box).SetTitleMessage),
+	"title": textSetter("a Frame", (*core.Box).SetTitle, (*core.Box).SetTitleMessage),
 	// golib's: at most this many columns, border included, centred — a page, not the screen
-	"maximumWidth": setter("a Frame", truncOf, (*widget.Box).SetMaximumWidth),
+	"maximumWidth": setter("a Frame", truncOf, (*core.Box).SetMaximumWidth),
 	// where a title too wide for its row loses text, as Qt's Text.elide: Tui.ElideRight (the
 	// default), Tui.ElideLeft (a path's tail, and the badges after it, stay), Tui.ElideMiddle,
 	// Tui.ElidePath
-	"titleElide": setter("a Frame", elideModes.read, (*widget.Box).SetTitleElide),
+	"titleElide": setter("a Frame", elideModes.read, (*core.Box).SetTitleElide),
 }}
 
 // golib's: a vertical window onto one child taller than itself; the wheel and
@@ -310,26 +313,26 @@ var scrollViewType = Type{Name: "ScrollView", Children: Exactly(1), Build: build
 // it shows on a terminal that draws images (tui.Capabilities.KittyGraphics)
 var imageType = Type{Name: "Image", Build: func(b Build) (tui.Component, []string, error) {
 	consumed, err := b.ReadProps(map[string]field{})
-	return widget.NewImage(), consumed, err
+	return htmlview.NewImage(), consumed, err
 }, Setters: map[string]Setter{
 	// golib's: shown at its width and scrolled by the keys and the wheel (widget.Image)
-	"scrollable": setter("an Image", boolOf, (*widget.Image).SetScrollable),
+	"scrollable": setter("an Image", boolOf, (*htmlview.Image).SetScrollable),
 	// golib's: a spinner and loadingText while the host renders the PNG it will show
-	"loading":     setter("an Image", boolOf, (*widget.Image).SetLoading),
-	"loadingText": setter("an Image", stringOf, (*widget.Image).SetLoadingText),
+	"loading":     setter("an Image", boolOf, (*htmlview.Image).SetLoading),
+	"loadingText": setter("an Image", stringOf, (*htmlview.Image).SetLoadingText),
 }}
 
 // golib's: an HTML document, read-only and selectable (widget.HTMLView). A terminal lays it
 // out in cells; a native backend binds its pixel layout. The host gives it the page
 // (html), and is told of a clicked link and of the source byte at the top as it scrolls.
 var htmlViewType = Type{Name: "HTMLView", Build: buildHTMLView, Setters: map[string]Setter{
-	"html": setter("an HTMLView", stringOf, func(v *widget.HTMLView, s string) { v.SetHTML([]byte(s)) }),
+	"html": setter("an HTMLView", stringOf, func(v *htmlview.HTMLView, s string) { v.SetHTML([]byte(s)) }),
 	// a stylesheet a pixel layout applies after the page's own
-	"stylesheet": setter("an HTMLView", stringOf, (*widget.HTMLView).SetStylesheet),
+	"stylesheet": setter("an HTMLView", stringOf, (*htmlview.HTMLView).SetStylesheet),
 },
 	Methods: map[string]Method{
 		// scrollToSource(byte): the block showing that source byte, at the top
-		"scrollToSource": argMethod(func(v *widget.HTMLView, args []qml.SpecValue) error {
+		"scrollToSource": argMethod(func(v *htmlview.HTMLView, args []qml.SpecValue) error {
 			if len(args) != 1 {
 				return fmt.Errorf("HTMLView.scrollToSource takes one argument, a source byte; got %d", len(args))
 			}
@@ -348,25 +351,25 @@ var terminalType = Type{Name: "Terminal", Build: buildTerminal, Ctor: []string{"
 	Setters: map[string]Setter{
 		// command and dir take effect at the next start(): a host learns where to start
 		// the program after building it, and moves it when the user changes workspace.
-		"command":     setter("a Terminal", stringOf, func(t *widget.Terminal, p string) { t.SetCommand(p) }),
-		"dir":         setter("a Terminal", stringOf, (*widget.Terminal).SetDir),
-		"vimKeys":     setter("a Terminal", boolOf, (*widget.Terminal).SetVimKeys),
-		"themeColors": setter("a Terminal", boolOf, (*widget.Terminal).SetThemeColors),
+		"command":     setter("a Terminal", stringOf, func(t *terminal.Terminal, p string) { t.SetCommand(p) }),
+		"dir":         setter("a Terminal", stringOf, (*terminal.Terminal).SetDir),
+		"vimKeys":     setter("a Terminal", boolOf, (*terminal.Terminal).SetVimKeys),
+		"themeColors": setter("a Terminal", boolOf, (*terminal.Terminal).SetThemeColors),
 		// golib's: the contrast ratio (WCAG's) every foreground is raised to against its
 		// background, so a program's colours read on a light theme; 0 is off
-		"minimumContrast": setter("a Terminal", numberOf, (*widget.Terminal).SetMinimumContrast),
-		"cursorColor":     setter("a Terminal", colorOf, (*widget.Terminal).SetCursorColor),
+		"minimumContrast": setter("a Terminal", numberOf, (*terminal.Terminal).SetMinimumContrast),
+		"cursorColor":     setter("a Terminal", colorOf, (*terminal.Terminal).SetCursorColor),
 		// golib's: the family its cells are drawn in, at the window's cell size; "" the window's
-		"cellFont": setter("a Terminal", stringOf, (*widget.Terminal).SetCellFace),
+		"cellFont": setter("a Terminal", stringOf, (*terminal.Terminal).SetCellFace),
 		// golib's: keys its program never sees, left to the Window's Shortcuts (hostkeys.go)
-		"hostKeys": setter("a Terminal", hostKeysOf, (*widget.Terminal).SetHostKeys),
+		"hostKeys": setter("a Terminal", hostKeysOf, (*terminal.Terminal).SetHostKeys),
 		// golib's: the key that toggles input and normal mode, Esc then the program's (hostkeys.go)
-		"modeKey": setter("a Terminal", modeKeyOf, (*widget.Terminal).SetModeKey),
+		"modeKey": setter("a Terminal", modeKeyOf, (*terminal.Terminal).SetModeKey),
 	},
 	Methods: map[string]Method{
-		"start": NoArgMethod((*widget.Terminal).Start),
-		"stop":  NoArgMethod(func(t *widget.Terminal) error { t.Stop(); return nil }),
-		"focus": NoArgMethod(func(t *widget.Terminal) error {
+		"start": NoArgMethod((*terminal.Terminal).Start),
+		"stop":  NoArgMethod(func(t *terminal.Terminal) error { t.Stop(); return nil }),
+		"focus": NoArgMethod(func(t *terminal.Terminal) error {
 			if ctx := t.Context(); ctx != nil {
 				ctx.RequestFocus()
 			}
@@ -374,15 +377,15 @@ var terminalType = Type{Name: "Terminal", Build: buildTerminal, Ctor: []string{"
 		}),
 	},
 	Signals:   map[string][]string{"exited": {"code"}, "titleChanged": {"title"}, "modeChanged": {"mode"}},
-	Destroyed: destroyer((*widget.Terminal).Stop),
+	Destroyed: destroyer((*terminal.Terminal).Stop),
 }
 
 // statusBarType is the StatusBar type.
 var statusBarType = Type{Name: "StatusBar", Build: buildStatusBar, restyle: restyleStatusBar, Adopt: adoptStatusBarChild, Setters: map[string]Setter{
-	"left": textSetter("a StatusBar", statusSegment((*widget.StatusBar).SetLeft),
-		statusMessage((*widget.StatusBar).SetLeftMessage)),
-	"center": textSetter("a StatusBar", statusSegment((*widget.StatusBar).SetCenter),
-		statusMessage((*widget.StatusBar).SetCenterMessage)),
-	"right": textSetter("a StatusBar", statusSegment((*widget.StatusBar).SetRight),
-		statusMessage((*widget.StatusBar).SetRightMessage)),
+	"left": textSetter("a StatusBar", statusSegment((*core.StatusBar).SetLeft),
+		statusMessage((*core.StatusBar).SetLeftMessage)),
+	"center": textSetter("a StatusBar", statusSegment((*core.StatusBar).SetCenter),
+		statusMessage((*core.StatusBar).SetCenterMessage)),
+	"right": textSetter("a StatusBar", statusSegment((*core.StatusBar).SetRight),
+		statusMessage((*core.StatusBar).SetRightMessage)),
 }}

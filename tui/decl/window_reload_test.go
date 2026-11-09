@@ -7,7 +7,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // window_reload_test.go: a reload that changes a Window's children changes
@@ -33,10 +33,10 @@ func TestAWindowTakesChangedChildrenInPlace(t *testing.T) {
 	s.WaitForText(t, "status")
 	s.Keys(t, decltest.Type("ityped")...)
 	s.WaitForText(t, "typed")
-	var ed *widget.Editor
+	var ed *editor.Editor
 	var mount tui.NodeID
 	onScreenLoop(t, s, func() {
-		ed, _ = tuidecl.FindAs[*widget.Editor](s.Program, "ed")
+		ed, _ = tuidecl.FindAs[*editor.Editor](s.Program, "ed")
 		mount = ed.NodeID()
 	})
 
@@ -46,7 +46,7 @@ func TestAWindowTakesChangedChildrenInPlace(t *testing.T) {
 	check := func(what string) {
 		t.Helper()
 		onScreenLoop(t, s, func() {
-			now, _ := tuidecl.FindAs[*widget.Editor](s.Program, "ed")
+			now, _ := tuidecl.FindAs[*editor.Editor](s.Program, "ed")
 			if now != ed || now.Core().Value() != "typed" || now.NodeID() != mount {
 				t.Errorf("%s: the editor was replaced, remounted or lost its text", what)
 			}
