@@ -109,4 +109,4 @@ tree, so there is no ceiling on how many directories a root holds.
   overflows gets an `OpOverflow{Path: ""}`.
 - The watched directory deleted, or moved or replaced, is a final `OpOverflow{Path: ""}`, then the
   channel closes. A moved directory reports nothing about itself, so it is noticed by a check made
-  every second while nothing else happens.
+  within a second of the last one, whether the watch is busy or idle.
