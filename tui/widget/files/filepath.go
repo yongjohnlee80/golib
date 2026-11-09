@@ -2,8 +2,6 @@ package files
 
 import (
 	"context"
-	"io/fs"
-	"path"
 	"strings"
 
 	"github.com/yongjohnlee80/golib/tui/widget/core"
@@ -86,7 +84,7 @@ func (f *pathField) focused() bool {
 // as rooted, anything else relative to dir, the folder listed. bad is the title to show
 // when it cannot be read as one: ~ in a source without a Home, or a path outside the source.
 func (f *pathField) resolve(src FileSource, dir, typed string) (p string, bad tui.Message, ok bool) {
-	typed = strings.TrimSpace(typed)
+	typed = src.slashed(strings.TrimSpace(typed))
 	if typed == "" {
 		return "", f.titles.notFound, false
 	}
@@ -96,13 +94,7 @@ func (f *pathField) resolve(src FileSource, dir, typed string) (p string, bad tu
 		}
 		typed = strings.TrimSuffix(src.Home, "/") + "/" + strings.TrimPrefix(strings.TrimPrefix(typed, "~"), "/")
 	}
-	if src.absolute(typed) {
-		p, ok = src.fsPath(typed)
-	} else {
-		p = path.Clean(path.Join(dir, typed))
-		ok = fs.ValidPath(p)
-	}
-	if !ok {
+	if p, ok = src.typedPath(dir, typed); !ok {
 		return "", f.titles.notFound, false
 	}
 	return p, tui.Message{}, true
