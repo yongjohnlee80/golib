@@ -7,7 +7,7 @@ import (
 	"github.com/yongjohnlee80/golib/gui/flow"
 	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/tui"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // # Block & Line Layout Architecture
@@ -69,7 +69,7 @@ type StructureRenderer interface {
 }
 
 // Block is lines [From, To) of the buffer: tui/widget's, which both editors' renderers split into.
-type Block = tuiwidget.Block
+type Block = editor.Block
 
 // BlockLayout is a block as drawn: a paragraph per source line, or a picture.
 type BlockLayout struct {

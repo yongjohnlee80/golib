@@ -5,18 +5,18 @@ import (
 
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/tui"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // WindowButtons is the optional circular GUI appearance of ordinary TUI window
 // control Buttons. The real children retain hit-testing, focus and activation.
 // On a terminal the same component draws the controls' labeled cell fallback.
 type WindowButtons struct {
-	buttons       *tuiwidget.WindowButtons
-	core          *tuiwidget.WindowCore
+	buttons       *core.WindowButtons
+	core          *core.WindowCore
 	ctx           *tui.Context
 	colors        [3]color.NRGBA
-	widgetOptions []tuiwidget.WindowButtonsOption
+	widgetOptions []core.WindowButtonsOption
 }
 
 // WindowButtonsOption configures the GUI appearance, not window capabilities.
@@ -28,19 +28,19 @@ func WithWindowButtonColors(close, maximize, minimize color.NRGBA) WindowButtons
 }
 
 // WithWindowButtonWidgets configures labels and fallback styles on the real Buttons.
-func WithWindowButtonWidgets(opts ...tuiwidget.WindowButtonsOption) WindowButtonsOption {
+func WithWindowButtonWidgets(opts ...core.WindowButtonsOption) WindowButtonsOption {
 	return func(w *WindowButtons) { w.widgetOptions = append(w.widgetOptions, opts...) }
 }
 
 // NewWindowButtons creates circular presentation over an existing shared core.
-func NewWindowButtons(core *tuiwidget.WindowCore, opts ...WindowButtonsOption) *WindowButtons {
-	w := &WindowButtons{core: core, colors: [3]color.NRGBA{closeRed, maximizeGreen, minimizeAmber}}
+func NewWindowButtons(wc *core.WindowCore, opts ...WindowButtonsOption) *WindowButtons {
+	w := &WindowButtons{core: wc, colors: [3]color.NRGBA{closeRed, maximizeGreen, minimizeAmber}}
 	for _, opt := range opts {
 		if opt != nil {
 			opt(w)
 		}
 	}
-	w.buttons = tuiwidget.NewWindowButtons(core, w.widgetOptions...)
+	w.buttons = core.NewWindowButtons(wc, w.widgetOptions...)
 	return w
 }
 
@@ -57,11 +57,11 @@ func (w *WindowButtons) Render(s tui.Surface) { w.buttons.Render(s) }
 func (w *WindowButtons) HandleEvent(tui.Event) bool { return false }
 
 // colorOf is op's circle colour: close, maximize or minimize (WithWindowButtonColors).
-func (w *WindowButtons) colorOf(op tuiwidget.WindowOperation) color.NRGBA {
+func (w *WindowButtons) colorOf(op core.WindowOperation) color.NRGBA {
 	switch op {
-	case tuiwidget.WindowMaximize:
+	case core.WindowMaximize:
 		return w.colors[1]
-	case tuiwidget.WindowMinimize:
+	case core.WindowMinimize:
 		return w.colors[2]
 	}
 	return w.colors[0]

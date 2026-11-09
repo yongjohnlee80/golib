@@ -7,7 +7,7 @@ import (
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/gui/flow"
 	phtml "github.com/yongjohnlee80/golib/parse/html"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/htmlview"
 )
 
 // THE POINTER-QUERY SURFACE — what tui's HTMLView asks of the laid-out page: the position at a
@@ -19,13 +19,13 @@ func runOrigin(r *box) (float32, float32) { return r.ax, r.ay }
 
 // At is the document position nearest (x, y): in the run under y (the nearest by x where runs sit
 // side by side, a table's cells), else the start of the next run below, else the page's end.
-func (l *htmlLayout) At(x, y float32) tuiwidget.DocPos {
+func (l *htmlLayout) At(x, y float32) htmlview.DocPos {
 	if !l.ready() {
-		return tuiwidget.DocPos{}
+		return htmlview.DocPos{}
 	}
 	l.layOutTo(y + 1)
 	if len(l.runs) == 0 {
-		return tuiwidget.DocPos{}
+		return htmlview.DocPos{}
 	}
 	best, bestD := -1, float32(math.MaxFloat32)
 	next := -1
@@ -51,34 +51,34 @@ func (l *htmlLayout) At(x, y float32) tuiwidget.DocPos {
 		r := l.runs[best]
 		ox, oy := runOrigin(r)
 		p := r.para.At(gui.Point{X: x - ox, Y: y - oy})
-		return tuiwidget.DocPos{Block: best, Span: p.Span, Offset: p.Offset}
+		return htmlview.DocPos{Block: best, Span: p.Span, Offset: p.Offset}
 	}
 	if next >= 0 {
-		return tuiwidget.DocPos{Block: next}
+		return htmlview.DocPos{Block: next}
 	}
 	last := len(l.runs) - 1
 	return l.endOf(last)
 }
 
 // endOf is the position after run i's last text.
-func (l *htmlLayout) endOf(i int) tuiwidget.DocPos {
+func (l *htmlLayout) endOf(i int) htmlview.DocPos {
 	r := l.runs[i]
 	if len(r.spans) == 0 {
-		return tuiwidget.DocPos{Block: i}
+		return htmlview.DocPos{Block: i}
 	}
 	n := len(r.spans) - 1
-	return tuiwidget.DocPos{Block: i, Span: n, Offset: len(r.spans[n].Text)}
+	return htmlview.DocPos{Block: i, Span: n, Offset: len(r.spans[n].Text)}
 }
 
 // selRange is a selection, ordered, as the paint reads it.
 type selRange struct {
-	from, to tuiwidget.DocPos
+	from, to htmlview.DocPos
 	ok       bool
 }
 
 // makeSel constructs an ordered selection range between document positions a and b.
-func makeSel(a, b tuiwidget.DocPos) selRange {
-	a, b = tuiwidget.OrderDocPos(a, b)
+func makeSel(a, b htmlview.DocPos) selRange {
+	a, b = htmlview.OrderDocPos(a, b)
 	return selRange{from: a, to: b, ok: a != b}
 }
 
@@ -101,12 +101,12 @@ func (s selRange) within(i int, spans []flow.Span) (flow.Pos, flow.Pos, bool) {
 }
 
 // Rects are a selection's highlight, in document pixels.
-func (l *htmlLayout) Rects(from, to tuiwidget.DocPos) []tuiwidget.Rect32 {
+func (l *htmlLayout) Rects(from, to htmlview.DocPos) []htmlview.Rect32 {
 	if !l.ready() {
 		return nil
 	}
 	s := makeSel(from, to)
-	var out []tuiwidget.Rect32
+	var out []htmlview.Rect32
 	for i := s.from.Block; i <= s.to.Block && i < len(l.runs); i++ {
 		r := l.runs[i]
 		f, t, ok := s.within(i, r.spans)
@@ -115,7 +115,7 @@ func (l *htmlLayout) Rects(from, to tuiwidget.DocPos) []tuiwidget.Rect32 {
 		}
 		ox, oy := runOrigin(r)
 		for _, rr := range r.para.Rects(f, t) {
-			out = append(out, tuiwidget.Rect32{X: ox + rr.X, Y: oy + rr.Y, W: rr.W, H: rr.H})
+			out = append(out, htmlview.Rect32{X: ox + rr.X, Y: oy + rr.Y, W: rr.W, H: rr.H})
 		}
 	}
 	return out
@@ -123,7 +123,7 @@ func (l *htmlLayout) Rects(from, to tuiwidget.DocPos) []tuiwidget.Rect32 {
 
 // Text is a selection's text: each run's own (flow's Text), a newline between blocks and a tab
 // between a row's cells.
-func (l *htmlLayout) Text(from, to tuiwidget.DocPos) string {
+func (l *htmlLayout) Text(from, to htmlview.DocPos) string {
 	if !l.ready() {
 		return ""
 	}
@@ -143,7 +143,7 @@ func (l *htmlLayout) Text(from, to tuiwidget.DocPos) string {
 }
 
 // LinkRects are the link fragments' boxes on the lines between top and bottom.
-func (l *htmlLayout) LinkRects(top, bottom float32, dst []tuiwidget.Rect32) []tuiwidget.Rect32 {
+func (l *htmlLayout) LinkRects(top, bottom float32, dst []htmlview.Rect32) []htmlview.Rect32 {
 	if !l.ready() {
 		return dst
 	}
@@ -158,7 +158,7 @@ func (l *htmlLayout) LinkRects(top, bottom float32, dst []tuiwidget.Rect32) []tu
 			}
 			for _, f := range ln.Frags {
 				if r.spans[f.Span].Link != "" {
-					dst = append(dst, tuiwidget.Rect32{X: ox + f.X, Y: oy + ln.Y, W: f.W, H: ln.H})
+					dst = append(dst, htmlview.Rect32{X: ox + f.X, Y: oy + ln.Y, W: f.W, H: ln.H})
 				}
 			}
 		}
@@ -285,7 +285,7 @@ func (l *htmlLayout) BlockTop(b int) (float32, bool) {
 	if !l.ready() {
 		return 0, false
 	}
-	at := tuiwidget.SourceIndex(len(l.blocks), func(i int) [2]int { return l.blocks[i].src }, b)
+	at := htmlview.SourceIndex(len(l.blocks), func(i int) [2]int { return l.blocks[i].src }, b)
 	if at < 0 {
 		return 0, false
 	}

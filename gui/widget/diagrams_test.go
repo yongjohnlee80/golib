@@ -11,7 +11,7 @@ import (
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/gui/mermaid"
 	"github.com/yongjohnlee80/golib/gui/vegalite"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 var diagramTheme = Theme{
@@ -177,8 +177,8 @@ func TestAFenceAsksAtTheWindowsScale(t *testing.T) {
 // its diagram: Pending at first, then, once the layout's ready reaches the loop, a picture.
 func TestTheEditorDrawsAFlowchart(t *testing.T) {
 	doc := "top\n```mermaid\nflowchart LR\n  A[Start] --> B{Ok?}\n  B -->|yes| C[Done]\n```\nend"
-	h := startEditor(t, 60, 20, WithRenderer(NewMarkdownRenderer(WithDiagrams(Diagrams(nil)))), WithView(tuiwidget.ViewRendered),
-		WithCore(tuiwidget.CoreInitialText(doc)))
+	h := startEditor(t, 60, 20, WithRenderer(NewMarkdownRenderer(WithDiagrams(Diagrams(nil)))), WithView(editor.ViewRendered),
+		WithCore(editor.CoreInitialText(doc)))
 	h.paint()
 	picture := func() bool {
 		var ok bool
@@ -216,8 +216,8 @@ func (c scaledCanvas) Scale() float32        { return c.sh.Scale() }
 // diagram anew at the new scale rather than keeping one measured at the old.
 func TestTheEditorLaysOutAgainAtANewScale(t *testing.T) {
 	doc := "top\n```mermaid\nflowchart LR\n  A --> B\n```\nend"
-	h := startEditor(t, 60, 20, WithRenderer(NewMarkdownRenderer(WithDiagrams(Diagrams(nil)))), WithView(tuiwidget.ViewRendered),
-		WithCore(tuiwidget.CoreInitialText(doc)))
+	h := startEditor(t, 60, 20, WithRenderer(NewMarkdownRenderer(WithDiagrams(Diagrams(nil)))), WithView(editor.ViewRendered),
+		WithCore(editor.CoreInitialText(doc)))
 	host := func() *diagramSlot {
 		var s *diagramSlot
 		h.onLoop(func() { h.e.layout.lay(h.e.layout.blockOf(1), nil); s = h.e.layout.diagrams[1] })

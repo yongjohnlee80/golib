@@ -3,13 +3,13 @@ package widget
 import (
 	"github.com/yongjohnlee80/golib/gui/flow"
 	"github.com/yongjohnlee80/golib/tui"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // metaMask hides span text over metadata clusters (tui/widget's MarkdownMetadata.HiddenClusters),
 // splitting a span where the mask changes. It never strips the buffer: every piece keeps its
 // source line and cluster, so the caret still maps onto it.
-func metaMask(m *tuiwidget.MarkdownMetadata, spans []flow.Span, ln int) []flow.Span {
+func metaMask(m *editor.MarkdownMetadata, spans []flow.Span, ln int) []flow.Span {
 	mask, ok := m.HiddenClusters(ln)
 	if !ok {
 		return spans

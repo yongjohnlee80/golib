@@ -6,14 +6,14 @@ import (
 
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/table"
 )
 
 // A view draws a palette colour in the window's theme, as the cells beside it are drawn: a
 // DataTable cursor styled ANSI red fills in the theme's red, not xterm's (gui-D1).
 func TestAViewDrawsAPaletteColourInTheWindowsTheme(t *testing.T) {
 	_, l := pixelTable(t, cities(3))
-	l.t.SetStyles(tuiwidget.DataTableStyles{CursorBlurred: style.New().Background(style.ANSI(1))})
+	l.t.SetStyles(table.DataTableStyles{CursorBlurred: style.New().Background(style.ANSI(1))})
 	th := gui.DefaultTheme()
 	themeRed := color.NRGBA{R: 0xbf, G: 0x61, B: 0x6a, A: 0xff}
 	th.ANSI[1] = themeRed

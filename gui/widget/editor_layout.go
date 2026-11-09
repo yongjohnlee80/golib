@@ -7,7 +7,8 @@ import (
 	"github.com/yongjohnlee80/golib/gui/flow"
 	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/tui"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // The text's inset from the body's edges, in logical pixels.
@@ -103,7 +104,7 @@ func (l *pixelLayout) Reveal(line, col int) {
 
 // sideways reports whether the view scrolls horizontally: the Raw view, with WrapNone.
 func (l *pixelLayout) sideways() bool {
-	return l.e.wrap == tuiwidget.WrapNone && !(l.e.ShownView() == tuiwidget.ViewRendered && l.e.render != nil)
+	return l.e.wrap == core.WrapNone && !(l.e.ShownView() == editor.ViewRendered && l.e.render != nil)
 }
 
 // monoCell is one monospace cluster's width: the unit the gutter and the ruler are counted in.
@@ -262,7 +263,7 @@ func (l *pixelLayout) ensure() {
 		l.lines = append(l.lines, c.LineAt(i))
 	}
 	var blocks []Block
-	if l.e.ShownView() == tuiwidget.ViewRendered && l.e.render != nil {
+	if l.e.ShownView() == editor.ViewRendered && l.e.render != nil {
 		blocks = l.e.render.Blocks(l.lines, 0, n)
 		if r, ok := l.e.render.(ReflowRenderer); ok {
 			keep := max(0, min(l.keep, r.ReflowFrom(l.keep)))
@@ -320,7 +321,7 @@ func (l *pixelLayout) heightOf(i int) float32 {
 		return lb.bl.Height
 	}
 	f := l.monoFont()
-	if l.e.ShownView() == tuiwidget.ViewRendered {
+	if l.e.ShownView() == editor.ViewRendered {
 		f = l.th.Prose
 	}
 	return float32(l.blocks[i].To-l.blocks[i].From) * l.lineHeight(f)
@@ -344,7 +345,7 @@ func (l *pixelLayout) total() float32 { return l.topOf(len(l.blocks)) }
 // its cursor's block stays raw.
 func (l *pixelLayout) typing() bool {
 	m := l.e.core.Mode()
-	return !l.e.core.ReadOnly() && (m == tuiwidget.ModeInsert || m == tuiwidget.ModeReplace)
+	return !l.e.core.ReadOnly() && (m == editor.ModeInsert || m == editor.ModeReplace)
 }
 
 // cursorLine is the core's cursor line.
@@ -355,7 +356,7 @@ func (l *pixelLayout) cursorLine() int {
 
 // lay is block i laid out for the current width, mode and cursor. frame gives Raw's colours
 // while painting; nil keeps a Raw block's last colours (geometry does not depend on them).
-func (l *pixelLayout) lay(i int, frame *tuiwidget.HighlightFrame) *laidBlock {
+func (l *pixelLayout) lay(i int, frame *editor.HighlightFrame) *laidBlock {
 	l.ensure()
 	b := l.blocks[i]
 	cl := l.cursorLine()
@@ -363,7 +364,7 @@ func (l *pixelLayout) lay(i int, frame *tuiwidget.HighlightFrame) *laidBlock {
 	// Normal and Visual, and on a viewer, it renders as every other block does. With inside
 	// false, a cursor moving there re-lays nothing either.
 	inside := cl >= b.From && cl < b.To && l.typing()
-	if l.e.ShownView() == tuiwidget.ViewRendered && l.e.render != nil {
+	if l.e.ShownView() == editor.ViewRendered && l.e.render != nil {
 		if lb := l.laid[i]; lb != nil && !lb.stale && !lb.trimmed && lb.width == l.width && lb.inside == inside {
 			return lb
 		}
@@ -396,7 +397,7 @@ func (l *pixelLayout) lay(i int, frame *tuiwidget.HighlightFrame) *laidBlock {
 	}
 	spans := rawSpans(b.From, text, l.monoFont(), colorAt)
 	ws := flow.PreWrap
-	if l.e.wrap == tuiwidget.WrapNone {
+	if l.e.wrap == core.WrapNone {
 		ws = flow.Pre // one row per line; the view scrolls sideways instead
 	}
 	p := flow.Lay(spans, flow.Options{Width: l.width, WhiteSpace: ws, Color: l.th.Text, LineHeight: rawLineHeight}, l.sh)
@@ -407,7 +408,7 @@ func (l *pixelLayout) lay(i int, frame *tuiwidget.HighlightFrame) *laidBlock {
 }
 
 // rawColors are line ln's cluster colours from the highlighter, or nil without one.
-func (l *pixelLayout) rawColors(ln int, text string, frame *tuiwidget.HighlightFrame) []color.NRGBA {
+func (l *pixelLayout) rawColors(ln int, text string, frame *editor.HighlightFrame) []color.NRGBA {
 	c := l.e.core
 	if !c.Highlighting() {
 		return nil

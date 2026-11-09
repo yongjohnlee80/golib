@@ -21,7 +21,8 @@ import (
 	"github.com/yongjohnlee80/golib/gui/svg"
 	phtml "github.com/yongjohnlee80/golib/parse/html"
 	"github.com/yongjohnlee80/golib/tui"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/htmlview"
 )
 
 // exportPage is a page as AutoDoc's export writes one: its own stylesheet, with custom properties,
@@ -37,9 +38,9 @@ func exportPage(body string) string {
 
 // pixelView is an HTMLView bound to its pixel layout and painted once on a recording canvas of
 // width × height.
-func pixelView(t *testing.T, html string, width, height float32) (*tuiwidget.HTMLView, *htmlLayout, *gui.RecordingCanvas) {
+func pixelView(t *testing.T, html string, width, height float32) (*htmlview.HTMLView, *htmlLayout, *gui.RecordingCanvas) {
 	t.Helper()
-	v := tuiwidget.NewHTMLView()
+	v := htmlview.NewHTMLView()
 	v.SetHTML([]byte(html))
 	BindHTML(v)
 	l := v.BoundLayout().(*htmlLayout)
@@ -134,7 +135,7 @@ func TestHTMLLayoutSelectsAndCopies(t *testing.T) {
 	if len(l.runs) != 4 {
 		t.Fatalf("%d runs, want 4 (a paragraph, an item, two cells)", len(l.runs))
 	}
-	from := tuiwidget.DocPos{Block: 0, Span: 0, Offset: 6}
+	from := htmlview.DocPos{Block: 0, Span: 0, Offset: 6}
 	to := l.endOf(3)
 	if got := l.Text(from, to); got != "beta\ngamma\nc1\tc2" {
 		t.Errorf("Text = %q", got)
@@ -235,7 +236,7 @@ func TestHTMLLayoutRobust(t *testing.T) {
 			_, l, _ := pixelView(t, src, 500, 300)
 			_ = l.Height()
 			_ = l.At(10, 10)
-			_ = l.Text(tuiwidget.DocPos{}, tuiwidget.DocPos{Block: 99})
+			_ = l.Text(htmlview.DocPos{}, htmlview.DocPos{Block: 99})
 		})
 	}
 }
@@ -320,7 +321,7 @@ func TestHTMLLayoutScrollsAPreSideways(t *testing.T) {
 	}
 }
 
-func flowPos(p tuiwidget.DocPos) (fp struct{ Span, Offset int }) {
+func flowPos(p htmlview.DocPos) (fp struct{ Span, Offset int }) {
 	fp.Span, fp.Offset = p.Span, p.Offset
 	return fp
 }
@@ -441,7 +442,7 @@ func TestHTMLImagesResetForANewResolver(t *testing.T) {
 func TestHTMLImagesDrawSVG(t *testing.T) {
 	ctx := context.Background()
 	const fox = `<svg viewBox="0 0 72 72"><circle cx="36" cy="36" r="30" fill="#e27022"/></svg>`
-	serve := func(body string) tuiwidget.ImageResolver {
+	serve := func(body string) core.ImageResolver {
 		return func(context.Context, string) (io.ReadCloser, error) {
 			return io.NopCloser(strings.NewReader(body)), nil
 		}
@@ -483,7 +484,7 @@ func TestHTMLImagesDrawSVG(t *testing.T) {
 // once, whatever it was; another failure is not; a new resolver may report it again.
 func TestHTMLResourcesRefusedAreReported(t *testing.T) {
 	var told []string
-	v := tuiwidget.NewHTMLView(tuiwidget.WithOnRefused(func(src string) { told = append(told, src) }))
+	v := htmlview.NewHTMLView(htmlview.WithOnRefused(func(src string) { told = append(told, src) }))
 	v.SetHTML([]byte(`<p>x</p>`))
 	BindHTML(v)
 	l := v.BoundLayout().(*htmlLayout)
@@ -491,7 +492,7 @@ func TestHTMLResourcesRefusedAreReported(t *testing.T) {
 	for id, c := range map[tui.TaskID]struct {
 		src string
 		err error
-	}{1: {"../a.png", tuiwidget.ErrImageRefused}, 2: {"../a.png", tuiwidget.ErrImageRefused}, 3: {"gone.png", os.ErrNotExist}} {
+	}{1: {"../a.png", htmlview.ErrImageRefused}, 2: {"../a.png", htmlview.ErrImageRefused}, 3: {"gone.png", os.ErrNotExist}} {
 		m.entries[c.src] = &imgEntry{state: imgLoading}
 		m.tasks[id] = c.src
 		l.HandleTask(tui.TaskResult{ID: id, Err: c.err})
@@ -502,7 +503,7 @@ func TestHTMLResourcesRefusedAreReported(t *testing.T) {
 	v.SetImageResolver(nil)
 	m.entries["../a.png"] = &imgEntry{state: imgLoading}
 	m.tasks[9] = "../a.png"
-	l.HandleTask(tui.TaskResult{ID: 9, Err: tuiwidget.ErrImageRefused})
+	l.HandleTask(tui.TaskResult{ID: 9, Err: htmlview.ErrImageRefused})
 	if len(told) != 2 {
 		t.Errorf("after a new resolver, told %v, want it again", told)
 	}
@@ -556,7 +557,7 @@ func TestHTMLLinkedStylesheets(t *testing.T) {
 
 // TestHTMLLoadSheetCaps: a sheet over 1 MiB, or not UTF-8, is refused.
 func TestHTMLLoadSheetCaps(t *testing.T) {
-	serve := func(b []byte) tuiwidget.ImageResolver {
+	serve := func(b []byte) core.ImageResolver {
 		return func(context.Context, string) (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(b)), nil }
 	}
 	ctx := context.Background()
@@ -576,7 +577,7 @@ func TestHTMLLoadSheetCaps(t *testing.T) {
 // again is not told twice.
 func TestHTMLRefusalsAreToldForEachPage(t *testing.T) {
 	var told []string
-	v := tuiwidget.NewHTMLView(tuiwidget.WithOnRefused(func(src string) { told = append(told, src) }))
+	v := htmlview.NewHTMLView(htmlview.WithOnRefused(func(src string) { told = append(told, src) }))
 	page := func(body string) []byte {
 		return []byte(`<html><head><link rel="stylesheet" href="../a.css"></head><body>` + body + `<img src="../b.png" alt="b"></body></html>`)
 	}
@@ -588,8 +589,8 @@ func TestHTMLRefusalsAreToldForEachPage(t *testing.T) {
 	l.sheets.tasks[1] = "../a.css"
 	l.images.entries["../b.png"] = &imgEntry{state: imgLoading}
 	l.images.tasks[2] = "../b.png"
-	l.HandleTask(tui.TaskResult{ID: 1, Err: tuiwidget.ErrImageRefused})
-	l.HandleTask(tui.TaskResult{ID: 2, Err: tuiwidget.ErrImageRefused})
+	l.HandleTask(tui.TaskResult{ID: 1, Err: htmlview.ErrImageRefused})
+	l.HandleTask(tui.TaskResult{ID: 2, Err: htmlview.ErrImageRefused})
 	repaint(l, 400, 300)
 	if fmt.Sprint(told) != "[../a.css ../b.png]" {
 		t.Fatalf("the first page told %v", told)

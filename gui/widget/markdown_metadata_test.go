@@ -7,7 +7,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/tui"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 func metadataLayout(t *testing.T, source string, line int, editing bool) BlockLayout {
@@ -27,8 +27,8 @@ func metadataLayout(t *testing.T, source string, line int, editing bool) BlockLa
 
 func TestLaterCommentCloseAndRemovalReflowEarlierEditorBlocks(t *testing.T) {
 	source := "before <!-- note\nstill note\nend\n\nlast"
-	h := startEditor(t, 60, 20, WithRenderer(NewMarkdownRenderer(WithHideMetadata())), WithCore(tuiwidget.CoreInitialText(source)))
-	h.onLoop(func() { h.e.SetView(tuiwidget.ViewRendered); h.e.core.SetLine(4, 0) })
+	h := startEditor(t, 60, 20, WithRenderer(NewMarkdownRenderer(WithHideMetadata())), WithCore(editor.CoreInitialText(source)))
+	h.onLoop(func() { h.e.SetView(editor.ViewRendered); h.e.core.SetLine(4, 0) })
 	firstText := func() string {
 		var text strings.Builder
 		h.onLoop(func() {
@@ -49,7 +49,7 @@ func TestLaterCommentCloseAndRemovalReflowEarlierEditorBlocks(t *testing.T) {
 		t.Fatalf("initial text %q", text)
 	}
 	h.onLoop(func() {
-		if _, err := h.e.core.Insert(tuiwidget.TextPos{Line: 2, Col: 3}, " -->"); err != nil {
+		if _, err := h.e.core.Insert(editor.TextPos{Line: 2, Col: 3}, " -->"); err != nil {
 			t.Error(err)
 		}
 		h.e.core.SetLine(4, 0)
@@ -59,7 +59,7 @@ func TestLaterCommentCloseAndRemovalReflowEarlierEditorBlocks(t *testing.T) {
 		t.Fatalf("later close kept earlier layout: %q", text)
 	}
 	h.onLoop(func() {
-		if err := h.e.core.Delete(tuiwidget.TextRange{From: tuiwidget.TextPos{Line: 2, Col: 3}, To: tuiwidget.TextPos{Line: 2, Col: 7}}); err != nil {
+		if err := h.e.core.Delete(editor.TextRange{From: editor.TextPos{Line: 2, Col: 3}, To: editor.TextPos{Line: 2, Col: 7}}); err != nil {
 			t.Error(err)
 		}
 		h.e.core.SetLine(4, 0)

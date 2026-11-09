@@ -8,7 +8,7 @@ import (
 	"github.com/yongjohnlee80/golib/gui"
 	phtml "github.com/yongjohnlee80/golib/parse/html"
 	"github.com/yongjohnlee80/golib/tui"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/htmlview"
 )
 
 // HTML View Incremental Pixel Layout Pipeline:
@@ -41,7 +41,7 @@ import (
 // When bound, the widget parses HTML documents into a structured DOM tree, resolves CSS
 // styling rules, computes CSS box models (padding, border, margin, flexbox), and renders
 // proportional typography, embedded images, and vector diagrams with sub-pixel precision.
-func BindHTML(v *tuiwidget.HTMLView) {
+func BindHTML(v *htmlview.HTMLView) {
 	v.BindLayout(newHTMLLayout(v))
 }
 
@@ -62,7 +62,7 @@ type topBlock struct {
 }
 
 type htmlLayout struct {
-	v      *tuiwidget.HTMLView
+	v      *htmlview.HTMLView
 	shaper *gui.TextShaper
 	src    []byte
 	doc    *phtml.Node
@@ -105,7 +105,7 @@ type htmlLayout struct {
 }
 
 // newHTMLLayout initializes the HTML layout engine and subsystems for an HTMLView.
-func newHTMLLayout(v *tuiwidget.HTMLView) *htmlLayout {
+func newHTMLLayout(v *htmlview.HTMLView) *htmlLayout {
 	l := &htmlLayout{v: v, width: 600, textPx: 16, rootPx: 16}
 	l.images = newHTMLImages(v)
 	l.sheets = newHTMLSheets(v)
@@ -114,14 +114,14 @@ func newHTMLLayout(v *tuiwidget.HTMLView) *htmlLayout {
 }
 
 var (
-	_ tuiwidget.HTMLLayout         = (*htmlLayout)(nil)
-	_ tuiwidget.HTMLLayoutWidth    = (*htmlLayout)(nil)
-	_ tuiwidget.HTMLLayoutPixels   = (*htmlLayout)(nil)
-	_ tuiwidget.HTMLLayoutTasks    = (*htmlLayout)(nil)
-	_ tuiwidget.HTMLLayoutHScroll  = (*htmlLayout)(nil)
-	_ tuiwidget.HTMLLayoutImages   = (*htmlLayout)(nil)
-	_ tuiwidget.HTMLLayoutActivate = (*htmlLayout)(nil)
-	_ gui.View                     = (*htmlLayout)(nil)
+	_ htmlview.HTMLLayout         = (*htmlLayout)(nil)
+	_ htmlview.HTMLLayoutWidth    = (*htmlLayout)(nil)
+	_ htmlview.HTMLLayoutPixels   = (*htmlLayout)(nil)
+	_ htmlview.HTMLLayoutTasks    = (*htmlLayout)(nil)
+	_ htmlview.HTMLLayoutHScroll  = (*htmlLayout)(nil)
+	_ htmlview.HTMLLayoutImages   = (*htmlLayout)(nil)
+	_ htmlview.HTMLLayoutActivate = (*htmlLayout)(nil)
+	_ gui.View                    = (*htmlLayout)(nil)
 )
 
 // Pixels reports that the layout's units are pixels.

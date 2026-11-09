@@ -8,21 +8,22 @@ import (
 
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/tui"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // An Editor built without a menu (as a QML style builds it) gets its rows afterwards: a
 // consumer's CoreMenuAction row, appended to the stock rows, runs on the core when chosen.
 func TestContextMenuRowsSetAfterConstruction(t *testing.T) {
-	e := NewEditor(WithCore(tuiwidget.CoreInitialText("hello world")))
+	e := NewEditor(WithCore(editor.CoreInitialText("hello world")))
 	var ran atomic.Int32
-	e.SetContextMenuRows(func(c *tuiwidget.EditorCore) []tuiwidget.MenuItemModel {
-		rows := tuiwidget.CoreContextItems(c)
-		return append(rows, tuiwidget.NewCommand("upper", "Upper", tuiwidget.CoreMenuAction{ID: "upper",
-			Run: func(c *tuiwidget.EditorCore) { ran.Add(1); c.SetValue(strings.ToUpper(c.Value())) }}))
+	e.SetContextMenuRows(func(c *editor.EditorCore) []core.MenuItemModel {
+		rows := editor.CoreContextItems(c)
+		return append(rows, core.NewCommand("upper", "Upper", editor.CoreMenuAction{ID: "upper",
+			Run: func(c *editor.EditorCore) { ran.Add(1); c.SetValue(strings.ToUpper(c.Value())) }}))
 	})
 	tb := tui.NewTestBackend(60, 14, tui.WithTestCapabilities(tui.Capabilities{NativeViews: true}))
-	sh := &shell{child: tuiwidget.NewOverlayHost(e)}
+	sh := &shell{child: core.NewOverlayHost(e)}
 	app := tui.NewApp(sh, tui.WithBackend(&nativeTB{TestBackend: tb}))
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -57,10 +58,10 @@ func TestContextMenuRowsSetAfterConstruction(t *testing.T) {
 // Shift+F10 opens the menu at the native caret, as a right press on the caret's cell does; with
 // the menu off it opens nothing and the key goes on.
 func TestShiftF10OpensTheMenuAtTheNativeCaret(t *testing.T) {
-	e := NewEditor(WithCore(tuiwidget.CoreInitialText("hello world\nsecond line")))
+	e := NewEditor(WithCore(editor.CoreInitialText("hello world\nsecond line")))
 	e.SetContextMenuRows(nil)
 	tb := tui.NewTestBackend(60, 14, tui.WithTestCapabilities(tui.Capabilities{NativeViews: true}))
-	sh := &shell{child: tuiwidget.NewOverlayHost(e)}
+	sh := &shell{child: core.NewOverlayHost(e)}
 	app := tui.NewApp(sh, tui.WithBackend(&nativeTB{TestBackend: tb}))
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
