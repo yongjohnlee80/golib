@@ -1,5 +1,5 @@
 # gui packages (relative to gui/) whose tests pass on macOS: the gui-macos job runs these.
-# The list may only grow. Not yet: ./mermaid/ (TestABlockDiagramIsLaidOut).
+# The list may only grow.
 .
 ./decl/
 ./examples/scene3d/
@@ -7,6 +7,7 @@
 ./internal/css/
 ./internal/linebreak/
 ./internal/picture/
+./mermaid/
 ./record/
 ./svg/
 ./vegalite/
