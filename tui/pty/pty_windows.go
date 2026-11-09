@@ -238,13 +238,26 @@ func (p *PTY) Wait() (exit int, err error) {
 	return p.code, p.waitErr
 }
 
+// closePseudoConsole is windows.ClosePseudoConsole. Before Windows 11 24H2 it can wait without end
+// for the console's output to be read: tests stand in for it to hold Close to its bound there.
+var closePseudoConsole = windows.ClosePseudoConsole
+
 // Close hangs up: it closes the pseudo-console, which ends the console's session and tells its
 // programs to exit. Once the child has exited, or after the grace period, when its job is ended,
 // Close releases the pipes and the handles. It returns once the child has exited, and is
 // idempotent.
+//
+// The console is closed in the background, so the grace period and the job's end never wait on
+// it: before Windows 11 24H2, ClosePseudoConsole waits until the console's output is read, and a
+// caller may have stopped reading. Once the child has exited, Close closes the output's read end if
+// the console is still waiting, which ends that wait, and waits for it one grace more at most.
 func (p *PTY) Close() error {
 	p.closeOnce.Do(func() {
-		windows.ClosePseudoConsole(p.console)
+		closed := make(chan struct{})
+		go func() {
+			closePseudoConsole(p.console)
+			close(closed)
+		}()
 		t := time.NewTimer(p.grace)
 		defer t.Stop()
 		select {
@@ -253,7 +266,24 @@ func (p *PTY) Close() error {
 			windows.TerminateJobObject(p.job, 1)
 			<-p.done
 		}
-		p.closeErr = errors.Join(p.in.Close(), p.out.Close())
+		outErr := error(nil)
+		select {
+		case <-closed:
+		case <-time.After(p.grace):
+			outErr = p.out.Close() // the console's writes fail, and its close returns
+			select {
+			case <-closed:
+			case <-time.After(p.grace): // left to finish on its own: the child is gone
+			}
+		}
+		inErr := p.in.Close()
+		if outErr == nil {
+			outErr = p.out.Close()
+		}
+		if errors.Is(outErr, os.ErrClosed) {
+			outErr = nil
+		}
+		p.closeErr = errors.Join(inErr, outErr)
 		windows.CloseHandle(p.process)
 		windows.CloseHandle(p.job)
 	})
