@@ -9,7 +9,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // TestEveryLanguageIsComplete: each of the editor's languages translates every message
@@ -124,7 +124,7 @@ func TestEveryModeIsNamedInTheLanguageShowing(t *testing.T) {
 	r.waitFor(t, "REPLACE in Korean", func(s string) bool {
 		return strings.Contains(lastNonEmpty(strings.Split(s, "\n")), "바꾸기")
 	})
-	unknown := widget.EditorMode(99)
+	unknown := editor.EditorMode(99)
 	if got := modeMessage(unknown); got != unknown.String() {
 		t.Errorf("modeMessage(%d) = %v, want the mode's own name %q", unknown, got, unknown.String())
 	}
