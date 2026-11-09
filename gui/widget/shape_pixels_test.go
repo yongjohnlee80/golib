@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"errors"
 	"image"
 	"image/color"
 	"testing"
@@ -14,8 +15,11 @@ func TestAShapesPixelsAreItsGeometry(t *testing.T) {
 	red, blue := color.NRGBA{R: 0xc0, A: 0xff}, color.NRGBA{B: 0xc0, A: 0xff}
 	size := gui.Size{W: 40, H: 24}
 	ground, err := gui.Snapshot(gui.ViewFunc(func(gui.Canvas) {}), size, 2)
-	if err != nil {
+	if errors.Is(err, gui.ErrNoGPU) {
 		t.Skipf("no headless GPU here: %v", err)
+	}
+	if err != nil {
+		t.Fatal(err)
 	}
 	bg := ground.RGBAAt(2, 2)
 	type point struct {
@@ -37,7 +41,7 @@ func TestAShapesPixelsAreItsGeometry(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			img, err := gui.Snapshot(c.s, size, 2)
 			if err != nil {
-				t.Skipf("no headless GPU here: %v", err)
+				t.Fatal(err) // a GPU answered for the ground: any error here is a failure
 			}
 			if img.Bounds() != image.Rect(0, 0, 80, 48) {
 				t.Fatalf("snapshot %v, want 80x48", img.Bounds())
