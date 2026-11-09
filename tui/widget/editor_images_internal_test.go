@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 	"io"
 	"strings"
 	"sync"
@@ -70,14 +71,14 @@ func onlyPlacement(imgs map[uint32]tui.ImagePlacement) (pl tui.ImagePlacement) {
 // picture: its rows reserved, blank, between the text before and after it, its image placed over
 // them at its own size in cells (80 × 32 pixels, cells 8 × 16: 10 × 2), never its alt text.
 func TestAnImageParagraphIsDrawnOverItsRows(t *testing.T) {
-	r := runImageEditor(t, "before\n\n![gull]("+pngURI(t, 80, 32)+")\n\nafter", 40, 12, kitty)
+	r := runImageEditor(t, "before\n\n![gull]("+widgettest.PNGURI(t, 80, 32)+")\n\nafter", 40, 12, widgettest.Kitty)
 	r.waitFor("the picture placed", func(_ string, imgs map[uint32]tui.ImagePlacement) bool { return len(imgs) == 1 })
 	sc := r.tb.String()
 	pl := onlyPlacement(r.tb.Images())
 	if pl.Cols != 10 || pl.Rows != 2 || pl.X != 0 || len(pl.PNG) == 0 {
 		t.Fatalf("placed %+v; want 10 × 2 at the left", pl)
 	}
-	before, after := lineOf(sc, "before"), lineOf(sc, "after")
+	before, after := widgettest.LineOf(sc, "before"), widgettest.LineOf(sc, "after")
 	if strings.Contains(sc, "gull") || before < 0 || after < 0 || !(before < pl.Y && pl.Y+pl.Rows <= after) {
 		t.Fatalf("the picture at rows %d-%d, the text at %d and %d:\n%s", pl.Y, pl.Y+pl.Rows-1, before, after, sc)
 	}
@@ -90,7 +91,7 @@ func TestAnImageParagraphIsDrawnOverItsRows(t *testing.T) {
 
 // Where the terminal can't draw images, the paragraph is its text, and no image is placed.
 func TestAnImageParagraphIsItsTextWhereItCantBeDrawn(t *testing.T) {
-	r := runImageEditor(t, "before\n\n![gull]("+pngURI(t, 80, 32)+")\n\nafter", 40, 12,
+	r := runImageEditor(t, "before\n\n![gull]("+widgettest.PNGURI(t, 80, 32)+")\n\nafter", 40, 12,
 		tui.Capabilities{ColorProfile: tui.ProfileTrueColor})
 	r.waitFor("the text after", func(sc string, _ map[uint32]tui.ImagePlacement) bool { return strings.Contains(sc, "after") })
 	time.Sleep(50 * time.Millisecond)
@@ -103,7 +104,7 @@ func TestAnImageParagraphIsItsTextWhereItCantBeDrawn(t *testing.T) {
 // An image is placed at its cells in the Editor: after the line numbers' gutter. A view switch (to
 // Raw) takes it off: the App removes an image no longer reported.
 func TestAnImageIsPlacedInTheEditorAndGoesWithItsView(t *testing.T) {
-	r := runImageEditor(t, "before\n\n![gull]("+pngURI(t, 80, 32)+")\n\nafter", 40, 12, kitty, WithEditorLineNumbers(true))
+	r := runImageEditor(t, "before\n\n![gull]("+widgettest.PNGURI(t, 80, 32)+")\n\nafter", 40, 12, widgettest.Kitty, WithEditorLineNumbers(true))
 	r.waitFor("the picture placed", func(_ string, imgs map[uint32]tui.ImagePlacement) bool { return len(imgs) == 1 })
 	var gutter int
 	r.onLoop(func() { gutter = r.e.cells.gutter })
@@ -119,7 +120,7 @@ func TestAnImageIsPlacedInTheEditorAndGoesWithItsView(t *testing.T) {
 // five rows of it on the view show the same part of the image, over blank rows, the text after it
 // below.
 func TestAnImageScrolledPartlyOffIsCropped(t *testing.T) {
-	r := runImageEditor(t, "before\n\n![tall]("+pngURI(t, 80, 128)+")\n\nafter"+strings.Repeat("\n\nmore", 4), 40, 8, kitty)
+	r := runImageEditor(t, "before\n\n![tall]("+widgettest.PNGURI(t, 80, 128)+")\n\nafter"+strings.Repeat("\n\nmore", 4), 40, 8, widgettest.Kitty)
 	var first int
 	r.waitFor("the picture placed", func(_ string, imgs map[uint32]tui.ImagePlacement) bool {
 		if len(imgs) != 1 {
@@ -139,7 +140,7 @@ func TestAnImageScrolledPartlyOffIsCropped(t *testing.T) {
 			t.Fatalf("row %d of the picture shows %q:\n%s", y, string(cells), r.tb.String())
 		}
 	}
-	if s := r.tb.String(); strings.Contains(s, "before") || lineOf(s, "after") < 5 {
+	if s := r.tb.String(); strings.Contains(s, "before") || widgettest.LineOf(s, "after") < 5 {
 		t.Fatalf("scrolled into the picture, want its rows on top and the text after it below:\n%s", s)
 	}
 }
@@ -177,14 +178,14 @@ func (h *heldImages) resolve(ctx context.Context, src string) (io.ReadCloser, er
 // it was switched, answered late, places nothing: only the shown note's images are placed.
 func TestAnImageIsItsBuffersOwn(t *testing.T) {
 	h := &heldImages{started: make(chan struct{}), release: make(chan struct{}), pngs: map[string]string{
-		"Ap.png": pngURI(t, 80, 32), // 10 × 2
-		"As.png": pngURI(t, 80, 64), // 10 × 4
-		"Bp.png": pngURI(t, 40, 48), // 5 × 3
-		"Bs.png": pngURI(t, 16, 16), // 2 × 1
+		"Ap.png": widgettest.PNGURI(t, 80, 32), // 10 × 2
+		"As.png": widgettest.PNGURI(t, 80, 64), // 10 × 4
+		"Bp.png": widgettest.PNGURI(t, 40, 48), // 5 × 3
+		"Bs.png": widgettest.PNGURI(t, 16, 16), // 2 × 1
 	}}
 	h.note.Store("A")
 	note := func(n string) string { return "![p](p.png)\n\n![s](s.png)\n\nnote " + n }
-	r := runImageEditor(t, note("A"), 40, 16, kitty)
+	r := runImageEditor(t, note("A"), 40, 16, widgettest.Kitty)
 	var once sync.Once
 	t.Cleanup(func() { once.Do(func() { close(h.release) }) }) // before the App stops: a held load let go
 	r.onLoop(func() { r.e.SetImages(h.resolve) })

@@ -4,51 +4,17 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-	"testing/fstest"
+
+	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 
 	"github.com/yongjohnlee80/golib/highlight"
-	"github.com/yongjohnlee80/golib/indent"
 	"github.com/yongjohnlee80/golib/parse/shell"
 )
 
-type sourceTrace struct {
-	t        *testing.T
-	refs     map[highlight.State]int
-	calls    int
-	released int
-}
-
-func (s *sourceTrace) HighlightBlock(line string, previous highlight.State) ([]highlight.Span, highlight.State) {
-	s.calls++
-	return []highlight.Span{{Start: 0, End: len(line), Style: highlight.Keyword}}, previous + 1
-}
-func (s *sourceTrace) Retain(id highlight.State) {
-	if id != 0 {
-		s.refs[id]++
-	}
-}
-func (s *sourceTrace) Release(id highlight.State) {
-	if id == 0 {
-		return
-	}
-	if s.refs[id] <= 0 {
-		s.t.Fatalf("state %d released without a lease", id)
-	}
-	s.refs[id]--
-	s.released++
-}
-func (s *sourceTrace) Collect(int) bool { return false }
-func (s *sourceTrace) Indent(r indent.Request) (indent.Decision, bool) {
-	if !r.StateKnown {
-		return indent.Decision{}, false
-	}
-	return indent.Decision{Prefix: "  "}, true
-}
-
 func TestSourceStateLeasesEndOnFramesAndDocumentReplacement(t *testing.T) {
-	var traces []*sourceTrace
+	var traces []*widgettest.SourceTrace
 	c := NewEditorCore(CoreSourceFactory(func() highlight.Source {
-		s := &sourceTrace{t: t, refs: map[highlight.State]int{}}
+		s := &widgettest.SourceTrace{T: t, Refs: map[highlight.State]int{}}
 		traces = append(traces, s)
 		return highlight.Source{Highlighter: s, Indenter: s, States: s}
 	}))
@@ -58,7 +24,7 @@ func TestSourceStateLeasesEndOnFramesAndDocumentReplacement(t *testing.T) {
 	f.Close()
 	old := traces[len(traces)-1]
 	c.SetValue("new")
-	for id, n := range old.refs {
+	for id, n := range old.Refs {
 		if n != 0 {
 			t.Fatalf("old document state %d still has %d leases", id, n)
 		}
@@ -68,7 +34,7 @@ func TestSourceStateLeasesEndOnFramesAndDocumentReplacement(t *testing.T) {
 	f.Close()
 	current := traces[len(traces)-1]
 	c.SetHighlighter(nil)
-	for id, n := range current.refs {
+	for id, n := range current.Refs {
 		if n != 0 {
 			t.Fatalf("cleared source state %d has %d leases", id, n)
 		}
@@ -77,10 +43,10 @@ func TestSourceStateLeasesEndOnFramesAndDocumentReplacement(t *testing.T) {
 
 func TestFindPaintDoesNotChangeDeepImmediateIndent(t *testing.T) {
 	created := 0
-	var trace *sourceTrace
+	var trace *widgettest.SourceTrace
 	c := NewEditorCore(CoreModal(false), CoreAutoIndent(true), CoreSourceFactory(func() highlight.Source {
 		created++
-		trace = &sourceTrace{t: t, refs: map[highlight.State]int{}}
+		trace = &widgettest.SourceTrace{T: t, Refs: map[highlight.State]int{}}
 		return highlight.Source{Highlighter: trace, Indenter: trace, States: trace}
 	}))
 	c.SetValue(strings.Repeat("line\n", 2500) + "tail")
@@ -90,12 +56,12 @@ func TestFindPaintDoesNotChangeDeepImmediateIndent(t *testing.T) {
 		f.Close()
 	}
 	c.SetLine(2500, 4)
-	beforeCreated, beforeCalls := created, trace.calls
+	beforeCreated, beforeCalls := created, trace.Calls
 	c.SetHighlightOverlay(func(line string, semantic []highlight.Span) []highlight.Span {
 		return []highlight.Span{{Start: 0, End: len(line), Style: highlight.Alert}}
 	})
 	c.InvalidateHighlightPaint()
-	if created != beforeCreated || trace.calls != beforeCalls || c.hl.text.valid < 2500 {
+	if created != beforeCreated || trace.Calls != beforeCalls || c.hl.text.valid < 2500 {
 		t.Fatal("paint invalidation reset semantic context")
 	}
 	c.insertIndentedNewline()
@@ -125,35 +91,6 @@ func TestPaintOverlayCannotMutateSemanticSpansOrEscapeByteBounds(t *testing.T) {
 	f.Close()
 	if got[0] != highlight.Keyword {
 		t.Fatal(got)
-	}
-}
-
-func TestFactoryPreviewOwnsStatesAndPaletteDoesNotRenewSource(t *testing.T) {
-	var traces []*sourceTrace
-	d := highlight.Definition{Name: "Preview source", Extensions: []string{"*.custom"}, SourceFactory: func(*highlight.Catalog) highlight.Source {
-		trace := &sourceTrace{t: t, refs: map[highlight.State]int{}}
-		traces = append(traces, trace)
-		return highlight.Source{Highlighter: trace, States: trace}
-	}}
-	catalog := highlight.NewRepository(d).Snapshot()
-	preview := NewFilePreview(FilePaneStyles{}, false)
-	preview.SetSourceHighlighting(catalog, SyntaxStyles{})
-	files := FileSource{FS: fstest.MapFS{"one.custom": &fstest.MapFile{Data: []byte("one\ntwo")}, "two.custom": &fstest.MapFile{Data: []byte("next")}}}
-	preview.Show(files, "one.custom", false)
-	f := preview.view.Core().BeginHighlight(0)
-	f.Styles(1)
-	f.Close()
-	old := traces[len(traces)-1]
-	count := len(traces)
-	preview.SetSourceHighlighting(catalog, SyntaxStyles{})
-	if len(traces) != count {
-		t.Fatal("palette rebuilt semantic source")
-	}
-	preview.Show(files, "two.custom", false)
-	for id, n := range old.refs {
-		if n != 0 {
-			t.Fatal("preview switch leaked old roots", id, n)
-		}
 	}
 }
 
