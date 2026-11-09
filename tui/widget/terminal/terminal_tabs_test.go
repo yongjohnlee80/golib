@@ -571,3 +571,58 @@ func TestTerminalTabsSetATabsMode(t *testing.T) {
 		t.Errorf("SetOnMode heard %v for the tab, want Normal then Input", heard)
 	}
 }
+
+// A key the focused terminal leaves (a host key, SetHostKeys) comes up to the container, which
+// passes the strip only Ctrl+PgUp and Ctrl+PgDn: ←, → and + are the focused strip's keys, so from a
+// terminal they neither move the strip's selection nor open its + menu, while Ctrl+PgDn from the same
+// terminal still chooses the next tab.
+func TestTerminalTabsPassOnlyTheirOwnerKeysUpFromATerminal(t *testing.T) {
+	tabs := NewTerminalTabs()
+	p1, p2 := newResultProc(), newResultProc()
+	defer close(p1.release)
+	defer close(p2.release)
+	a := addTestTerminal(t, tabs, "one", p1)
+	b := addTestTerminal(t, tabs, "two", p2)
+	added := 0
+	tabs.SetActions(func() { added++ }, nil)
+	left := tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyLeft}
+	right := tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyRight}
+	plus := tui.KeyEvent{Kind: tui.KeyPress, Code: '+', Text: "+"}
+	next := tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyPageDown, Mods: tui.ModCtrl}
+	tabs.SetHostKeys(func(e tui.KeyEvent) bool { return e == left || e == right || e == plus || e == next })
+	h := widgettest.StartApp(t, core.NewOverlayHost(tabs), 40, 8)
+	defer h.Stop()
+	term := pickTerminal(tabs, a)
+	h.OnLoop(func() { term.Context().RequestFocus() })
+	press := func(e tui.KeyEvent) {
+		t.Helper()
+		done, err := h.TB.InjectFenced(e)
+		if err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case <-done:
+		case <-time.After(3 * time.Second):
+			t.Fatal("the App did not reach the fence")
+		}
+		h.Sync()
+	}
+	for _, e := range []tui.KeyEvent{right, left, plus} {
+		press(e)
+		var active TerminalTabID
+		var focused, menu bool
+		h.OnLoop(func() { active, focused, menu = tabs.Active(), term.Focused(), tabs.MenuOpen() })
+		if !focused {
+			t.Fatalf("after %v the terminal lost focus: the cell no longer sends from a terminal", e)
+		}
+		if active != a || added != 0 || menu {
+			t.Fatalf("%v from the terminal reached the strip: active %q (want %q), + ran %d times, menu %v", e, active, a, added, menu)
+		}
+	}
+	press(next)
+	var active TerminalTabID
+	h.OnLoop(func() { active = tabs.Active() })
+	if active != b {
+		t.Fatalf("Ctrl+PgDn from the terminal chose %q, want the next tab %q", active, b)
+	}
+}
