@@ -251,12 +251,14 @@ func TestToastsStayAboveTheDialogs(t *testing.T) {
 				order = append(order, "toasts")
 			case l == first:
 				order = append(order, "first")
+			case isScrim(l):
+				order = append(order, "scrim")
 			default:
 				order = append(order, fmt.Sprintf("%T", l))
 			}
 		}
 	})
-	if n := len(order); n < 3 || order[n-1] != "toasts" || order[n-2] != "first" || order[n-3] != "*widget.Scrim" {
+	if n := len(order); n < 3 || order[n-1] != "toasts" || order[n-2] != "first" || order[n-3] != "scrim" {
 		t.Fatalf("after the top dialog closed the layers are %v, want …, scrim, first, toasts", order)
 	}
 }
@@ -309,3 +311,6 @@ func TestAFinishedToastPostedOngoingAgainStartsAgain(t *testing.T) {
 		t.Fatalf("the restarted queued toast or another id went:\n%s", h.screen())
 	}
 }
+
+// isScrim reports whether l is a dialog's scrim.
+func isScrim(l any) bool { _, ok := l.(*widget.Scrim); return ok }
