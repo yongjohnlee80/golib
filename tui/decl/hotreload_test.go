@@ -13,7 +13,7 @@ import (
 	"github.com/yongjohnlee80/golib/decl"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // hotreload_test.go holds HotReload to its acceptance rows on real files: a
@@ -312,13 +312,13 @@ func TestR6APatchedEditorKeepsItsTextAndFocus(t *testing.T) {
 	s.WaitForText(t, "v1")
 	s.Keys(t, decltest.Type("ikept")...)
 	s.WaitForText(t, "kept")
-	var before *widget.Editor
-	onScreenLoop(t, s, func() { before, _ = tuidecl.FindAs[*widget.Editor](s.Program, "ed") })
+	var before *editor.Editor
+	onScreenLoop(t, s, func() { before, _ = tuidecl.FindAs[*editor.Editor](s.Program, "ed") })
 
 	d.write("main.qml", hotLayout("Text { text: \"v2\" }\nEditor { id: ed; focus: true }"))
 	s.WaitForText(t, "v2")
 	onScreenLoop(t, s, func() {
-		after, _ := tuidecl.FindAs[*widget.Editor](s.Program, "ed")
+		after, _ := tuidecl.FindAs[*editor.Editor](s.Program, "ed")
 		if after != before || after.Core().Value() != "kept" {
 			t.Errorf("the editor was replaced or lost its text: same=%v value=%q", after == before, after.Core().Value())
 		}

@@ -3,10 +3,10 @@ package decl
 import (
 	"testing"
 
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/files"
 )
 
-func newTreeForTest() *widget.Tree { return widget.NewTree() }
+func newTreeForTest() *files.Tree { return files.NewTree() }
 
 // TestReplacingChildrenForgetsTheOldOnes: children set again under a row drop
 // what the view knew of the rows they replace — no stale path to route a later

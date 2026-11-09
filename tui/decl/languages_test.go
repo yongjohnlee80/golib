@@ -18,7 +18,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui/decl/controls"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
 	"github.com/yongjohnlee80/golib/tui/i18n"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/files"
 )
 
 // languages_test.go: qsTrId and the App's language, on what reaches the screen — a label
@@ -167,9 +167,9 @@ func TestAHostMessageFollowsTheLanguage(t *testing.T) {
 // A FileDialog's footer is its view's hint as a message, so it follows the language while
 // the dialog is open.
 func TestAFileDialogsFooterFollowsTheLanguage(t *testing.T) {
-	files := widget.FileSource{FS: fstest.MapFS{"foo.txt": {Data: []byte("x")}}, Root: "mem://"}
+	src := files.FileSource{FS: fstest.MapFS{"foo.txt": {Data: []byte("x")}}, Root: "mem://"}
 	s := decltest.Run(t, 90, 22, tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nWindow {\n Text { text: \"body\" }\n FileDialog { id: fd } }")),
-		tuidecl.Translations(demoCatalogs(), "i18n", "app"), tuidecl.Files(files))
+		tuidecl.Translations(demoCatalogs(), "i18n", "app"), tuidecl.Files(src))
 	s.WaitForText(t, "body")
 	openDialog(t, s, "fd")
 	waitAll(t, s, "the English picker", "foo.txt", "Esc:cancel", "[ Open ]")
@@ -213,10 +213,10 @@ func TestWhatQsTrIdAndUITextRefuse(t *testing.T) {
 
 // A catalog that does not load fails NewProgram, naming its file.
 func TestABadCatalogFailsNewProgram(t *testing.T) {
-	files := demoCatalogs()
-	files["i18n/app_es.xml"] = &fstest.MapFile{Data: []byte("<TS><context>")}
+	src := demoCatalogs()
+	src["i18n/app_es.xml"] = &fstest.MapFile{Data: []byte("<TS><context>")}
 	_, err := tuidecl.NewProgram(tuidecl.LayoutSource("main.qml", []byte(languagesDoc)),
-		tuidecl.Translations(files, "i18n", "app"))
+		tuidecl.Translations(src, "i18n", "app"))
 	if err == nil || !strings.Contains(err.Error(), "app_es.xml") {
 		t.Fatalf("err = %v, want the catalog named", err)
 	}
@@ -296,7 +296,7 @@ func TestCheckLanguagesJudgesTheCatalogsAgainstTheMenus(t *testing.T) {
 	decltest.CheckLanguages(t, tuidecl.LayoutSource("main.qml", []byte(languagesDoc)),
 		tuidecl.Translations(demoCatalogs(), "i18n", "app"))
 
-	files := fstest.MapFS{
+	src := fstest.MapFS{
 		"i18n/app_en.xml":    {Data: tsCatalog("en", "demo.apple", "&Apple", "demo.pear", "&Pear")},
 		"i18n/app_ko_KR.xml": {Data: tsCatalog("ko_KR", "demo.apple", "사과", "demo.pear", "배(&b)", "demo.extra", "더")},
 	}
@@ -308,7 +308,7 @@ Window {
    MenuItem { text: qsTrId("demo.apple") }
    MenuItem { text: qsTrId("demo.pear") } } }
  Text { }
-}`)), tuidecl.Translations(files, "i18n", "app"))
+}`)), tuidecl.Translations(src, "i18n", "app"))
 	if err == nil {
 		t.Fatal("CheckLanguages found nothing")
 	}
@@ -380,7 +380,7 @@ func TestAReloadOfLayoutAndCatalogShowsNoFrameMixingThem(t *testing.T) {
 		{"its root replaced", "Vertical", "Horizontal"}, // direction is taken at construction
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			files := func(dir, greeting string, second bool) fstest.MapFS {
+			src := func(dir, greeting string, second bool) fstest.MapFS {
 				body := `Text { text: qsTrId("demo.greeting") }`
 				if second {
 					body += "\nText { text: \"second row\" }"
@@ -390,7 +390,7 @@ func TestAReloadOfLayoutAndCatalogShowsNoFrameMixingThem(t *testing.T) {
 					"i18n/app_en.xml": {Data: tsCatalog("en", "demo.greeting", greeting)},
 				}
 			}
-			fsys := &swapFS{cur: files(tc.before, "greeting v1", false)}
+			fsys := &swapFS{cur: src(tc.before, "greeting v1", false)}
 			be := &framesBackend{TestBackend: tui.NewTestBackend(60, 4)}
 			var (
 				p       *tuidecl.Program
@@ -433,7 +433,7 @@ func TestAReloadOfLayoutAndCatalogShowsNoFrameMixingThem(t *testing.T) {
 			waitScreen("the first catalog", func(s string) bool { return strings.Contains(s, "greeting v1") })
 			settle() // the poller has taken its snapshot of the first files
 
-			fsys.swap(files(tc.after, "greeting v2", true))
+			fsys.swap(src(tc.after, "greeting v2", true))
 			waitScreen("the reload", func(s string) bool {
 				return strings.Contains(s, "greeting v2") && strings.Contains(s, "second row")
 			})

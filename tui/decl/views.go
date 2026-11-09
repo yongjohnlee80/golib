@@ -6,7 +6,9 @@ import (
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
+	"github.com/yongjohnlee80/golib/tui/widget/table"
 )
 
 // VIEWS OVER HOST MODELS — Qt's ListView and ComboBox.
@@ -81,7 +83,7 @@ func (v *modelView) text(i int) string {
 type listViewNode struct {
 	hostOne
 	mv        modelView // composed, not embedded: its methods call each other
-	list      *widget.List[int]
+	list      *core.List[int]
 	activated func(args ...qml.SpecValue)
 	moved     func(args ...qml.SpecValue)
 }
@@ -98,9 +100,9 @@ func buildListView(b Build) (tui.Component, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	n.list = widget.NewList(widget.WithSource[int](modelSource{&n.mv}, n.mv.text),
-		widget.WithListOnActivate[int](func(i int) { n.activated(numberValue(i)) }),
-		widget.WithListOnCursor[int](func(i int) { n.moved(numberValue(i)) }))
+	n.list = core.NewList(core.WithSource[int](modelSource{&n.mv}, n.mv.text),
+		core.WithListOnActivate[int](func(i int) { n.activated(numberValue(i)) }),
+		core.WithListOnCursor[int](func(i int) { n.moved(numberValue(i)) }))
 	n.inner = n.list
 	n.mv.changed = func(Change) {
 		key, had := n.mv.keyAt(n.currentIndex())
@@ -150,7 +152,7 @@ type comboBoxNode struct {
 	hostOne
 	mv        modelView // composed, not embedded: its methods call each other
 	valueRole string
-	sel       *widget.Select[int]
+	sel       *core.Select[int]
 	activated func(args ...qml.SpecValue)
 }
 
@@ -167,18 +169,18 @@ func buildComboBox(b Build) (tui.Component, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	var opts []widget.SelectOption[int]
+	var opts []core.SelectOption[int]
 	if placeholder != "" {
-		opts = append(opts, widget.WithSelectPlaceholder[int](placeholder))
+		opts = append(opts, core.WithSelectPlaceholder[int](placeholder))
 	}
 	if maxWidth != 0 {
 		if maxWidth < 3 {
 			return nil, nil, fmt.Errorf("a ComboBox maxWidth must be at least 3 (at %s)", b.Pos)
 		}
-		opts = append(opts, widget.WithSelectMaxWidth[int](maxWidth))
+		opts = append(opts, core.WithSelectMaxWidth[int](maxWidth))
 	}
-	opts = append(opts, widget.WithSelectOnChange[int](func(i int) { n.activated(numberValue(i)) }))
-	n.sel = widget.NewSelect(opts...)
+	opts = append(opts, core.WithSelectOnChange[int](func(i int) { n.activated(numberValue(i)) }))
+	n.sel = core.NewSelect(opts...)
 	n.inner = n.sel
 	n.mv.changed = func(Change) {
 		key, had := n.mv.keyAt(n.currentIndex())
@@ -192,9 +194,9 @@ func buildComboBox(b Build) (tui.Component, []string, error) {
 
 // refill gives the select its model's rows as choices.
 func (n *comboBoxNode) refill() {
-	items := make([]widget.SelectItem[int], n.mv.rows())
+	items := make([]core.SelectItem[int], n.mv.rows())
 	for i := range items {
-		items[i] = widget.SelectItem[int]{Label: n.mv.text(i), Value: i}
+		items[i] = core.SelectItem[int]{Label: n.mv.text(i), Value: i}
 	}
 	n.sel.SetOptions(items)
 }
@@ -274,7 +276,7 @@ type tableViewNode struct {
 	hostOne             // inner: shown's component
 	mv        modelView // composed, not embedded: its methods call each other
 	declared  []*tableColumnNode
-	table     *widget.Table[int]
+	table     *table.Table[int]
 	activated func(args ...qml.SpecValue)
 	moved     func(args ...qml.SpecValue)
 	// menu is contextMenuRequested(index, x, y), raised only when the document declares it
@@ -284,7 +286,7 @@ type tableViewNode struct {
 	normal   style.Color
 	sink     func(error)
 	// grid is the cell-cursor view (cellCursor: true), in place of table
-	grid *widget.DataTable
+	grid *table.DataTable
 	// shown is whichever of table and grid the node shows, asked instead of branching on which
 	shown tableShown
 	// orderBy is the grid's sort as text, as the document set it or the view wrote it back;
@@ -299,22 +301,22 @@ type tableViewNode struct {
 
 // tableColumnNode is a declared TableViewColumn: what the column shows.
 type tableColumnNode struct {
-	widget.Base
+	core.Base
 	role, title string
 	width       int
-	elide       widget.Elide
+	elide       core.Elide
 }
 
 // elideModes are Qt's TableViewColumn.elideMode values (Qt::TextElideMode):
 // where a cell too wide for its column loses text. ElideRight is Qt's default;
 // ElideLeft keeps the end of a path, its file name. ElidePath is golib's: the
 // start of a path, cut at a "/" so no name is cut.
-var elideModes = enum[widget.Elide]{values: map[string]widget.Elide{
-	"ElideLeft":   widget.ElideLeft,
-	"ElideRight":  widget.ElideRight,
-	"ElideMiddle": widget.ElideMiddle,
-	"ElideNone":   widget.ElideNone,
-	"ElidePath":   widget.ElidePath,
+var elideModes = enum[core.Elide]{values: map[string]core.Elide{
+	"ElideLeft":   core.ElideLeft,
+	"ElideRight":  core.ElideRight,
+	"ElideMiddle": core.ElideMiddle,
+	"ElideNone":   core.ElideNone,
+	"ElidePath":   core.ElidePath,
 }}
 
 func (*tableColumnNode) Layout(c tui.Constraints) tui.Size { return c.Constrain(tui.Size{}) }
@@ -393,10 +395,10 @@ func buildTableView(b Build) (tui.Component, []string, error) {
 	if sortable {
 		return nil, nil, fmt.Errorf("TableView.sortable needs cellCursor: true (at %s)", b.Pos)
 	}
-	n.table = widget.NewTable(n.columns(), widget.WithSource[int](modelSource{&n.mv}, func(int) string { return "" }),
-		widget.WithListOnActivate[int](func(i int) { n.activated(numberValue(i)) }),
-		widget.WithListOnCursor[int](func(i int) { n.moved(numberValue(i)) }),
-		widget.WithListOnContextMenu[int](func(i int, at tui.Point) {
+	n.table = table.NewTable(n.columns(), core.WithSource[int](modelSource{&n.mv}, func(int) string { return "" }),
+		core.WithListOnActivate[int](func(i int) { n.activated(numberValue(i)) }),
+		core.WithListOnCursor[int](func(i int) { n.moved(numberValue(i)) }),
+		core.WithListOnContextMenu[int](func(i int, at tui.Point) {
 			if n.menu != nil {
 				at := n.inView(n.table.List(), at)
 				n.menu(numberValue(i), numberValue(at.X), numberValue(at.Y))
@@ -433,9 +435,9 @@ func (n *tableViewNode) checkTemplate(m ItemModel) error {
 
 // presentCell evaluates one stateless QML Text template only when the native
 // table paints this visible cell. Application policy remains in the model.
-func (n *tableViewNode) presentCell(row, col int) widget.StyledCell {
+func (n *tableViewNode) presentCell(row, col int) table.StyledCell {
 	if n.mv.model == nil {
-		return widget.StyledCell{}
+		return table.StyledCell{}
 	}
 	ix := Index{Row: row, Column: col}
 	role := ""
@@ -453,11 +455,11 @@ func (n *tableViewNode) presentCell(row, col int) widget.StyledCell {
 		}
 	}
 	text, st := n.template.present(locals, "")
-	return widget.StyledCell{Text: text, Style: st}
+	return table.StyledCell{Text: text, Style: st}
 }
 
 // columns are the table's columns now: the declared ones, else the model's.
-func (n *tableViewNode) columns() []widget.TableColumn[int] {
+func (n *tableViewNode) columns() []table.TableColumn[int] {
 	cell := func(role string, col int) func(int) string {
 		return func(row int) string {
 			if n.mv.model == nil {
@@ -466,10 +468,10 @@ func (n *tableViewNode) columns() []widget.TableColumn[int] {
 			return n.mv.model.Data(Index{Row: row, Column: col}, role).Raw
 		}
 	}
-	var cols []widget.TableColumn[int]
+	var cols []table.TableColumn[int]
 	if len(n.declared) > 0 {
 		for _, d := range n.declared {
-			cols = append(cols, widget.TableColumn[int]{Title: d.title, Width: d.width, Cell: cell(d.role, 0), Elide: d.elide})
+			cols = append(cols, table.TableColumn[int]{Title: d.title, Width: d.width, Cell: cell(d.role, 0), Elide: d.elide})
 		}
 		return cols
 	}
@@ -478,7 +480,7 @@ func (n *tableViewNode) columns() []widget.TableColumn[int] {
 		count = n.mv.model.ColumnCount(nil)
 	}
 	for c := 0; c < count; c++ {
-		cols = append(cols, widget.TableColumn[int]{Title: n.mv.model.HeaderData(c), Cell: cell("", c)})
+		cols = append(cols, table.TableColumn[int]{Title: n.mv.model.HeaderData(c), Cell: cell("", c)})
 	}
 	return cols
 }
@@ -556,7 +558,7 @@ var tableViewType = Type{
 			n.grid.Core().SetRowNumbers(on)
 		}),
 		// golib's: what y copies, "tsv" (the default) or "csv" (widget.TableCopyAs)
-		"copyFormat": cellsSetter("copyFormat", copyFormats.read, func(n *tableViewNode, f widget.TableCopyFormat) {
+		"copyFormat": cellsSetter("copyFormat", copyFormats.read, func(n *tableViewNode, f table.TableCopyFormat) {
 			n.grid.Core().SetCopyFormat(f)
 		}),
 		// golib's: the cursor covers its whole row (r toggles it): y copies the row
@@ -570,7 +572,7 @@ var tableViewType = Type{
 		// golib's: a right press opens the menu whose rows the host gives (TableOf(c).Menu().SetRows)
 		"contextMenu": cellsSetter("contextMenu", boolOf, func(n *tableViewNode, on bool) {
 			if n.grid.Menu() == nil {
-				n.grid.SetMenu(widget.NewEditorMenu(n.grid, nil))
+				n.grid.SetMenu(editor.NewEditorMenu(n.grid, nil))
 			}
 			n.grid.Menu().SetEnabled(on)
 		}),
@@ -609,4 +611,4 @@ var tableViewColumnType = Type{
 }
 
 // copyFormats are a cell-cursor TableView's copyFormat values.
-var copyFormats = enum[widget.TableCopyFormat]{values: map[string]widget.TableCopyFormat{"Tsv": widget.TableCopyTSV, "Csv": widget.TableCopyCSV}}
+var copyFormats = enum[table.TableCopyFormat]{values: map[string]table.TableCopyFormat{"Tsv": table.TableCopyTSV, "Csv": table.TableCopyCSV}}

@@ -9,7 +9,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // A terminal build parses and carries a renderer spec; the tui Editor draws its text as ever.
@@ -44,7 +44,7 @@ func specCatcher(t *testing.T) (tuidecl.Style, func() tuidecl.RendererSpec) {
 				mu.Unlock()
 			}
 		}
-		return widget.NewText("styled"), []string{"text", "wrap"}, nil
+		return core.NewText("styled"), []string{"text", "wrap"}, nil
 	}
 	for name := range e.Setters {
 		e.Setters[name] = func(tui.Component, qml.SpecValue) error { return nil }

@@ -9,7 +9,7 @@ import (
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // reserveDoc is a Window with bars, a page, and two reserving Drawers: a window-controlled one on
@@ -30,7 +30,7 @@ Window {
 // probe is the page: it draws PAGE at its top-left cell and records the width it was laid out at,
 // which a page under a maximized panel still has.
 type probe struct {
-	widget.Base
+	core.Base
 	width atomic.Int64
 }
 
@@ -53,7 +53,7 @@ func runReserving(t *testing.T, w, h int) (*decltest.Screen, *probe) {
 		tuidecl.Singleton("demo", "1.0", "App"),
 		tuidecl.Sources(map[string]any{"App.edge": "left", "App.size": 25, "App.floating": false}),
 		tuidecl.Types(tuidecl.Type{Name: "Probe", Build: func(tuidecl.Build) (tui.Component, []string, error) { return page, nil, nil }}),
-		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(widget.NewMinimizedWindows())))
+		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(core.NewMinimizedWindows())))
 	s.WaitForText(t, "PAGE")
 	onScreenLoop(t, s, func() {
 		for _, id := range []string{"l", "b"} {
@@ -188,7 +188,7 @@ func TestADrawerWithoutReserveStillLiesOverThePage(t *testing.T) {
 		tuidecl.Singleton("demo", "1.0", "App"),
 		tuidecl.Sources(map[string]any{"App.edge": "left", "App.size": 25, "App.floating": false}),
 		tuidecl.Types(tuidecl.Type{Name: "Probe", Build: func(tuidecl.Build) (tui.Component, []string, error) { return page, nil, nil }}),
-		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(widget.NewMinimizedWindows())))
+		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(core.NewMinimizedWindows())))
 	s.WaitForText(t, "PAGE")
 	width := page.width.Load()
 	onScreenLoop(t, s, func() { _ = s.Program.Call("l", "open") })

@@ -2,7 +2,7 @@ package decl
 
 import (
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // hostOne is a node hosting one widget of its own, inner: mounted in Init, laid out at the node's
@@ -10,7 +10,7 @@ import (
 // it, sets inner once it has made the widget, and overrides Layout when it lays the widget out
 // another way.
 type hostOne struct {
-	widget.Base
+	core.Base
 	inner tui.Component
 }
 

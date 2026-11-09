@@ -13,7 +13,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // The list screen. The Flex is a real tui.Container and splices its children;
@@ -213,7 +213,7 @@ Flex {
 	}
 
 	_, app := startApp(t, mustRoot(t, tr, ad))
-	btn := componentOf(t, tr, ad, "btn").(*widget.Button)
+	btn := componentOf(t, tr, ad, "btn").(*core.Button)
 	work := componentOf(t, tr, ad, "work").(*tracker)
 
 	// Focus the button and start a task that is still running when the reload
@@ -354,7 +354,7 @@ func TestCanRestructureAnswersFromTheToolkit(t *testing.T) {
 // to it. It exists because TaskResult is an addressed EVENT: the only way to
 // observe that a task survived a reload is to be the component it was sent to.
 type tracker struct {
-	widget.Base
+	core.Base
 	results []tui.TaskResult
 }
 

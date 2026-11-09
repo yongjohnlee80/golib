@@ -9,7 +9,7 @@ import (
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/files"
 )
 
 // TreeView presents a hierarchical, collapsible tree structure driven by a [TreeModel],
@@ -56,15 +56,15 @@ type treeViewNode struct {
 	modelSub[TreeModel]
 	textRole  string
 	badgeRole string
-	tree      *widget.Tree
+	tree      *files.Tree
 	template  *cellTemplate
 	eval      func(qml.SpecValue, map[string]qml.SpecValue) (qml.SpecValue, error)
 	normal    style.Color
 	sink      func(error)
 	// at is each shown node's Index; byPath each node by its path of keys;
 	// pending the expand requests the model is still answering, by path.
-	at        map[*widget.TreeNode]Index
-	byPath    map[string]*widget.TreeNode
+	at        map[*files.TreeNode]Index
+	byPath    map[string]*files.TreeNode
 	pending   map[string]uint64
 	activated func(args ...qml.SpecValue)
 	expanded  func(args ...qml.SpecValue)
@@ -103,9 +103,9 @@ func buildTreeView(b Build) (tui.Component, []string, error) {
 	if n.template != nil {
 		consumed = append(consumed, "delegate")
 	}
-	n.tree = widget.NewTree(widget.WithKnownChildren(n.knownChildren),
-		widget.WithTreeOnExpandRequest(n.childrenAsked), widget.WithTreeOnExpand(n.opened),
-		widget.WithTreeOnCursor(n.cursorOn), widget.WithTreeOnActivate(n.activate))
+	n.tree = files.NewTree(files.WithKnownChildren(n.knownChildren),
+		files.WithTreeOnExpandRequest(n.childrenAsked), files.WithTreeOnExpand(n.opened),
+		files.WithTreeOnCursor(n.cursorOn), files.WithTreeOnActivate(n.activate))
 	n.inner = n.tree // it reports to the TreeView itself (WithTreeOnCursor and its siblings)
 	if err := n.checkTemplate(nil); err != nil {
 		return nil, nil, err
@@ -202,25 +202,25 @@ func (n *treeViewNode) forget(path string) {
 }
 
 // nodes are the tree nodes for the rows under parent.
-func (n *treeViewNode) nodes(parent *Index) []*widget.TreeNode {
+func (n *treeViewNode) nodes(parent *Index) []*files.TreeNode {
 	count := n.model.RowCount(parent)
-	out := make([]*widget.TreeNode, count)
+	out := make([]*files.TreeNode, count)
 	for r := 0; r < count; r++ {
 		ix := Index{Row: r, Parent: parent}
-		var opts []widget.NodeOption
+		var opts []files.NodeOption
 		if n.model.RowCount(&ix) == 0 && !n.model.CanFetchMore(ix) {
-			opts = append(opts, widget.WithLeaf()) // nothing to open, now or to load
+			opts = append(opts, files.WithLeaf()) // nothing to open, now or to load
 		}
 		if n.badgeRole != "" {
 			if b := n.model.Data(ix, n.badgeRole).Raw; b != "" {
-				opts = append(opts, widget.WithBadge(b))
+				opts = append(opts, files.WithBadge(b))
 			}
 		}
 		label, st := n.present(ix)
 		if st != (style.Style{}) {
-			opts = append(opts, widget.WithNodeStyle(st))
+			opts = append(opts, files.WithNodeStyle(st))
 		}
-		node := widget.NewTreeNode(n.model.Key(ix), label, opts...)
+		node := files.NewTreeNode(n.model.Key(ix), label, opts...)
 		n.at[node] = ix
 		n.byPath[n.pathOf(ix)] = node
 		out[r] = node
@@ -230,7 +230,7 @@ func (n *treeViewNode) nodes(parent *Index) []*widget.TreeNode {
 
 // rebuild shows the model's top level afresh.
 func (n *treeViewNode) rebuild() {
-	n.at, n.byPath, n.pending = map[*widget.TreeNode]Index{}, map[string]*widget.TreeNode{}, map[string]uint64{}
+	n.at, n.byPath, n.pending = map[*files.TreeNode]Index{}, map[string]*files.TreeNode{}, map[string]uint64{}
 	if n.model == nil {
 		n.tree.SetRoots()
 		return
@@ -264,7 +264,7 @@ func (n *treeViewNode) follow(c Change) {
 }
 
 // childrenAsked fetches an opened row's children from the model, unless the view already has them.
-func (n *treeViewNode) childrenAsked(node *widget.TreeNode, gen uint64) {
+func (n *treeViewNode) childrenAsked(node *files.TreeNode, gen uint64) {
 	if n.model == nil {
 		return
 	}
@@ -279,7 +279,7 @@ func (n *treeViewNode) childrenAsked(node *widget.TreeNode, gen uint64) {
 }
 
 // opened raises expanded for an opened row.
-func (n *treeViewNode) opened(node *widget.TreeNode) {
+func (n *treeViewNode) opened(node *files.TreeNode) {
 	if ix, ok := n.at[node]; ok {
 		n.expanded(indexValue(ix))
 	}
@@ -287,7 +287,7 @@ func (n *treeViewNode) opened(node *widget.TreeNode) {
 
 // cursorOn raises currentIndexChanged for the row the cursor moved to; a repeat of the last row
 // raises nothing.
-func (n *treeViewNode) cursorOn(node *widget.TreeNode) {
+func (n *treeViewNode) cursorOn(node *files.TreeNode) {
 	if n.model == nil {
 		return
 	}
@@ -302,7 +302,7 @@ func (n *treeViewNode) cursorOn(node *widget.TreeNode) {
 }
 
 // activate raises activated for an activated row.
-func (n *treeViewNode) activate(node *widget.TreeNode) {
+func (n *treeViewNode) activate(node *files.TreeNode) {
 	if ix, ok := n.at[node]; ok {
 		n.activated(indexValue(ix))
 	}
@@ -312,7 +312,7 @@ func (n *treeViewNode) activate(node *widget.TreeNode) {
 // Tree's WithKnownChildren), and reports whether it did; one whose children must load is left to its
 // ExpandRequestEvent. None, with nothing more to fetch, is known too: a section a host read again
 // and found empty is open and empty, not waiting forever on a load no one will make.
-func (n *treeViewNode) knownChildren(node *widget.TreeNode, gen uint64) bool {
+func (n *treeViewNode) knownChildren(node *files.TreeNode, gen uint64) bool {
 	if n.model == nil {
 		return false
 	}

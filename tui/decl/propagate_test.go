@@ -10,7 +10,8 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
+	"github.com/yongjohnlee80/golib/tui/widget/files"
 )
 
 // propagate_test.go holds palette propagation to its promises, P1–P9, on what
@@ -152,9 +153,9 @@ func TestP4ALiveRoleChangeRestylesWithoutRebuilding(t *testing.T) {
 		tuidecl.Singleton("demo", "1.0", "App"),
 		tuidecl.Sources(map[string]any{"App.bg": "blue"}))
 	waitBG(t, s, "typed", ansi(blue))
-	var before *widget.Editor
+	var before *editor.Editor
 	onScreenLoop(t, s, func() {
-		before, _ = tuidecl.FindAs[*widget.Editor](s.Program, "ed")
+		before, _ = tuidecl.FindAs[*editor.Editor](s.Program, "ed")
 		before.SetValue("kept")
 	})
 	waitBG(t, s, "kept", ansi(blue))
@@ -165,7 +166,7 @@ func TestP4ALiveRoleChangeRestylesWithoutRebuilding(t *testing.T) {
 	})
 	waitBG(t, s, "kept", ansi(green))
 	onScreenLoop(t, s, func() {
-		if after, _ := tuidecl.FindAs[*widget.Editor](s.Program, "ed"); after != before {
+		if after, _ := tuidecl.FindAs[*editor.Editor](s.Program, "ed"); after != before {
 			t.Error("the editor was rebuilt by a palette change")
 		}
 	})
@@ -194,9 +195,9 @@ func TestP5AReloadPaintsNewNodesAndRemovingARoleRestoresTheDefault(t *testing.T)
 
 // P6 — a component's children wear the palette its use site gives it.
 func TestP6AComponentsChildrenWearTheUseSitesPalette(t *testing.T) {
-	files := fstest.MapFS{"ui/Card.qml": {Data: []byte("Flex { Text { text: \"in the card\" } }")}}
+	fsys := fstest.MapFS{"ui/Card.qml": {Data: []byte("Flex { Text { text: \"in the card\" } }")}}
 	s := runDoc(t, "import tui 1.0\nimport demo.ui 1.0\nWindow { Card { palette.window: \"green\" } }",
-		tuidecl.Components(files, "ui", "demo.ui", "1.0"))
+		tuidecl.Components(fsys, "ui", "demo.ui", "1.0"))
 	waitBG(t, s, "in the card", ansi(green))
 }
 
@@ -314,9 +315,9 @@ func TestTheAppWidgetsRefuseWhatTheyCannotBuild(t *testing.T) {
 // drawn from exactly those roles. (It used to need base or a pane role beside
 // them before the browser was dressed at all.)
 func TestAFileDialogWearsAnInheritedHighlightAlone(t *testing.T) {
-	files := widget.FileSource{FS: fstest.MapFS{"foo.txt": {Data: []byte("x")}}, Root: "mem://"}
+	fsys := files.FileSource{FS: fstest.MapFS{"foo.txt": {Data: []byte("x")}}, Root: "mem://"}
 	s := decltest.Run(t, 60, 20, tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nWindow { palette.highlight: \"red\"; palette.highlightedText: \"white\"\n"+
-		" Text { text: \"body\" }\n FileDialog { id: fd; preview: false } }")), tuidecl.Files(files))
+		" Text { text: \"body\" }\n FileDialog { id: fd; preview: false } }")), tuidecl.Files(fsys))
 	s.WaitForText(t, "body")
 	onScreenLoop(t, s, func() {
 		if err := s.Program.Call("fd", "open"); err != nil {

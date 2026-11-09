@@ -7,7 +7,7 @@ import (
 	"github.com/yongjohnlee80/golib/parse/qml"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 
 	"github.com/yongjohnlee80/golib/decl"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
@@ -189,14 +189,14 @@ func TestTheAdapterNeverSeesAnExpression(t *testing.T) {
 		for _, p := range b.Props {
 			seen = append(seen, p.Value.Kind)
 		}
-		return widget.NewText(""), nil, nil
+		return core.NewText(""), nil, nil
 	})
 	opts := []tuidecl.Option{
 		tuidecl.WithConstructorProps("Flex", "direction"),
 		tuidecl.WithSetters("Text", map[string]tuidecl.Setter{
 			"text": func(c tui.Component, v qml.SpecValue) error {
 				seen = append(seen, v.Kind)
-				tx, _ := c.(*widget.Text)
+				tx, _ := c.(*core.Text)
 				tx.SetText(v.Raw)
 				return nil
 			},

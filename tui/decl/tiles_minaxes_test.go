@@ -6,7 +6,7 @@ import (
 
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // tiles_minaxes_test.go: a tile's minimum on each axis, as a document writes it: a Tile's own
@@ -35,7 +35,7 @@ func TestAMembersMinimumOnEachAxisIsLiveAndTheCentresBothHold(t *testing.T) {
 	s := decltest.Run(t, 80, 24, tuidecl.LayoutSource("main.qml", []byte(minAxesDoc)),
 		tuidecl.Singleton("demo", "1.0", "App"),
 		tuidecl.Sources(map[string]any{"App.exEdge": "left", "App.exMinW": 20}),
-		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(widget.NewMinimizedWindows())))
+		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(core.NewMinimizedWindows())))
 	s.WaitForText(t, "PAGE")
 	node, _ := s.Program.Find("ex")
 	call(t, s, "ex", "open")
@@ -100,7 +100,7 @@ func TestATileManagerAnswersWhetherAMemberIsOverItsTileNow(t *testing.T) {
 	s := decltest.Run(t, 80, 24, tuidecl.LayoutSource("main.qml", []byte(doc)),
 		tuidecl.Singleton("demo", "1.0", "App"),
 		tuidecl.Sources(map[string]any{"App.exEdge": "left", "App.exMinW": 20}),
-		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(widget.NewMinimizedWindows())))
+		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(core.NewMinimizedWindows())))
 	s.WaitForText(t, "PAGE")
 	call(t, s, "ex", "open")
 	titleAt(t, s, "PAGE", 22, 0)

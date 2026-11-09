@@ -9,7 +9,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/htmlview"
 )
 
 const htmlViewDoc = `import tui 1.0
@@ -58,7 +58,7 @@ func TestAnHTMLViewFromTheDocument(t *testing.T) {
 		}
 	})
 	onScreenLoop(t, s, func() {
-		if v, ok := tuidecl.FindAs[*widget.HTMLView](s.Program, "page"); !ok || !strings.Contains(string(v.Source()), "Hello") {
+		if v, ok := tuidecl.FindAs[*htmlview.HTMLView](s.Program, "page"); !ok || !strings.Contains(string(v.Source()), "Hello") {
 			t.Error("the host does not reach the HTMLView by id")
 		}
 	})

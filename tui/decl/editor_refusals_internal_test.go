@@ -6,13 +6,14 @@ import (
 
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // The standard Editor's hand-written setters and its method refuse what they are not given, naming
 // it: a value of the wrong kind, a widget that is no editor, too many arguments.
 func TestTheEditorSettersAndMethodRefuseWhatTheyAreNotGiven(t *testing.T) {
-	ed, other := widget.NewEditor(), widget.NewText("x")
+	ed, other := editor.NewEditor(), core.NewText("x")
 	num := qml.SpecValue{Kind: qml.SpecValueNumber, Raw: "1"}
 	set := EditorSetters()
 	for _, c := range []struct {

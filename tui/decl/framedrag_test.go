@@ -10,7 +10,7 @@ import (
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/controls"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // framedrag_test.go: a plain drag on a window's frame (WindowCore.BeginFrameDrag), on a backend
@@ -38,11 +38,11 @@ func plainDrag(t *testing.T, s *decltest.Screen, x0, y0, x1, y1 int) {
 }
 
 // windowOf is the window behind id: its bounds and state, read on the loop.
-func windowOf(t *testing.T, s *decltest.Screen, id string) (r tui.Rect, st widget.WindowState) {
+func windowOf(t *testing.T, s *decltest.Screen, id string) (r tui.Rect, st core.WindowState) {
 	t.Helper()
 	onScreenLoop(t, s, func() {
 		c, _ := s.Program.Find(id)
-		w, ok := c.(interface{ WindowBehavior() *widget.WindowCore })
+		w, ok := c.(interface{ WindowBehavior() *core.WindowCore })
 		if !ok {
 			t.Errorf("%s (%T) is no window", id, c)
 			return
@@ -155,7 +155,7 @@ func TestATiledMembersFrameMovesOnlyItsSharedBorder(t *testing.T) {
 		tuidecl.Singleton("demo", "1.0", "App"),
 		tuidecl.Sources(memberSources()),
 		tuidecl.Handlers(map[string]decl.HandlerFunc{"App.log": rec.handler}),
-		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(widget.NewMinimizedWindows())))
+		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(core.NewMinimizedWindows())))
 	s.WaitForText(t, "PAGE")
 	call(t, s, "ex", "open")
 	titleAt(t, s, "EXPLORER", 2, 0)
@@ -172,9 +172,9 @@ func TestATiledMembersFrameMovesOnlyItsSharedBorder(t *testing.T) {
 	var shapes []tui.PointerRegion
 	onScreenLoop(t, s, func() {
 		c, _ := s.Program.Find("ex")
-		core := c.(interface{ WindowBehavior() *widget.WindowCore }).WindowBehavior()
-		r := core.Bounds()
-		shapes = core.FrameShapes(nil, tui.Size{W: r.W, H: r.H})
+		wc := c.(interface{ WindowBehavior() *core.WindowCore }).WindowBehavior()
+		r := wc.Bounds()
+		shapes = wc.FrameShapes(nil, tui.Size{W: r.W, H: r.H})
 	})
 	want := []tui.PointerRegion{
 		{Rect: tui.Rect{X: 19, Y: 1, W: 1, H: 22}, Shape: tui.PointerResizeEW},

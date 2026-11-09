@@ -15,7 +15,7 @@ import (
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/controls"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/files"
 )
 
 // folderdialog_test.go: a FolderDialog is the picker's layout over a folder —
@@ -38,11 +38,11 @@ func runFolderDialog(t *testing.T, rec *recorder) *decltest.Screen {
 // the dialog's (dialog), each a line of QML.
 func runFolderDialogWith(t *testing.T, rec *recorder, window, dialog string) *decltest.Screen {
 	t.Helper()
-	return runFolderDialogOn(t, rec, widget.FileSource{FS: notesFS, Root: "/"}, window, dialog)
+	return runFolderDialogOn(t, rec, files.FileSource{FS: notesFS, Root: "/"}, window, dialog)
 }
 
 // runFolderDialogOn is runFolderDialogWith over the files src.
-func runFolderDialogOn(t *testing.T, rec *recorder, src widget.FileSource, window, dialog string) *decltest.Screen {
+func runFolderDialogOn(t *testing.T, rec *recorder, src files.FileSource, window, dialog string) *decltest.Screen {
 	t.Helper()
 	s := decltest.Run(t, 90, 22,
 		tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\n"+`Window {
@@ -176,7 +176,7 @@ func TestAFolderDialogChecksATypedPathOffTheLoop(t *testing.T) {
 	}{{"/elsewhere", "elsewhere", true}, {"/notes/a.md", "notes/a.md", false}} {
 		g := &statGated{MapFS: notesFS, gates: map[string]chan struct{}{}}
 		rec := &recorder{}
-		s := runFolderDialogOn(t, rec, widget.FileSource{FS: g, Root: "/", Async: true}, "", "")
+		s := runFolderDialogOn(t, rec, files.FileSource{FS: g, Root: "/", Async: true}, "", "")
 		s.WaitForText(t, "a.md")
 		s.Keys(t, decltest.Ctrl('j')) // the path field
 		s.Keys(t, decltest.Ctrl('u'))
@@ -273,7 +273,7 @@ func TestASaveDialogsNameStartsEmptyEachOpening(t *testing.T) {
 }`)),
 		tuidecl.Singleton("demo", "1.0", "App"),
 		tuidecl.Types(controls.Types()...),
-		tuidecl.Files(widget.FileSource{FS: notesFS, Root: "/"}))
+		tuidecl.Files(files.FileSource{FS: notesFS, Root: "/"}))
 	s.WaitForText(t, "behind")
 	open := func() {
 		onScreenLoop(t, s, func() {
@@ -309,8 +309,8 @@ func TestADialogsSourceIsItsOwn(t *testing.T) {
 }`)),
 				tuidecl.Singleton("demo", "1.0", "App"),
 				tuidecl.Types(controls.Types()...),
-				tuidecl.Files(widget.FileSource{FS: notesFS, Root: "/"}),
-				tuidecl.Sources(map[string]any{"App.files": widget.FileSource{FS: own, Root: "/"}}))
+				tuidecl.Files(files.FileSource{FS: notesFS, Root: "/"}),
+				tuidecl.Sources(map[string]any{"App.files": files.FileSource{FS: own, Root: "/"}}))
 			s.WaitForText(t, "behind")
 			onScreenLoop(t, s, func() {
 				if err := s.Program.Call("fd", "open"); err != nil {
@@ -324,7 +324,7 @@ func TestADialogsSourceIsItsOwn(t *testing.T) {
 			// A rebinding lists the new source, at the dialog's folder.
 			other := fstest.MapFS{"mine/the-other.md": {Data: []byte("# other\n")}}
 			onScreenLoop(t, s, func() {
-				if err := s.Program.Set("App.files", widget.FileSource{FS: other, Root: "/"}); err != nil {
+				if err := s.Program.Set("App.files", files.FileSource{FS: other, Root: "/"}); err != nil {
 					t.Error(err)
 				}
 			})

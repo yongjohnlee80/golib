@@ -4,7 +4,7 @@ import (
 	"github.com/yongjohnlee80/golib/decl"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // A KEYS-ONLY MOUNT: what a reload checks its keyId Shortcuts on (Program.checkReloadKeys), apart
@@ -37,7 +37,7 @@ func (h *keyHolder) heldShortcuts() (keymap.Scope, []*shortcutNode) { return h.s
 
 // inertNode is any other type in a keys-only mount. It is never laid out or drawn: the mount has no
 // App.
-type inertNode struct{ widget.Base }
+type inertNode struct{ core.Base }
 
 func (*inertNode) Layout(c tui.Constraints) tui.Size { return c.Constrain(tui.Size{}) }
 func (*inertNode) Render(tui.Surface)                {}

@@ -8,7 +8,7 @@ import (
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // EXTENDING THE VOCABULARY — a consumer's own Go widgets, usable from QML.
@@ -245,7 +245,7 @@ func EnumSetter[W any](e Enum, apply func(W, string)) Setter {
 // start from.
 type Overlaid interface {
 	tui.Component
-	SetOverlay(host *widget.OverlayHost, afterClose func())
+	SetOverlay(host *core.OverlayHost, afterClose func())
 }
 
 // OpensWithWindow is an [Overlaid] component shown for as long as its Window is: a FloatWindow. The

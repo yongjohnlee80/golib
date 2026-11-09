@@ -9,7 +9,7 @@ import (
 	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // ErrWindowOperationUnavailable is a requested operation refused by state,
@@ -18,7 +18,7 @@ var ErrWindowOperationUnavailable = errors.New("tui/decl: window operation unava
 
 // WithWindowCollector supplies a caller-owned model; no registry or taskbar is created. A nil one,
 // typed or not (tui.NilLike), is none.
-func WithWindowCollector(model widget.WindowCollector) Option {
+func WithWindowCollector(model core.WindowCollector) Option {
 	if tui.NilLike(model) {
 		model = nil
 	}
@@ -89,30 +89,30 @@ func windowModFields(c *windowModConfig) map[string]field {
 // options are the WindowMod options c declares: its label and key, its drag bindings, the
 // operations it turns on (minimizing into collector), and changed. Closing is the caller's: a
 // WindowMod's closes it, a Drawer's closes the Drawer.
-func (c windowModConfig) options(collector widget.WindowCollector, changed func(widget.WindowChangedEvent)) []widget.WindowModOption {
-	opts := []widget.WindowModOption{
-		widget.WithWindowLabel(c.label), widget.WithWindowKey(c.key),
-		widget.WithWindowMoveBinding(c.modifier, c.moveButton), widget.WithWindowResizeBinding(c.modifier, c.resizeButton),
-		widget.WithWindowChanged(changed),
+func (c windowModConfig) options(collector core.WindowCollector, changed func(core.WindowChangedEvent)) []core.WindowModOption {
+	opts := []core.WindowModOption{
+		core.WithWindowLabel(c.label), core.WithWindowKey(c.key),
+		core.WithWindowMoveBinding(c.modifier, c.moveButton), core.WithWindowResizeBinding(c.modifier, c.resizeButton),
+		core.WithWindowChanged(changed),
 	}
 	if c.move {
-		opts = append(opts, widget.WithWindowMove())
+		opts = append(opts, core.WithWindowMove())
 	}
 	if c.resize {
-		opts = append(opts, widget.WithWindowResize())
+		opts = append(opts, core.WithWindowResize())
 	}
 	if c.maximize {
-		opts = append(opts, widget.WithWindowMaximize())
+		opts = append(opts, core.WithWindowMaximize())
 	}
 	if c.minimize {
-		opts = append(opts, widget.WithWindowMinimize(collector))
+		opts = append(opts, core.WithWindowMinimize(collector))
 	}
 	return opts
 }
 
 // windowChangedArgs are the changed signal's arguments for e, as its declaration names them:
 // operation, key, x, y, width, height, maximized, minimized.
-func windowChangedArgs(e widget.WindowChangedEvent) []qml.SpecValue {
+func windowChangedArgs(e core.WindowChangedEvent) []qml.SpecValue {
 	return []qml.SpecValue{strValue(e.Operation.String()), strValue(e.Key), numberValue(e.Bounds.X), numberValue(e.Bounds.Y),
 		numberValue(e.Bounds.W), numberValue(e.Bounds.H), boolValue(e.Maximized), boolValue(e.Minimized)}
 }
@@ -141,18 +141,18 @@ func buildWindowMod(b Build) (tui.Component, []string, error) {
 		return nil, nil, err
 	}
 	emit := b.EmitterWith("changed")
-	opts := c.options(b.WindowCollector, func(e widget.WindowChangedEvent) { emit(windowChangedArgs(e)...) })
+	opts := c.options(b.WindowCollector, func(e core.WindowChangedEvent) { emit(windowChangedArgs(e)...) })
 	if c.close {
-		opts = append(opts, widget.WithWindowClose())
+		opts = append(opts, core.WithWindowClose())
 	}
 	if b.WindowTarget != nil {
-		opts = append(opts, widget.WithWindowTarget(b.WindowTarget))
+		opts = append(opts, core.WithWindowTarget(b.WindowTarget))
 	}
-	return widget.NewWindowMod(b.Children[0], opts...), consumed, nil
+	return core.NewWindowMod(b.Children[0], opts...), consumed, nil
 }
 
 func windowInvoke(action tui.Action) Method {
-	return NoArgMethod(func(w *widget.WindowMod) error {
+	return NoArgMethod(func(w *core.WindowMod) error {
 		if !w.InvokeInput(action) {
 			return ErrWindowOperationUnavailable
 		}
@@ -162,7 +162,7 @@ func windowInvoke(action tui.Action) Method {
 
 func windowStep(move bool) Method {
 	return func(component tui.Component, args []qml.SpecValue) error {
-		w, ok := component.(*widget.WindowMod)
+		w, ok := component.(*core.WindowMod)
 		if !ok || len(args) != 2 {
 			return errors.New("window step requires a WindowMod and two integer deltas")
 		}
@@ -177,9 +177,9 @@ func windowStep(move bool) Method {
 			}
 			delta[i] = int(n)
 		}
-		var action tui.Action = widget.WindowResizeByAction{DW: delta[0], DH: delta[1]}
+		var action tui.Action = core.WindowResizeByAction{DW: delta[0], DH: delta[1]}
 		if move {
-			action = widget.WindowMoveByAction{DX: delta[0], DY: delta[1]}
+			action = core.WindowMoveByAction{DX: delta[0], DY: delta[1]}
 		}
 		if !w.InvokeInput(action) {
 			return ErrWindowOperationUnavailable
@@ -191,7 +191,7 @@ func windowStep(move bool) Method {
 // windowMethod makes a WindowMod method (windowInvoke, windowStep) one run on the window a node
 // carries, window reporting it: a Drawer's window controls, a Tile's window, a FloatWindow's. A
 // node with none now refuses it (ErrWindowOperationUnavailable).
-func windowMethod[N any](window func(N) (*widget.WindowMod, error)) func(Method) Method {
+func windowMethod[N any](window func(N) (*core.WindowMod, error)) func(Method) Method {
 	return func(m Method) Method {
 		return argMethod(func(n N, args []qml.SpecValue) error {
 			w, err := window(n)
@@ -209,14 +209,14 @@ var windowModType = Type{
 	Signals: map[string][]string{"changed": {"operation", "key", "x", "y", "width", "height", "maximized", "minimized"}},
 	Methods: map[string]Method{
 		"moveBy": windowStep(true), "resizeBy": windowStep(false),
-		"toggleMaximize": windowInvoke(widget.WindowMaximizeAction{}), "minimize": windowInvoke(widget.WindowMinimizeAction{}),
-		"restore": windowInvoke(widget.WindowRestoreAction{}), "close": windowInvoke(widget.WindowCloseAction{}),
+		"toggleMaximize": windowInvoke(core.WindowMaximizeAction{}), "minimize": windowInvoke(core.WindowMinimizeAction{}),
+		"restore": windowInvoke(core.WindowRestoreAction{}), "close": windowInvoke(core.WindowCloseAction{}),
 	},
 	Getters: map[string]Getter{
-		"maximized": getter(func(w *widget.WindowMod) (qml.SpecValue, error) {
+		"maximized": getter(func(w *core.WindowMod) (qml.SpecValue, error) {
 			return boolValue(w.Core().State().Maximized), nil
 		}),
-		"minimized": getter(func(w *widget.WindowMod) (qml.SpecValue, error) {
+		"minimized": getter(func(w *core.WindowMod) (qml.SpecValue, error) {
 			return boolValue(w.Core().State().Minimized), nil
 		}),
 	},
@@ -225,10 +225,10 @@ var windowModType = Type{
 // windowBehaver is a component that carries a window: a WindowMod, a Drawer with window
 // controls, a tile, a style's own window widget.
 type windowBehaver interface {
-	WindowBehavior() *widget.WindowCore
+	WindowBehavior() *core.WindowCore
 }
 
-func windowCoreOf(c tui.Component) (*widget.WindowCore, bool) {
+func windowCoreOf(c tui.Component) (*core.WindowCore, bool) {
 	if w, ok := c.(windowBehaver); ok {
 		return w.WindowBehavior(), true
 	}
@@ -236,28 +236,28 @@ func windowCoreOf(c tui.Component) (*widget.WindowCore, bool) {
 }
 
 type windowButtonsNode struct {
-	widget.Base
-	resolve func(string) (*widget.WindowCore, bool)
+	core.Base
+	resolve func(string) (*core.WindowCore, bool)
 	target  string
 	labels  [3]string
-	buttons *widget.WindowButtons
+	buttons *core.WindowButtons
 }
 
 func (n *windowButtonsNode) Init(ctx *tui.Context) {
 	n.Base.Init(ctx)
-	var core *widget.WindowCore
+	var wc *core.WindowCore
 	if n.target != "" {
-		core, _ = n.resolve(n.target)
+		wc, _ = n.resolve(n.target)
 	} else {
 		parent := ctx.Ancestor(func(c tui.Component) bool { _, ok := windowCoreOf(c); return ok })
 		if parent != nil {
-			core, _ = windowCoreOf(parent)
+			wc, _ = windowCoreOf(parent)
 		}
 	}
-	if core == nil {
+	if wc == nil {
 		panic(errs.Fatal{Op: "tui/decl: WindowButtons.Init", Rule: "no target WindowMod; nest the controls in it or name target"})
 	}
-	n.buttons = widget.NewWindowButtons(core, widget.WithWindowButtonLabels(n.labels[0], n.labels[1], n.labels[2]))
+	n.buttons = core.NewWindowButtons(wc, core.WithWindowButtonLabels(n.labels[0], n.labels[1], n.labels[2]))
 	ctx.Mount(n.buttons)
 }
 func (n *windowButtonsNode) Layout(c tui.Constraints) tui.Size {
@@ -284,9 +284,9 @@ var windowButtonsType = Type{Name: "WindowButtons", Ctor: []string{"target", "cl
 var windowTaskbarType = Type{Name: "WindowTaskbar", Children: NoChildren().Because("it supplies its own entry controls"), Build: func(b Build) (tui.Component, []string, error) {
 	// any collector that also presents its entries (widget.WindowEntries) will do: a
 	// MinimizedWindows, or a consumer's own
-	model, ok := b.WindowCollector.(widget.WindowEntries)
+	model, ok := b.WindowCollector.(core.WindowEntries)
 	if !ok || tui.NilLike(model) {
 		return nil, nil, fmt.Errorf("WindowTaskbar requires WithWindowCollector with a collector it can present (widget.WindowEntries), as a MinimizedWindows is")
 	}
-	return widget.NewWindowTaskbar(model), nil, nil
+	return core.NewWindowTaskbar(model), nil, nil
 }}

@@ -7,7 +7,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // MENUS.
@@ -36,7 +36,7 @@ import (
 type menuNode struct {
 	kind     string // "Menu", "MenuItem" or "MenuSeparator": what the bar and the checks read
 	id       string // the node's engine identity, "" when anonymous; see rowID
-	model    widget.MenuItemModel
+	model    core.MenuItemModel
 	trigger  func()
 	toggled  func() // the row's `toggled`, nil when the document bound none
 	children []*menuNode
@@ -48,7 +48,7 @@ type menuNode struct {
 	// since children are built first), and every change the menu makes comes
 	// back through its report (WithMenuOnToggled) — as it would to any owner of
 	// menu rows.
-	owner *widget.Menu
+	owner *core.Menu
 	// bar is the MenuBar that adopted this row: a Menu whose rows change —
 	// an Instantiator's model moved — asks it to project the menu again.
 	bar *menuBarNode
@@ -126,7 +126,7 @@ func (n *menuNode) SetVisible(on bool) {
 
 // withMnemonic gives a row its text: plain text with its "&" marker read here, or a
 // catalog message the menu resolves in the App's language as it lays the row out.
-func withMnemonic(m widget.MenuItemModel, text UIText) widget.MenuItemModel {
+func withMnemonic(m core.MenuItemModel, text UIText) core.MenuItemModel {
 	if text.IsMessage() {
 		m.LabelMsg = text.Message
 		return m
@@ -161,14 +161,14 @@ func buildMenuItem(b Build) (tui.Component, []string, error) {
 
 	// The ID and the Action are filled in when a MenuBar adopts the row: they
 	// must be unique across the whole bar, and only the bar sees all of it.
-	var m widget.MenuItemModel
+	var m core.MenuItemModel
 	switch {
 	case group != "":
-		m = widget.NewRadio("", "", group, nil)
+		m = core.NewRadio("", "", group, nil)
 	case checkable:
-		m = widget.NewCheck("", "", nil)
+		m = core.NewCheck("", "", nil)
 	default:
-		m = widget.NewCommand("", "", nil)
+		m = core.NewCommand("", "", nil)
 	}
 	m = withMnemonic(m, text)
 	m.Accel, m.AccelCommand = shortcut.text, shortcut.command
@@ -190,7 +190,7 @@ func buildMenuSeparator(b Build) (tui.Component, []string, error) {
 	if len(b.Children) != 0 || len(b.Props) != 0 {
 		return nil, nil, fmt.Errorf("MenuSeparator takes no properties or children (at %s)", b.Pos)
 	}
-	return &menuNode{kind: menuSeparatorName, id: b.ID, model: widget.NewSeparator("")}, nil, nil
+	return &menuNode{kind: menuSeparatorName, id: b.ID, model: core.NewSeparator("")}, nil, nil
 }
 
 // menuAligns is where a top-level Menu sits on its bar.
@@ -217,7 +217,7 @@ func buildMenu(b Build) (tui.Component, []string, error) {
 		return nil, nil, fmt.Errorf("%w (at %s)", err, b.Pos)
 	}
 	n := &menuNode{kind: menuName, id: b.ID, children: rows}
-	n.model = withMnemonic(widget.NewSubmenu("", "", nil), title)
+	n.model = withMnemonic(core.NewSubmenu("", "", nil), title)
 	n.model.PegRight = right
 	return &menuListNode{n}, consumed, nil
 }
@@ -241,7 +241,7 @@ func buildMenuBar(b Build) (tui.Component, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	menuOpts := []widget.MenuOption{widget.WithMenuVimNavigation(vim)}
+	menuOpts := []core.MenuOption{core.WithMenuVimNavigation(vim)}
 
 	top, corner, err := barRows(b.Children)
 	if err != nil {
@@ -250,7 +250,7 @@ func buildMenuBar(b Build) (tui.Component, []string, error) {
 	bar := &menuBarNode{rows: top, triggers: map[tui.ActionID]func(){}}
 	// The menu's report is the rows' state: each change recorded on its row,
 	// and a user's raised as that row's `toggled`, after the state has changed.
-	menuOpts = append(menuOpts, widget.WithMenuOnToggled(func(id widget.ItemID, checked, byUser bool) {
+	menuOpts = append(menuOpts, core.WithMenuOnToggled(func(id core.ItemID, checked, byUser bool) {
 		n := bar.byID[id]
 		if n == nil {
 			return
@@ -260,7 +260,7 @@ func buildMenuBar(b Build) (tui.Component, []string, error) {
 			n.toggled()
 		}
 	}))
-	menuOpts = append(menuOpts, widget.WithActionExecutor(func(inv tui.ActionInvocation) bool {
+	menuOpts = append(menuOpts, core.WithActionExecutor(func(inv tui.ActionInvocation) bool {
 		if inv.Action == nil {
 			return false
 		}
@@ -279,23 +279,23 @@ func buildMenuBar(b Build) (tui.Component, []string, error) {
 		fn()
 		return true
 	}))
-	bar.menu = widget.NewMenu(menuOpts...)
+	bar.menu = core.NewMenu(menuOpts...)
 	if err := bar.project(); err != nil {
 		return nil, nil, fmt.Errorf("%w (at %s)", err, b.Pos)
 	}
 
-	var barOpts []widget.MenuBarOption
+	var barOpts []core.MenuBarOption
 	edge, pinned, err := dockEdgeOf(b.SelfAttached)
 	if err != nil {
 		return nil, nil, err
 	}
 	if pinned {
-		barOpts = append(barOpts, widget.WithBarPlacement(barPlacements[edge]))
+		barOpts = append(barOpts, core.WithBarPlacement(barPlacements[edge]))
 	}
 	if corner != nil {
-		barOpts = append(barOpts, widget.WithCornerWidget(corner))
+		barOpts = append(barOpts, core.WithCornerWidget(corner))
 	}
-	bar.bar = widget.NewMenuBar(bar.menu, barOpts...)
+	bar.bar = core.NewMenuBar(bar.menu, barOpts...)
 	return bar, consumed, nil
 }
 
@@ -309,10 +309,10 @@ func buildMenuBar(b Build) (tui.Component, []string, error) {
 // back through its report — so the projection is built from the rows alone.
 func (m *menuBarNode) project() error {
 	triggers := map[tui.ActionID]func(){}
-	byID := map[widget.ItemID]*menuNode{}
+	byID := map[core.ItemID]*menuNode{}
 	var nodes []*menuNode
-	var adopt func(n *menuNode, id widget.ItemID) widget.MenuItemModel
-	adopt = func(n *menuNode, id widget.ItemID) widget.MenuItemModel {
+	var adopt func(n *menuNode, id core.ItemID) core.MenuItemModel
+	adopt = func(n *menuNode, id core.ItemID) core.MenuItemModel {
 		n.model.ID = id
 		byID[id] = n
 		nodes = append(nodes, n)
@@ -330,7 +330,7 @@ func (m *menuBarNode) project() error {
 		}
 		return n.model
 	}
-	var model []widget.MenuItemModel
+	var model []core.MenuItemModel
 	anon := 0
 	for _, n := range m.rows {
 		// A top-level Menu's mnemonic is its ACCESS KEY, Alt+F opening File: accessKeys reads
@@ -352,15 +352,15 @@ func (m *menuBarNode) project() error {
 // wherever the model moves it; otherwise its place among its menu's anonymous
 // rows, under its menu's id. The first form is quoted, which keeps the two
 // apart: a quoted id never ends in a digit.
-func rowID(parent widget.ItemID, n *menuNode, anon *int) widget.ItemID {
+func rowID(parent core.ItemID, n *menuNode, anon *int) core.ItemID {
 	if n.id != "" {
-		return widget.ItemID("mk:" + strconv.Quote(n.id))
+		return core.ItemID("mk:" + strconv.Quote(n.id))
 	}
 	*anon++
 	if parent == "" {
-		return widget.ItemID("mk:#" + strconv.Itoa(*anon))
+		return core.ItemID("mk:#" + strconv.Itoa(*anon))
 	}
-	return widget.ItemID(string(parent) + "/#" + strconv.Itoa(*anon))
+	return core.ItemID(string(parent) + "/#" + strconv.Itoa(*anon))
 }
 
 // arrange takes the bar's Menus as they now are and projects them.
@@ -405,11 +405,11 @@ func barRows(children []tui.Component) ([]*menuNode, tui.Component, error) {
 // barPlacements orients a bar to the edge it is docked on, so dropdowns open
 // away from that edge. The Window decides WHERE the bar sits; the bar only
 // needs to know which way to face — read off the same Dock.edge value.
-var barPlacements = map[tui.DockEdge]widget.BarPlacement{
-	tui.DockTop:    widget.BarPlacementTop,
-	tui.DockBottom: widget.BarPlacementBottom,
-	tui.DockLeft:   widget.BarPlacementLeft,
-	tui.DockRight:  widget.BarPlacementRight,
+var barPlacements = map[tui.DockEdge]core.BarPlacement{
+	tui.DockTop:    core.BarPlacementTop,
+	tui.DockBottom: core.BarPlacementBottom,
+	tui.DockLeft:   core.BarPlacementLeft,
+	tui.DockRight:  core.BarPlacementRight,
 }
 
 // menuBarType is the MenuBar type.

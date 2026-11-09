@@ -3,7 +3,7 @@ package decl
 import (
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // FLOATWINDOWS (golib's) — a window floating over the Window that never closes: it opens with its
@@ -39,10 +39,10 @@ import (
 // Window's overlay (OverlayLayer). Its geometry is the Float's own window target, which the
 // WindowMod's core finds by its provider probe, so the node writes none.
 type floatWindowNode struct {
-	widget.Base
+	core.Base
 	OverlayLayer
-	float *widget.Float
-	mod   *widget.WindowMod
+	float *core.Float
+	mod   *core.WindowMod
 	// frac is where it floats, x, y, width and height as percentages of the Window
 	frac   [4]float64
 	placed func(args ...qml.SpecValue)
@@ -69,8 +69,8 @@ func buildFloatWindow(b Build) (tui.Component, []string, error) {
 		tileGovernance: tileGovernance{govKey: b.ID}}
 	n.body = tui.NewStack()
 	n.body.AddFilled(b.Children[0])
-	n.mod = widget.NewWindowMod(n.body, c.options(b.WindowCollector, n.windowChanged)...)
-	n.float = widget.NewFloat(n.mod, widget.WithModal(false), widget.WithAnchor(n.anchor()))
+	n.mod = core.NewWindowMod(n.body, c.options(b.WindowCollector, n.windowChanged)...)
+	n.float = core.NewFloat(n.mod, core.WithModal(false), core.WithAnchor(n.anchor()))
 	n.OverlayLayer = NewOverlayLayer(n.float, "a FloatWindow")
 	if b.Overlay != nil {
 		n.SetOverlay(b.Overlay, nil)
@@ -92,7 +92,7 @@ func (n *floatWindowNode) OpenWithWindow() error {
 func (n *floatWindowNode) AddAligned(c tui.Component, align tui.Align) { n.body.AddAligned(c, align) }
 
 // WindowBehavior is its window's core, for a dock or a taskbar beside it.
-func (n *floatWindowNode) WindowBehavior() *widget.WindowCore { return n.mod.Core() }
+func (n *floatWindowNode) WindowBehavior() *core.WindowCore { return n.mod.Core() }
 
 // Covered reports whether another panel or window stacked above the FloatWindow overlaps it
 // (widget.OverlayHost.Covered).
@@ -105,11 +105,11 @@ func (n *floatWindowNode) onScreen() tui.Component { return n.mod }
 // maximum), docked at its tile's edge while the tile has no cells (governedAnchor): a governed window
 // never floats. Otherwise it is at its percentages of the area it is placed in, held to its maximum
 // (inArea), else, with no area yet, the percentages themselves.
-func (n *floatWindowNode) anchor() widget.Anchor {
+func (n *floatWindowNode) anchor() core.Anchor {
 	if n.governed() {
 		return n.governedAnchor()
 	}
-	return widget.AtLiveIn(n.inArea, widget.AtFraction(n.frac[0], n.frac[1], n.frac[2], n.frac[3]))
+	return core.AtLiveIn(n.inArea, core.AtFraction(n.frac[0], n.frac[1], n.frac[2], n.frac[3]))
 }
 
 // Govern anchors it over rect, its tile, and gives its core the tile's target (widget.GovernedWindow).
@@ -141,7 +141,7 @@ func (n *floatWindowNode) setTileEdge(e tui.DockEdge) {
 // inArea is its rectangle in area: its percentages, each side held to the maximum and centred on
 // where the percentages put it.
 func (n *floatWindowNode) inArea(area tui.Rect) (tui.Rect, bool) {
-	r := widget.FractionRect(n.frac[0], n.frac[1], n.frac[2], n.frac[3], area)
+	r := core.FractionRect(n.frac[0], n.frac[1], n.frac[2], n.frac[3], area)
 	limit := n.mod.Core().MaxSize()
 	if limit.W > 0 && r.W > limit.W {
 		r.X, r.W = r.X+(r.W-limit.W)/2, limit.W
@@ -155,10 +155,10 @@ func (n *floatWindowNode) inArea(area tui.Rect) (tui.Rect, bool) {
 // windowChanged keeps where a move or resize ended as its percentages, and anchors there again: the
 // drag left the Float at the cells it reached. Governed, the operation was the tile's (a shared
 // border's, committed by the tile's target), not its floating state's: it only reports it.
-func (n *floatWindowNode) windowChanged(e widget.WindowChangedEvent) {
-	if !n.governed() && (e.Operation == widget.WindowMove || e.Operation == widget.WindowResize) {
+func (n *floatWindowNode) windowChanged(e core.WindowChangedEvent) {
+	if !n.governed() && (e.Operation == core.WindowMove || e.Operation == core.WindowResize) {
 		a := n.float.Area()
-		x, y, w, h := widget.FractionOf(e.Bounds, tui.Rect{W: a.W, H: a.H})
+		x, y, w, h := core.FractionOf(e.Bounds, tui.Rect{W: a.W, H: a.H})
 		n.frac = [4]float64{x, y, w, h}
 		n.float.SetAnchor(n.anchor())
 		n.placed(floatValue(x), floatValue(y), floatValue(w), floatValue(h))
@@ -188,7 +188,7 @@ func (n *floatWindowNode) setMaximum(w bool, cells int) {
 }
 
 func (n *floatWindowNode) stopDrag() {
-	n.mod.Core().HandleAction(tui.ActionInvocation{Action: widget.WindowDragCancelAction{}, Origin: tui.OriginProgrammatic})
+	n.mod.Core().HandleAction(tui.ActionInvocation{Action: core.WindowDragCancelAction{}, Origin: tui.OriginProgrammatic})
 }
 
 // A FloatWindow takes no place in the layout: it floats over it.
@@ -206,7 +206,7 @@ func floatWindowMaximumSetter(w bool) Setter {
 }
 
 // floatWindowOf is a FloatWindow's window, for the WindowMod methods.
-var floatWindowOf = windowMethod(func(n *floatWindowNode) (*widget.WindowMod, error) { return n.mod, nil })
+var floatWindowOf = windowMethod(func(n *floatWindowNode) (*core.WindowMod, error) { return n.mod, nil })
 
 // floatWindowType is the FloatWindow's entry in the standard vocabulary.
 var floatWindowType = Type{
@@ -222,8 +222,8 @@ var floatWindowType = Type{
 		"floatHeight":   floatWindowFracSetter(3),
 	},
 	Methods: map[string]Method{
-		"minimize": floatWindowOf(windowInvoke(widget.WindowMinimizeAction{})),
-		"restore":  floatWindowOf(windowInvoke(widget.WindowRestoreAction{})),
+		"minimize": floatWindowOf(windowInvoke(core.WindowMinimizeAction{})),
+		"restore":  floatWindowOf(windowInvoke(core.WindowRestoreAction{})),
 		"moveBy":   floatWindowOf(windowStep(true)),
 		"resizeBy": floatWindowOf(windowStep(false)),
 	},

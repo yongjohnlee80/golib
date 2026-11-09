@@ -14,7 +14,8 @@ import (
 	"github.com/yongjohnlee80/golib/decl"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/files"
 )
 
 // HostFuncs maps handler names to functions in the host program.
@@ -80,9 +81,9 @@ type Adapter struct {
 
 	// types are each schema type's contract, merged from the Options (contractOf, declare).
 	types           map[string]*typeContract
-	files           widget.FileSource
-	overlay         *widget.OverlayHost
-	windowCollector widget.WindowCollector
+	files           files.FileSource
+	overlay         *core.OverlayHost
+	windowCollector core.WindowCollector
 	windowTargets   map[string]any
 	// highlighters are the syntax definitions a SyntaxHighlighter may name.
 	highlighters *highlight.Repository
@@ -510,7 +511,7 @@ func (a *Adapter) refuseUnaskedSignals(c decl.Construction, comp tui.Component, 
 }
 
 // windowCoreByID is the WindowCore of the node with schema id, for a builder's Build.WindowCore.
-func (a *Adapter) windowCoreByID(id string) (*widget.WindowCore, bool) {
+func (a *Adapter) windowCoreByID(id string) (*core.WindowCore, bool) {
 	if a.tree == nil {
 		return nil, false
 	}
@@ -648,14 +649,14 @@ func (a *Adapter) exports() []string {
 // When a dialog closes, the keyboard goes back to whatever had it when the
 // dialog opened: a dialog is a focus-trapping modal, and the runtime restores
 // the focus a trap took.
-func WithOverlay(host *widget.OverlayHost) Option {
+func WithOverlay(host *core.OverlayHost) Option {
 	return func(a *Adapter) { a.overlay = host }
 }
 
 // WithFileSource sets the filesystem the file dialogs list: any fs.FS, a
 // remote one included, with the root its paths are written under. Unset, they
 // list the local disk.
-func WithFileSource(src widget.FileSource) Option {
+func WithFileSource(src files.FileSource) Option {
 	return func(a *Adapter) { a.files = src }
 }
 

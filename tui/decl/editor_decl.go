@@ -7,7 +7,8 @@ import (
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // WHAT AN EDITOR DECLARATION MEANS, for any editor widget: the standard Editor and a style's
@@ -85,28 +86,28 @@ func ReadEditor(b Build) (EditorDecl, error) {
 // CoreOptions are the declaration's behaviour for the editor's core: its first text, the listeners
 // that raise modeChanged, textChanged and cursorPositionChanged, and the command line's w and q,
 // which raise writeRequested(quit) and quitRequested(force) when the document handles them.
-func (d EditorDecl) CoreOptions() []widget.CoreOption {
+func (d EditorDecl) CoreOptions() []editor.CoreOption {
 	modeChanged := d.modeChanged
-	var hooks []widget.CoreOption
+	var hooks []editor.CoreOption
 	if emit := d.writeRequested; emit != nil {
-		hooks = append(hooks, widget.CoreOnWrite(func(quit bool) error { emit(boolValue(quit)); return nil }))
+		hooks = append(hooks, editor.CoreOnWrite(func(quit bool) error { emit(boolValue(quit)); return nil }))
 	}
 	if emit := d.quitRequested; emit != nil {
-		hooks = append(hooks, widget.CoreOnQuit(func(force bool) error { emit(boolValue(force)); return nil }))
+		hooks = append(hooks, editor.CoreOnQuit(func(force bool) error { emit(boolValue(force)); return nil }))
 	}
 	return append(hooks,
-		widget.CoreOnModeChange(func(widget.EditorMode) { modeChanged() }),
-		widget.CoreOnKeyScopeChange(func(keymap.Scope) { d.keyScopeChanged() }),
-		widget.CoreOnChange(d.textChanged),
-		widget.CoreOnCursorPositionChange(d.cursorMoved),
-		widget.CoreInitialText(d.Text),
-		widget.CoreAutoIndent(d.AutoIndent),
-		widget.CoreIndentUnit(d.IndentUnit),
+		editor.CoreOnModeChange(func(editor.EditorMode) { modeChanged() }),
+		editor.CoreOnKeyScopeChange(func(keymap.Scope) { d.keyScopeChanged() }),
+		editor.CoreOnChange(d.textChanged),
+		editor.CoreOnCursorPositionChange(d.cursorMoved),
+		editor.CoreInitialText(d.Text),
+		editor.CoreAutoIndent(d.AutoIndent),
+		editor.CoreIndentUnit(d.IndentUnit),
 	)
 }
 
 // Attach binds the declared SyntaxHighlighter, if any, to the editor's core.
-func (d EditorDecl) Attach(core *widget.EditorCore) {
+func (d EditorDecl) Attach(core *editor.EditorCore) {
 	for _, h := range d.highlighters {
 		h.attach(core)
 	}
@@ -114,7 +115,7 @@ func (d EditorDecl) Attach(core *widget.EditorCore) {
 
 // The behaviour an Editor's runtime properties set, as any editor widget offers it.
 type (
-	keysetter    interface{ SetKeyset(widget.Keyset) }
+	keysetter    interface{ SetKeyset(editor.Keyset) }
 	readOnlyer   interface{ SetReadOnly(bool) }
 	cursorPlacer interface{ SetCursorPosition(int) }
 	valueSetter  interface{ SetValue(string) }
@@ -123,8 +124,8 @@ type (
 		KeepsPlace() bool
 		ReplaceValue(string)
 	}
-	coreEditor   interface{ Core() *widget.EditorCore }
-	commandLiner interface{ CommandLine() *widget.CommandLine }
+	coreEditor   interface{ Core() *editor.EditorCore }
+	commandLiner interface{ CommandLine() *editor.CommandLine }
 	// renderedEnabler is not widget's with the view capabilities: an exported interface's
 	// method ending in Enabled reads as a capability predicate to dao's guard
 	renderedEnabler interface{ SetRenderedEnabled(bool) }
@@ -146,8 +147,8 @@ type (
 // properties beside them.
 func EditorSetters() map[string]Setter {
 	return map[string]Setter{
-		"keyset":   capOrCore(keysets.read, keysetter.SetKeyset, (*widget.EditorCore).SetKeyset),
-		"readOnly": capOrCore(boolOf, readOnlyer.SetReadOnly, (*widget.EditorCore).SetReadOnly),
+		"keyset":   capOrCore(keysets.read, keysetter.SetKeyset, (*editor.EditorCore).SetKeyset),
+		"readOnly": capOrCore(boolOf, readOnlyer.SetReadOnly, (*editor.EditorCore).SetReadOnly),
 		"text": func(c tui.Component, v qml.SpecValue) error {
 			s, err := stringOf(v)
 			if err != nil {
@@ -179,15 +180,15 @@ func EditorSetters() map[string]Setter {
 			}
 			return e.Core().SetIndentUnit(unit)
 		},
-		"indentMarks":    setter("an Editor", indentMarks.read, func(e coreEditor, m widget.IndentMarks) { e.Core().SetIndentMarks(m) }),
-		"cursorPosition": capOrCore(truncOf, cursorPlacer.SetCursorPosition, (*widget.EditorCore).SetCursorPosition),
+		"indentMarks":    setter("an Editor", indentMarks.read, func(e coreEditor, m editor.IndentMarks) { e.Core().SetIndentMarks(m) }),
+		"cursorPosition": capOrCore(truncOf, cursorPlacer.SetCursorPosition, (*editor.EditorCore).SetCursorPosition),
 	}
 }
 
 // capOrCore is an Editor property set through the widget's own method, capability I (a style's
 // editor, gui's, which redraws as it sets), or else on its core: the cell Editor reaches its core's
 // behaviour through Core() alone.
-func capOrCore[I any, V any](read reader[V], viaCap func(I, V), viaCore func(*widget.EditorCore, V)) Setter {
+func capOrCore[I any, V any](read reader[V], viaCap func(I, V), viaCore func(*editor.EditorCore, V)) Setter {
 	return func(c tui.Component, v qml.SpecValue) error {
 		w, isCap := any(c).(I)
 		e, isCore := c.(coreEditor)
@@ -209,9 +210,9 @@ func capOrCore[I any, V any](read reader[V], viaCap func(I, V), viaCore func(*wi
 
 // indentMarks is `indentMarks`: which lines show their indentation as dimmed marks, written as a
 // bare string.
-var indentMarks = enum[widget.IndentMarks]{bare: true, order: []string{"off", "cursorLine", "all"},
-	values: map[string]widget.IndentMarks{
-		"off": widget.IndentMarksOff, "cursorLine": widget.IndentMarksCursorLine, "all": widget.IndentMarksAll,
+var indentMarks = enum[editor.IndentMarks]{bare: true, order: []string{"off", "cursorLine", "all"},
+	values: map[string]editor.IndentMarks{
+		"off": editor.IndentMarksOff, "cursorLine": editor.IndentMarksCursorLine, "all": editor.IndentMarksAll,
 	}}
 
 // EditorViewSetters are the Editor's view properties, for any editor widget with the capabilities
@@ -222,30 +223,30 @@ var indentMarks = enum[widget.IndentMarks]{bare: true, order: []string{"off", "c
 func EditorViewSetters() map[string]Setter {
 	return map[string]Setter{
 		// golib's: a right-click menu with Undo, Redo, Copy, Cut and Paste, opened at the pointer
-		"contextMenu": setter("an Editor", boolOf, widget.ContextMenuEnabler.SetContextMenu),
+		"contextMenu": setter("an Editor", boolOf, editor.ContextMenuEnabler.SetContextMenu),
 		// Qt's TextEdit.wrapMode, as a bool: true wraps long lines at the editor's width
-		"wrap": setter("an Editor", boolOf, func(e widget.Wrapper, v bool) {
+		"wrap": setter("an Editor", boolOf, func(e editor.Wrapper, v bool) {
 			if v {
-				e.SetWrap(widget.WrapSoft)
+				e.SetWrap(core.WrapSoft)
 			} else {
-				e.SetWrap(widget.WrapNone)
+				e.SetWrap(core.WrapNone)
 			}
 		}),
 		// golib's: each line's number in a gutter at the left
-		"lineNumbers": setter("an Editor", boolOf, widget.LineNumberer.SetLineNumbers),
+		"lineNumbers": setter("an Editor", boolOf, editor.LineNumberer.SetLineNumbers),
 		// golib's: the text cursor's colour, a theme's accent; the terminal's own otherwise
-		"cursorColor": setter("an Editor", colorOf, widget.CursorColorer.SetCursorColor),
+		"cursorColor": setter("an Editor", colorOf, editor.CursorColorer.SetCursorColor),
 		// golib's: the line numbers' colour, a theme's dim tone; muted and faint otherwise
-		"lineNumberColor": setter("an Editor", colorOf, widget.LineNumberer.SetLineNumberColor),
+		"lineNumberColor": setter("an Editor", colorOf, editor.LineNumberer.SetLineNumberColor),
 		// golib's: a vertical guide at this column (1-based), where text is meant to wrap; 0 for none
-		"ruler": setter("an Editor", truncOf, widget.Ruler.SetRuler),
+		"ruler": setter("an Editor", truncOf, editor.Ruler.SetRuler),
 		// golib's: Editor.Raw or Editor.Rendered, the view chosen. The cell Editor's Rendered view is
 		// its document view (SetDocumentView, a table); without one it draws Raw and keeps the choice.
-		"view": EnumSetter(EditorViews, func(e widget.ViewChooser, v string) {
+		"view": EnumSetter(EditorViews, func(e editor.ViewChooser, v string) {
 			if v == editorRendered {
-				e.SetView(widget.ViewRendered)
+				e.SetView(editor.ViewRendered)
 			} else {
-				e.SetView(widget.ViewRaw)
+				e.SetView(editor.ViewRaw)
 			}
 		}),
 		// golib's: whether the Rendered view is available, for the document shown (Markdown's
@@ -333,11 +334,11 @@ func buildEditor(b Build) (tui.Component, []string, error) {
 		return nil, nil, err
 	}
 	// The cell Editor has no Rendered view: a renderer spec is carried, not drawn.
-	opts := []widget.EditorOption{widget.WithCore(d.CoreOptions()...)}
+	opts := []editor.EditorOption{editor.WithCore(d.CoreOptions()...)}
 	if d.Wrap {
-		opts = append(opts, widget.WithEditorWrap(widget.WrapSoft))
+		opts = append(opts, editor.WithEditorWrap(core.WrapSoft))
 	}
-	e := widget.NewEditor(opts...)
+	e := editor.NewEditor(opts...)
 	d.Attach(e.Core())
 	return e, d.Consumed, nil
 }

@@ -8,7 +8,9 @@ import (
 	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
+	"github.com/yongjohnlee80/golib/tui/widget/files"
 )
 
 // PALETTES — how a widget looks, written the way Qt writes it.
@@ -136,7 +138,7 @@ func OptionalPaletteRoles() []OptionalPaletteRole {
 // SyntaxStyles are the syntax roles the root Window's palette carries now, as the looks a
 // highlighter paints with — the same value a SyntaxHighlighter node wears (restyleSyntax), for a
 // host outside the tree: a page's code blocks, as the Editor highlights.
-func (a *Adapter) SyntaxStyles() widget.SyntaxStyles { return a.windowPal.syntaxStyles() }
+func (a *Adapter) SyntaxStyles() editor.SyntaxStyles { return a.windowPal.syntaxStyles() }
 
 // SyntaxRole is the role that colours one highlight style: `syntax.keyword`.
 func SyntaxRole(s highlight.Style) Role { return Role(syntaxPrefix + s.String()) }
@@ -157,8 +159,8 @@ func (r Role) prop() string {
 
 // syntaxStyles are the syntax roles as the looks a highlighter paints: each
 // one set, a foreground; each unset, zero — the text's own.
-func (p palette) syntaxStyles() widget.SyntaxStyles {
-	var st widget.SyntaxStyles
+func (p palette) syntaxStyles() editor.SyntaxStyles {
+	var st editor.SyntaxStyles
 	for i := range highlight.Styles {
 		if c, ok := p[SyntaxRole(highlight.Style(i))]; ok {
 			st[i] = style.New().Foreground(c)
@@ -226,8 +228,8 @@ var (
 // viewStyles dresses model-backed list/tree rows from their effective palette.
 // Explicit Reverse(false) keeps the default inverted cursor from overriding a
 // pair of named highlight colors; missing roles retain the widget defaults.
-func (p palette) viewStyles() widget.ListStyles {
-	var st widget.ListStyles
+func (p palette) viewStyles() core.ListStyles {
+	var st core.ListStyles
 	if p.has(roleBase, roleText) {
 		st.Row = p.look(roleBase, roleText)
 	}
@@ -259,14 +261,14 @@ func (p palette) viewCursor(bgRole, fgRole Role) style.Style {
 // browserStyles dress a FileDialog's browser: its panes on base, the cursor on
 // highlight while the list has the keyboard and on the inactive highlight once
 // it has not, and each pane framed in mid, or light while it is in use.
-func (p palette) browserStyles() (widget.FilePaneStyles, bool) {
+func (p palette) browserStyles() (files.FilePaneStyles, bool) {
 	// Every role the looks below read: a palette setting any of them — by
 	// inheritance, say, only the Window's highlight — dresses the browser.
 	if !p.has(roleBase, roleText, roleHighlight, roleHighlightedText, roleInactiveHighlight,
 		roleInactiveHighlightText, roleMid, roleLight, roleWindow, roleWindowText) {
-		return widget.FilePaneStyles{}, false
+		return files.FilePaneStyles{}, false
 	}
-	return widget.FilePaneStyles{
+	return files.FilePaneStyles{
 		Surface:       p.look(roleBase, roleText),
 		Cursor:        p.look(roleHighlight, roleHighlightedText),
 		CursorBlurred: p.look(roleInactiveHighlight, roleInactiveHighlightText),
@@ -279,17 +281,17 @@ func (p palette) browserStyles() (widget.FilePaneStyles, bool) {
 
 // dialogStyles dress a Dialog: the card on window, its buttons on button, and
 // the focused one on highlight. Either is nil when its roles were not set.
-func (p palette) dialogStyles() (*widget.ModalStyle, *widget.ButtonStyle) {
-	var card *widget.ModalStyle
+func (p palette) dialogStyles() (*core.ModalStyle, *core.ButtonStyle) {
+	var card *core.ModalStyle
 	if p.has(roleWindow, roleWindowText) {
 		look := p.look(roleWindow, roleWindowText)
-		card = widget.NewModalStyle(look, look.Bold(true))
+		card = core.NewModalStyle(look, look.Bold(true))
 	}
-	var buttons *widget.ButtonStyle
+	var buttons *core.ButtonStyle
 	if p.has(roleButton, roleButtonText, roleHighlight, roleHighlightedText) {
 		// Not reversed, for the reason the menu's selection is not: the theme
 		// chose both pairs.
-		buttons = widget.NewButtonStyle(
+		buttons = core.NewButtonStyle(
 			p.look(roleButton, roleButtonText).Reverse(false),
 			p.look(roleHighlight, roleHighlightedText).Reverse(false).Bold(true))
 	}
@@ -301,11 +303,11 @@ func (p palette) dialogStyles() (*widget.ModalStyle, *widget.ButtonStyle) {
 
 // menuStyle dresses a menu bar and every dropdown under it. golib derives the
 // looks nobody named — disabled, armed, the popup border — from the two given.
-func (p palette) menuStyle() (*widget.MenuStyle, bool) {
+func (p palette) menuStyle() (*core.MenuStyle, bool) {
 	if !p.has(menuRoles...) {
 		return nil, false
 	}
-	def := widget.DefaultMenuStyle()
+	def := core.DefaultMenuStyle()
 	surface := def.Surface()
 	if p.has(roleWindow, roleWindowText) {
 		surface = p.look(roleWindow, roleWindowText)
@@ -316,7 +318,7 @@ func (p palette) menuStyle() (*widget.MenuStyle, bool) {
 		// paint the other two.
 		selected = p.look(roleHighlight, roleHighlightedText).Reverse(false)
 	}
-	st := widget.NewMenuStyle(surface, selected)
+	st := core.NewMenuStyle(surface, selected)
 	if hk, ok := p.hotkey(); ok {
 		st = st.WithHotkey(hk)
 	}
@@ -336,8 +338,8 @@ func (p palette) hotkey() (style.Style, bool) {
 }
 
 // editorStyles colour an Editor's text on base, and its selection.
-func (p palette) editorStyles() (widget.TextInputStyles, bool) {
-	var st widget.TextInputStyles
+func (p palette) editorStyles() (core.TextInputStyles, bool) {
+	var st core.TextInputStyles
 	if !p.has(editorRoles...) {
 		return st, false
 	}

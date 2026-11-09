@@ -6,7 +6,7 @@ import (
 	"github.com/yongjohnlee80/golib/highlight"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // RENDERER SPECS: how an Editor that has a Rendered view draws it, declared as a child, as
@@ -43,7 +43,7 @@ func (MarkdownSpec) RendererKind() string { return "markdown" }
 
 // rendererNode is a renderer spec as an Editor's declaration-only child.
 type rendererNode struct {
-	widget.Base
+	core.Base
 	spec RendererSpec
 }
 
@@ -113,7 +113,7 @@ func (HTMLDocumentSpec) DocumentKind() string { return "html" }
 
 // documentNode is a document view spec as an Editor's declaration-only child.
 type documentNode struct {
-	widget.Base
+	core.Base
 	spec DocumentSpec
 }
 
