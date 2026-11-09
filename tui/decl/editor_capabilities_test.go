@@ -1,6 +1,7 @@
 package decl_test
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/yongjohnlee80/golib/parse/qml"
@@ -51,7 +52,8 @@ StyledEditor { lineNumbers: true; lineNumberColor: "red"; ruler: 30; wrap: true;
 func TestASettersRefusalNamesItsCapability(t *testing.T) {
 	set := tuidecl.EnumSetter(tuidecl.EditorViews, func(widget.ViewChooser, string) {})
 	err := set(widget.NewText("x"), qml.SpecValue{Kind: qml.SpecValueString, Raw: "Editor.Rendered"})
-	if err == nil || err.Error() != "not a widget.ViewChooser" {
-		t.Errorf("a Text given view: %v; want \"not a widget.ViewChooser\"", err)
+	want := "not a " + reflect.TypeFor[widget.ViewChooser]().String() // the capability as it is named
+	if err == nil || err.Error() != want {
+		t.Errorf("a Text given view: %v; want %q", err, want)
 	}
 }
