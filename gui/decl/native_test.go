@@ -11,7 +11,9 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
+	"github.com/yongjohnlee80/golib/tui/widget/htmlview"
 )
 
 // The native style's Editor offers tui's Editor's QML contract, property for property.
@@ -62,7 +64,7 @@ func valueOf(t *testing.T, s *decltest.Screen) string {
 		switch e := c.(type) {
 		case *widget.Editor:
 			v = e.Core().Value()
-		case *tuiwidget.Editor:
+		case *editor.Editor:
 			v = e.Core().Value()
 		default:
 			t.Errorf("ed is a %T", c)
@@ -81,13 +83,13 @@ func TestOneDocumentTwoEditors(t *testing.T) {
 		if !ok {
 			t.Fatalf("under the native style ed is a %T, want gui's Editor", c)
 		}
-		if e.View() != tuiwidget.ViewRendered {
+		if e.View() != editor.ViewRendered {
 			t.Errorf("view: Editor.Rendered left the gui Editor %v", e.View())
 		}
 	})
 	plain := run(t, doc)
 	onLoop(t, plain, func() {
-		if c, _ := plain.Program.Find("ed"); func() bool { _, ok := c.(*tuiwidget.Editor); return !ok }() {
+		if c, _ := plain.Program.Find("ed"); func() bool { _, ok := c.(*editor.Editor); return !ok }() {
 			t.Fatalf("with no style ed is a %T, want tui's Editor", c)
 		}
 	})
@@ -134,7 +136,7 @@ Window { Editor { id: ed; text: "hello"; view: Editor.Rendered; FooRenderer { } 
 	s := run(t, src, tuidecl.Types(fooType), tuidecl.WithStyle(withFoo))
 	onLoop(t, s, func() {
 		c, _ := s.Program.Find("ed")
-		if e := c.(*widget.Editor); e.View() != tuiwidget.ViewRendered || made != 1 {
+		if e := c.(*widget.Editor); e.View() != editor.ViewRendered || made != 1 {
 			t.Errorf("with a foo renderer: mode %v, factory called %d times", e.View(), made)
 		}
 	})
@@ -142,7 +144,7 @@ Window { Editor { id: ed; text: "hello"; view: Editor.Rendered; FooRenderer { } 
 	onLoop(t, none, func() {
 		c, _ := none.Program.Find("ed")
 		// no renderer: Raw is drawn, Rendered kept as the choice
-		if e := c.(*widget.Editor); e.ShownView() != tuiwidget.ViewRaw || e.View() != tuiwidget.ViewRendered {
+		if e := c.(*widget.Editor); e.ShownView() != editor.ViewRaw || e.View() != editor.ViewRendered {
 			t.Errorf("a spec with no renderer: drawn %v, chosen %v; want Raw drawn, Rendered chosen", e.ShownView(), e.View())
 		}
 	})
@@ -171,7 +173,7 @@ Window {
 		if !ok {
 			t.Fatalf("ed is a %T", c)
 		}
-		if e.Wrap() != tuiwidget.WrapSoft || !e.LineNumbers() || e.Ruler() != 80 {
+		if e.Wrap() != core.WrapSoft || !e.LineNumbers() || e.Ruler() != 80 {
 			t.Errorf("gui Editor: wrap %v, lineNumbers %v, ruler %d; want WrapSoft, true, 80", e.Wrap(), e.LineNumbers(), e.Ruler())
 		}
 		if e.RenderedEnabled() {
@@ -181,7 +183,7 @@ Window {
 	plain := run(t, src)
 	onLoop(t, plain, func() {
 		c, _ := plain.Program.Find("ed")
-		if e, ok := c.(*tuiwidget.Editor); !ok || e.GutterWidth() == 0 {
+		if e, ok := c.(*editor.Editor); !ok || e.GutterWidth() == 0 {
 			t.Errorf("with no style ed is a %T with gutter %v, want tui's Editor with line numbers", c, e)
 		}
 	})
@@ -191,7 +193,7 @@ Window {
 	onLoop(t, bare, func() {
 		c, _ := bare.Program.Find("ed")
 		e := c.(*widget.Editor)
-		if e.Wrap() != tuiwidget.WrapNone || e.LineNumbers() || e.Ruler() != 0 {
+		if e.Wrap() != core.WrapNone || e.LineNumbers() || e.Ruler() != 0 {
 			t.Errorf("defaults: wrap %v, lineNumbers %v, ruler %d; want WrapNone, false, 0", e.Wrap(), e.LineNumbers(), e.Ruler())
 		}
 		if !e.RenderedEnabled() {
@@ -214,11 +216,11 @@ Window { HTMLView { id: page; html: "<p>hello</p>" } }`
 		s := decltest.Run(t, 60, 12, append([]tuidecl.ProgramOption{tuidecl.LayoutSource("main.qml", []byte(page))}, opts...)...)
 		s.WaitFor(t, "the page mounted", func(string) bool {
 			found := false
-			onLoop(t, s, func() { _, found = tuidecl.FindAs[*tuiwidget.HTMLView](s.Program, "page") })
+			onLoop(t, s, func() { _, found = tuidecl.FindAs[*htmlview.HTMLView](s.Program, "page") })
 			return found
 		})
 		onLoop(t, s, func() {
-			v, ok := tuidecl.FindAs[*tuiwidget.HTMLView](s.Program, "page")
+			v, ok := tuidecl.FindAs[*htmlview.HTMLView](s.Program, "page")
 			if !ok {
 				t.Fatal("no HTMLView page")
 			}
@@ -241,17 +243,17 @@ Window { Editor { id: ed; text: "<p>hello</p>"; MarkdownRenderer { } HTMLDocumen
 	onLoop(t, s, func() {
 		c, _ := s.Program.Find("ed")
 		e := c.(*widget.Editor)
-		v, ok := e.DocumentView().(*tuiwidget.HTMLView)
+		v, ok := e.DocumentView().(*htmlview.HTMLView)
 		if !ok {
 			t.Fatalf("the document view is a %T, want an HTMLView", e.DocumentView())
 		}
-		if c, _ := e.DocumentComponent().(*tuiwidget.HTMLView); c != v {
+		if c, _ := e.DocumentComponent().(*htmlview.HTMLView); c != v {
 			t.Error("DocumentComponent is not the document view")
 		}
 		if _, pixels := v.BoundLayout().(interface{ Pixels() bool }); !pixels {
 			t.Error("the HTMLView is not bound to the pixel layout")
 		}
-		if e.SetView(tuiwidget.ViewRendered); e.View() != tuiwidget.ViewRendered || string(v.Source()) != "" {
+		if e.SetView(editor.ViewRendered); e.View() != editor.ViewRendered || string(v.Source()) != "" {
 			t.Errorf("before the host turns it on, Rendered is the renderer's: mode %v, view %q", e.View(), v.Source())
 		}
 		e.SetRenderedDocument(true)
@@ -262,13 +264,13 @@ Window { Editor { id: ed; text: "<p>hello</p>"; MarkdownRenderer { } HTMLDocumen
 	cells := run(t, src)
 	onLoop(t, cells, func() {
 		c, _ := cells.Program.Find("ed")
-		if _, ok := c.(*tuiwidget.Editor); !ok {
+		if _, ok := c.(*editor.Editor); !ok {
 			t.Errorf("with no style the Editor is a %T", c)
 		}
 	})
-	var mine *tuiwidget.HTMLView
+	var mine *htmlview.HTMLView
 	custom := run(t, src, tuidecl.WithStyle(guidecl.Native(guidecl.WithDocumentViewFor("html", func(tuidecl.DocumentSpec) widget.DocumentView {
-		mine = tuiwidget.NewHTMLView()
+		mine = htmlview.NewHTMLView()
 		return mine
 	}))))
 	onLoop(t, custom, func() {
@@ -292,7 +294,7 @@ Window {
 	onLoop(t, s, func() {
 		c, _ := s.Program.Find("ed")
 		tabs := c.(*widget.Editor).Tabs()
-		tabs.SetTabs([]tuiwidget.StripTab{{ID: "1", Label: "alpha"}, {ID: "2", Label: "beta"}})
+		tabs.SetTabs([]core.StripTab{{ID: "1", Label: "alpha"}, {ID: "2", Label: "beta"}})
 		tabs.SetActive("1")
 	})
 	// bgOf is the background of the first cell of text on the screen, and whether it is there
