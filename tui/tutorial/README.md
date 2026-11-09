@@ -35,7 +35,7 @@ import (
 
     "github.com/yongjohnlee80/golib/tui"
     "github.com/yongjohnlee80/golib/tui/term"
-    "github.com/yongjohnlee80/golib/tui/widget"
+    "github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // root is a CONTROLLER component: it mounts a tree, lays it out to fill
@@ -73,7 +73,7 @@ func main() {
     ctx, cancel := context.WithCancel(context.Background())
     defer cancel()
 
-    tree := widget.NewBox(widget.NewText("hello, tui"), widget.WithTitle("demo"))
+    tree := core.NewBox(core.NewText("hello, tui"), core.WithTitle("demo"))
     app := tui.NewApp(&root{quit: cancel, tree: tree}, tui.WithBackend(backend))
     if err := app.Run(ctx); err != nil {
         panic(err)

@@ -41,7 +41,7 @@ If a background task or external goroutine pushes a massive burst of closures or
 ## 2. Pre-Mount BufferView Write Rejection
 
 ### The Deficit
-`BufferView.Writer()` provides an `io.Writer` interface via `*BufferWriter` designed for logging and stream capture. However, writes made before the `BufferView` is mounted into an active component tree (`Init(ctx)`) or after it is unmounted fail immediately with `widget.ErrClosed`:
+`BufferView.Writer()` provides an `io.Writer` interface via `*BufferWriter` designed for logging and stream capture. However, writes made before the `BufferView` is mounted into an active component tree (`Init(ctx)`) or after it is unmounted fail immediately with `core.ErrClosed`:
 
 ```go
 func (v *BufferView) Writer() io.Writer { return v.wr }
@@ -59,7 +59,7 @@ In typical applications, logging sinks are initialized during application startu
 ### The Deficit
 When a modal `Float` is displayed (`f.Show()`), the `floatLayer` immediately attempts to seed focus to the first focusable child inside its content tree. This
 is a limitation of composing a dialog directly from the lower-level `Float`.
-For ordinary dialogs prefer `widget.Modal`, whose composed lifecycle and
+For ordinary dialogs prefer `core.Modal`, whose composed lifecycle and
 `InitialFocusProvider` support are designed for that job; use `Float` when the
 consumer intentionally owns the remaining behaviour.
 
@@ -95,7 +95,7 @@ In high-throughput scenarios (e.g. high-frequency telemetry, cursor movement tra
 ## 5. Editor Key Chord Resolution: Ad-hoc State vs. Declarative Trie
 
 ### The Deficit
-The `widget.Editor` supports modular keysets (`KeysetVim`, `KeysetNano`, `KeysetStandard`), customizable chords, and `ActUnbound` bubbling.
+The `editor.Editor` supports modular keysets (`KeysetVim`, `KeysetNano`, `KeysetStandard`), customizable chords, and `ActUnbound` bubbling.
 
 However, composite multi-key sequences in Vim mode (such as double-key prefix actions `ActDeletePrefix` for `dd`, `ActYankPrefix` for `yy`, `ActGoPrefix` for `gg`, and insert escape chords like `jk`) are currently tracked using manual struct fields (`pendingAct`, `pendingChord`, `pendingCount`, `pendingRune`, `chordCancel`).
 

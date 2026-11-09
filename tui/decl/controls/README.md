@@ -20,8 +20,8 @@ Popup {                                   // a command prompt
 
 | type | over | properties | methods | signals |
 | --- | --- | --- | --- | --- |
-| `TextField` | `widget.TextInput` | `text` (runtime), `placeholderText`, `echoMode: TextInput.Normal \| TextInput.Password`, golib's `completions` (a model; see below) | — | `accepted(text)`, `textEdited(text)` |
-| `Popup` | `widget.Float` | `modal`, `dim` | `open()`, `close()` | `opened()`, `closed()` |
+| `TextField` | `core.TextInput` | `text` (runtime), `placeholderText`, `echoMode: TextInput.Normal \| TextInput.Password`, golib's `completions` (a model; see below) | — | `accepted(text)`, `textEdited(text)` |
+| `Popup` | `core.Float` | `modal`, `dim` | `open()`, `close()` | `opened()`, `closed()` |
 
 - A handler reads `text` as in Qt, where it runs in its object's scope.
 - golib's `completions: App.names` completes the word before the cursor from the
@@ -31,8 +31,8 @@ Popup {                                   // a command prompt
   what several share, then each next one (Shift+Tab the previous). With nothing
   to offer, Tab moves the focus as before. A host wanting other rules, such as a
   table's field names written as an ORDER BY or WHERE bar reads them, sets the
-  completer from Go: `tuidecl.FindAs[*widget.TextInput](p, id)`, then
-  `SetCompleter(widget.TableFieldCompleter(widget.TableWhereBar, fields))` —
+  completer from Go: `tuidecl.FindAs[*core.TextInput](p, id)`, then
+  `SetCompleter(table.TableFieldCompleter(table.TableWhereBar, fields))` —
   WHERE takes a shared field's position as `#n`, ORDER BY as its bare number.
 - A TextField wears `base`/`text` and `highlight`/`highlightedText`; inside a
   coloured card it wears the card's colours.

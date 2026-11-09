@@ -47,7 +47,7 @@ What you get:
 | `action` | a semantic action was handled or an activation fired; detail includes identifier and origin |
 | `capture` | pointer capture was acquired, released, refused, or lost; detail carries the reason |
 
-Components are named by Go type (`*widget.List[string]`), not by a bare
+Components are named by Go type (`*core.List[string]`), not by a bare
 node id, because the id tells you nothing while reading.
 
 ## Reading a trace
@@ -56,10 +56,10 @@ This is a real one. A picker float opened, and Enter did not select:
 
 ```
 key node=<unmounted> prev=<unmounted> (C)
-unmount node=*widget.Float
-key node=            prev=*widget.Editor (Enter)
-scope node=*widget.floatLayer prev=*widget.Editor (open)
-focus node=*app.connPicker prev=*widget.Editor
+unmount node=*core.Float
+key node=            prev=*editor.Editor (Enter)
+scope node=*widget.floatLayer prev=*editor.Editor (open)
+focus node=*app.connPicker prev=*editor.Editor
 ```
 
 Read it bottom-up and the diagnosis is immediate: the float opened

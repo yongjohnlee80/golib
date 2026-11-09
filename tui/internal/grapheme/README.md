@@ -51,7 +51,7 @@ If a TUI computes cursor positioning, line truncation, or box borders using rune
 
 ## Architecture & Zero-Allocation Invariants
 
-`grapheme` sits at the lowest layer of `golib/tui`, directly beneath `Surface`, `CellBuffer`, `widget.Editor`, and `widget.Box`. Because text measurement happens on every frame and every keystroke, this package enforces strict performance guarantees:
+`grapheme` sits at the lowest layer of `golib/tui`, directly beneath `Surface`, `CellBuffer`, `editor.Editor`, and `core.Box`. Because text measurement happens on every frame and every keystroke, this package enforces strict performance guarantees:
 
 - **Zero Heap Allocations**: `Clusters` returns Go 1.23+ `iter.Seq[string]` (range-over-func). Each yielded cluster is a contiguous subslice of the input string without allocating memory or copying bytes.
 - **ASCII Fast Paths**: Over 95% of text in source code and configuration is standard ASCII. `clusterLen` and `StringWidth` evaluate ASCII bytes and ASCII-ASCII pairs with inline CPU checks, bypassing the table lookups entirely.
@@ -111,7 +111,7 @@ Uses an inline ASCII fast path to sum widths at memory-bandwidth speeds.
 
 ### 1. Drawing Box Borders Without Misalignment
 
-In widgets like `widget.Box` or modal dialogs, vertical borders must align perfectly regardless of whether the contained text contains CJK or emoji:
+In widgets like `core.Box` or modal dialogs, vertical borders must align perfectly regardless of whether the contained text contains CJK or emoji:
 
 ```go
 func DrawBox(title, body string, width int) {

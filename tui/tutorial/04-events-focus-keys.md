@@ -228,11 +228,11 @@ central event loop:
 Components and widgets communicate decoupled state changes through the application `Bus` without tight parent-child coupling:
 
 - Shipped widget events:
-  - `widget.ActivateEvent`: Enter pressed on a table or list row (`Owner`, `Index`).
-  - `widget.SelectionChangedEvent`: Selection moved in a list or table (`Owner`, `Index`).
-  - `widget.SubmitEvent`: Enter pressed in a `TextInput` (`Owner`, `Value`).
-  - `widget.TabChangedEvent`: Active tab switched in `Tabs` (`Owner`, `Index`).
-  - `widget.OverlayDismissedEvent`: a Float, a Modal or an anchored layer closed (`Owner`, `Layer`, `Reason`: `DismissEscape` for Esc, `DismissProgrammatic` for `Float.Hide`, and so on). Backdrop mouse clicks are trapped and consumed by a modal layer, but do not dismiss it.
+  - `core.ActivateEvent`: Enter pressed on a table or list row (`Owner`, `Index`).
+  - `core.SelectionChangedEvent`: Selection moved in a list or table (`Owner`, `Index`).
+  - `core.SubmitEvent`: Enter pressed in a `TextInput` (`Owner`, `Value`).
+  - `core.TabChangedEvent`: Active tab switched in `Tabs` (`Owner`, `Index`).
+  - `core.OverlayDismissedEvent`: a Float, a Modal or an anchored layer closed (`Owner`, `Layer`, `Reason`: `DismissEscape` for Esc, `DismissProgrammatic` for `Float.Hide`, and so on). Backdrop mouse clicks are trapped and consumed by a modal layer, but do not dismiss it.
 
 ### 1. Your own widgets: their callbacks, not the bus
 
@@ -243,8 +243,8 @@ the loop: `WithListOnActivate` and `WithListOnCursor` for a List or a Table,
 ```go
 func newController(rows []Row) *myController {
     c := &myController{}
-    c.table = widget.NewTable(cols,
-        widget.WithListOnActivate[Row](func(i int) { c.openDetail(i) }))
+    c.table = table.NewTable(cols,
+        core.WithListOnActivate[Row](func(i int) { c.openDetail(i) }))
     return c
 }
 ```
@@ -261,7 +261,7 @@ app-wide:
 ```go
 func (c *auditLog) Init(ctx *tui.Context) {
     // Automatically unsubscribed when c unmounts:
-    tui.SubscribeScoped(ctx, func(ev widget.ActivateEvent) {
+    tui.SubscribeScoped(ctx, func(ev core.ActivateEvent) {
         if ev.Owner != c.watched {
             return // Filter by owner!
         }

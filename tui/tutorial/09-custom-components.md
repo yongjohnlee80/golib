@@ -54,21 +54,21 @@ type Component interface {
 
 When augmenting an existing widget (such as adding a title header, a footer badge, or line numbers), compose the widget inside a wrapper component rather than subclassing or forking it.
 
-Below is a complete, production-ready custom component: `SearchableList`, which wraps a `widget.List` and a `widget.TextInput` into a unified searchable control.
+Below is a complete, production-ready custom component: `SearchableList`, which wraps a `core.List` and a `core.TextInput` into a unified searchable control.
 
 ```go
 package myapp
 
 import (
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // SearchableList is a custom component wrapping a TextInput filter and a List.
 type SearchableList[T any] struct {
 	ctx   *tui.Context
-	input *widget.TextInput
-	list  *widget.List[T]
+	input *core.TextInput
+	list  *core.List[T]
 
 	allItems []T
 	filterFn func(item T, query string) bool
@@ -82,14 +82,14 @@ func NewSearchableList[T any](
 	sl := &SearchableList[T]{
 		allItems: items,
 		filterFn: filterFn,
-		list: widget.NewList(
-			widget.WithItems(items, renderItem),
+		list: core.NewList(
+			core.WithItems(items, renderItem),
 		),
 	}
 	// The input is the wrapper's own: it reports each edit straight to the wrapper.
-	sl.input = widget.NewTextInput(
-		widget.WithPlaceholder("Search... (/ to focus, Esc to clear)"),
-		widget.WithOnEdit(sl.applyFilter),
+	sl.input = core.NewTextInput(
+		core.WithPlaceholder("Search... (/ to focus, Esc to clear)"),
+		core.WithOnEdit(sl.applyFilter),
 	)
 	return sl
 }

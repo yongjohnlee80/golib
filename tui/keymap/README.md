@@ -32,7 +32,7 @@ Qt Creator's keyboard-mapping scheme, in a `.xml` file:
 
 ```go
 schemes := []*keymap.Scheme{product, user}           // keymap.ParseScheme each
-m, err := keymap.Build(append(widget.KeyCommands(), mine...), schemes...)
+m, err := keymap.Build(append(editor.KeyCommands(), mine...), schemes...)
 app := tui.NewApp(root, tui.WithKeymap(m))           // or tuidecl.KeyCommands + tuidecl.Keymap
 ```
 
@@ -67,7 +67,7 @@ enclosing holder's up to a modal trap's ceiling, then `global` (the Window's), t
 
 ## golib's commands
 
-`widget.KeyCommands()` returns them all. A label's mnemonic (`&File`, a button's letter) is not a
+`editor.KeyCommands()` returns them all. A label's mnemonic (`&File`, a button's letter) is not a
 command and cannot be rebound.
 
 | scope | commands (defaults) |

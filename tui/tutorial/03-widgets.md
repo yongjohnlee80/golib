@@ -10,7 +10,7 @@ any descendant* holds focus (the lazygit active-panel look) — you get panel
 highlighting for free by focusing the content inside.
 
 ```go
-widget.NewBox(content, widget.WithTitle("Logs"))
+core.NewBox(content, core.WithTitle("Logs"))
 ```
 
 ## Button — one activation path
@@ -20,7 +20,7 @@ programmatic activation through the runtime's single `Activatable` seam. It
 does not duplicate raw key and mouse state machines:
 
 ```go
-save := widget.NewButton("Save", widget.WithOnActivate(saveDocument))
+save := core.NewButton("Save", core.WithOnActivate(saveDocument))
 save.Activate(tui.OriginProgrammatic) // same authorization and callback path
 ```
 
@@ -36,9 +36,9 @@ the menu owns their selection and open-level state.
 
 ```go
 // menu on top, status bar on the bottom, content+logs split in between
-body := widget.NewSplit(widget.Vertical,
+body := core.NewSplit(core.Vertical,
     contentPanel, logPanel,
-    widget.WithRatio(0.62), widget.WithMinSizes(3, 3))
+    core.WithRatio(0.62), core.WithMinSizes(3, 3))
 dock := tui.NewDock()
 dock.Pin(tui.DockTop, menuPanel)
 dock.Pin(tui.DockBottom, statusBar)
@@ -67,10 +67,10 @@ becomes resizable by being wrapped, without being modified and without knowing
 that resizing exists:
 
 ```go
-panel := widget.NewResizable(widget.NewBox(tree, widget.WithTitle("Files")),
-    widget.WithMinSize(tui.Size{W: 12, H: 4}),
-    widget.WithMaxSize(tui.Size{W: 60, H: 30}),
-    widget.WithHandles(widget.HandleBottomRight, widget.HandleRight))
+panel := core.NewResizable(core.NewBox(tree, core.WithTitle("Files")),
+    core.WithMinSize(tui.Size{W: 12, H: 4}),
+    core.WithMaxSize(tui.Size{W: 60, H: 30}),
+    core.WithHandles(core.HandleBottomRight, core.HandleRight))
 ```
 
 `Size()` is what it reached and `RequestedSize()` what was asked for, the same
@@ -90,7 +90,7 @@ split as above. Two things are worth knowing before you reach for it:
 
 ```go
 // Grow whatever is focused, wrapper or split, by one cell.
-ctx.DoAction(widget.ResizeStepAction{DX: 1, Unit: widget.StepCells})
+ctx.DoAction(core.ResizeStepAction{DX: 1, Unit: core.StepCells})
 ```
 
 Press and motion begin/continue a drag through semantic resize actions. The
@@ -101,11 +101,11 @@ the widget drops its drag state without treating the last size as a cancel.
 ## Tabs — switching content
 
 ```go
-tabs := widget.NewTabs(
-    widget.WithTab("Deliveries", deliveriesView),
-    widget.WithTab("Releases", releasesView),
-    widget.WithKeepMounted(true), // keep inactive tabs' state alive
-    widget.WithAutoFocus(true),   // arrow-navigable immediately
+tabs := core.NewTabs(
+    core.WithTab("Deliveries", deliveriesView),
+    core.WithTab("Releases", releasesView),
+    core.WithKeepMounted(true), // keep inactive tabs' state alive
+    core.WithAutoFocus(true),   // arrow-navigable immediately
 )
 ```
 
@@ -122,13 +122,13 @@ column `Width: 0` and it absorbs whatever space remains, so the table works
 at any terminal size.
 
 ```go
-table := widget.NewTable(
-    []widget.TableColumn[Delivery]{
+table := table.NewTable(
+    []table.TableColumn[Delivery]{
         {Title: "User", Width: 10, Cell: func(d Delivery) string { return d.User }},
         {Title: "Message ID", Width: 0, Cell: func(d Delivery) string { return d.MessageID }},
         {Title: "State", Width: 18, Cell: func(d Delivery) string { return d.State }},
     },
-    widget.WithEmptyText[Delivery]("No deliveries received yet."),
+    core.WithEmptyText[Delivery]("No deliveries received yet."),
 )
 table.SetItems(rows)                  // replace rows (loop goroutine)
 idx, ok := table.Selected()           // cursor position
@@ -137,8 +137,8 @@ ctx.FocusComponent(table.List())      // focus the inner list
 
 `↑/↓`, paging, Home/End work when the inner list is focused; `Enter`
 activates the row. The table's owner passes
-`widget.WithListOnActivate[Delivery](func(i int) { ... })` to open a detail
-view (chapter 6); the bus also hears `widget.ActivateEvent{Owner, Index}`, for
+`core.WithListOnActivate[Delivery](func(i int) { ... })` to open a detail
+view (chapter 6); the bus also hears `core.ActivateEvent{Owner, Index}`, for
 listeners elsewhere. Size the fixed columns generously: cells truncate with an
 ellipsis, and a too-narrow status column will truncate exactly the value
 you assert on in tests.
@@ -152,7 +152,7 @@ useful when the content width is unknowable, e.g. a result set where one
 column holds uuids and another holds `true`.
 
 ```go
-cols := []widget.TableColumn[Row]{
+cols := []table.TableColumn[Row]{
     {Title: "ID",   Width: 5,  Cell: ...},   // fixed
     {Title: "NAME",            Cell: ...},   // flex ┐ share the remainder
     {Title: "NOTE",            Cell: ...},   // flex ┘ evenly
@@ -177,7 +177,7 @@ restore. These are the seams for that:
 ```go
 list.SetCursor(i)          // programmatic sibling of j/k — search, reveal
 list.Len()                 // row count
-list.SetStyles(widget.ListStyles{CursorRow: focusedStyle})  // restyle live
+list.SetStyles(core.ListStyles{CursorRow: focusedStyle})  // restyle live
 
 tree.SetCursor(i)
 tree.Cursor()
@@ -203,16 +203,16 @@ Append-oriented ring buffer with scrollback and follow-tail. This is THE
 place for logs — never stderr (chapter 1).
 
 ```go
-logView := widget.NewBufferView(
-    widget.WithFollowTail(true),
-    widget.WithMaxLines(5000),
-    widget.WithANSIPassthrough(true), // SGR colors in log lines render
+logView := core.NewBufferView(
+    core.WithFollowTail(true),
+    core.WithMaxLines(5000),
+    core.WithANSIPassthrough(true), // SGR colors in log lines render
 )
 w := logView.Writer() // io.Writer, safe from ANY goroutine…
 ```
 
 …but read the writer contract in chapter 5 before you use it: **writes made
-before the view mounts return `(0, widget.ErrClosed)`**, rejecting your startup
+before the view mounts return `(0, core.ErrClosed)`**, rejecting your startup
 logs unless deferred or relayed.
 
 `y` (focused) copies the whole buffer to the system clipboard via OSC 52;
@@ -221,7 +221,7 @@ logs unless deferred or relayed.
 ## StatusBar — key hints
 
 ```go
-status := widget.NewStatusBar()
+status := core.NewStatusBar()
 status.SetLeft("myapp")
 status.SetRight("↵ open · ←/→ menu · q quit")
 ```
@@ -231,7 +231,7 @@ it is the difference between a discoverable UI and a guessing game.
 
 ## Editor — multi-line text editing, keymaps, and viewers
 
-`widget.Editor` is a configurable multi-line text editor supporting both
+`editor.Editor` is a configurable multi-line text editor supporting both
 modal (Vim) and modeless (Nano, Standard/GUI) interaction styles, granular
 feature capabilities, dynamic keymap reflection, and read-only viewing.
 
@@ -244,23 +244,23 @@ editor's behaviour is its core's (`EditorCore`): configure it with
 
 ```go
 // 1. Default Vim modal editor (Normal, Insert, Visual, VisualLine)
-edVim := widget.NewEditor(widget.WithCore(
-    widget.CoreKeyset(widget.KeysetVim),
-    widget.CoreEscapeChord("jk"), // map 'jk' to Esc in insert mode
+edVim := editor.NewEditor(editor.WithCore(
+    editor.CoreKeyset(editor.KeysetVim),
+    editor.CoreEscapeChord("jk"), // map 'jk' to Esc in insert mode
 ))
 
 // 2. Modeless Nano-style editor (Ctrl+K cut, Ctrl+U paste, Ctrl+A/E home/end)
-edNano := widget.NewEditor(widget.WithCore(widget.CoreKeyset(widget.KeysetNano)))
+edNano := editor.NewEditor(editor.WithCore(editor.CoreKeyset(editor.KeysetNano)))
 
 // 3. Modeless Standard GUI-style editor (Ctrl+Z/Y undo/redo, Ctrl+C/V/X clipboard, Ctrl+A select all)
-edStd := widget.NewEditor(widget.WithCore(widget.CoreKeyset(widget.KeysetStandard)))
+edStd := editor.NewEditor(editor.WithCore(editor.CoreKeyset(editor.KeysetStandard)))
 
 // 4. Custom modeless editing with custom bindings
-edCustom := widget.NewEditor(widget.WithCore(
-    widget.CoreModal(false),
-    widget.CoreKeymap(widget.Keymap{
-        widget.KeyChord{Mode: widget.ModeInsert, Code: 'a', Ctrl: true}: widget.ActSelectAll,
-        widget.KeyChord{Mode: widget.ModeInsert, Code: 'z', Ctrl: true}: widget.ActUndo,
+edCustom := editor.NewEditor(editor.WithCore(
+    editor.CoreModal(false),
+    editor.CoreKeymap(editor.Keymap{
+        editor.KeyChord{Mode: editor.ModeInsert, Code: 'a', Ctrl: true}: editor.ActSelectAll,
+        editor.KeyChord{Mode: editor.ModeInsert, Code: 'z', Ctrl: true}: editor.ActUndo,
     }),
 ))
 ```
@@ -270,13 +270,13 @@ edCustom := widget.NewEditor(widget.WithCore(
 Disable features when building constrained input surfaces or read-only viewers:
 
 ```go
-ed := widget.NewEditor(
-    widget.WithCore(
-        widget.CoreSelection(false), // disable visual selection / ranges (v, V)
-        widget.CoreYank(false),      // disable explicit copy/yank actions (y, yy, ActCopy)
-        widget.CoreUndo(false),      // disable undo / redo history stack
+ed := editor.NewEditor(
+    editor.WithCore(
+        editor.CoreSelection(false), // disable visual selection / ranges (v, V)
+        editor.CoreYank(false),      // disable explicit copy/yank actions (y, yy, ActCopy)
+        editor.CoreUndo(false),      // disable undo / redo history stack
     ),
-    widget.WithEditorWrap(widget.WrapSoft), // soft line-wrapping: the view's, not the core's
+    editor.WithEditorWrap(core.WrapSoft), // soft line-wrapping: the view's, not the core's
 )
 ```
 
@@ -287,7 +287,7 @@ Note: `CoreYank(false)` disables explicit yank/copy actions (`ActCopy`, `ActVisu
 Off unless asked for. `WithContextMenu(nil)` opens Undo and Redo, then Copy, Cut and Paste, at the pointer; a builder replaces or extends them (`EditorContextItems` returns the stock rows, `EditorMenuAction` is a row the editor runs). Paste pastes the editor's own register: a terminal cannot read the system clipboard, so text from outside arrives as the terminal's paste. The menu needs an `OverlayHost` above the editor; a decl `Editor` has one, and turns the menu on with `contextMenu: true`.
 
 ```go
-ed := widget.NewEditor(widget.WithContextMenu(nil))
+ed := editor.NewEditor(editor.WithContextMenu(nil))
 ```
 
 ### 3. Read-only viewer mode
@@ -320,15 +320,15 @@ escape := snap.EscapeChord // "jk"
 bindings := snap.Bindings  // []KeyBinding: chord, action name, description
 
 // Query bindings for a specific mode or reverse-lookup chords
-normalBindings := ed.Core().BindingsForMode(widget.ModeNormal)
-copyChords := ed.Core().ChordsForAction(widget.ActCopy)
-action, bound := ed.Core().ActionForChord(widget.KeyChord{Mode: widget.ModeInsert, Code: 's', Ctrl: true})
+normalBindings := ed.Core().BindingsForMode(editor.ModeNormal)
+copyChords := ed.Core().ChordsForAction(editor.ActCopy)
+action, bound := ed.Core().ActionForChord(editor.KeyChord{Mode: editor.ModeInsert, Code: 's', Ctrl: true})
 
 // Unbinding: allow specific keys to bubble up to parent containers
-edBubbling := widget.NewEditor(widget.WithCore(
-    widget.CoreKeymap(widget.Keymap{
+edBubbling := editor.NewEditor(editor.WithCore(
+    editor.CoreKeymap(editor.Keymap{
         // Unbinding KeyHome lets it bubble to parent instead of moving editor cursor
-        widget.KeyChord{Mode: widget.ModeInsert, Code: tui.KeyHome}: widget.ActUnbound,
+        editor.KeyChord{Mode: editor.ModeInsert, Code: tui.KeyHome}: editor.ActUnbound,
     }),
 ))
 ```

@@ -6,7 +6,7 @@ resizing. Applications compose these primitives and add domain-specific
 controllers rather than reimplementing their interaction machinery.
 
 ```go
-import "github.com/yongjohnlee80/golib/tui/widget"
+import "github.com/yongjohnlee80/golib/tui/widget/core" // and editor, table, files, htmlview, terminal
 ```
 
 Dependency footprint: standard library + `golib/tui` + `golib/tui/style` only.
@@ -108,20 +108,20 @@ maximize/restore, collector minimize/restore and close. It paints nothing and
 creates no controls. The shared `WindowCore` also serves native GUI views.
 
 ```go
-model := widget.NewMinimizedWindows()
+model := core.NewMinimizedWindows()
 body := tui.NewFlex(tui.Vertical)
-window := widget.NewWindowMod(widget.NewBox(body, widget.WithTitle("Notes")),
-    widget.WithWindowMove(), widget.WithWindowResize(),
-    widget.WithWindowMaximize(), widget.WithWindowMinimize(model),
-    widget.WithWindowClose(), widget.WithWindowLabel("Notes"),
-    widget.WithWindowKey("notes"),
-    widget.WithWindowMoveBinding(tui.ModAlt, tui.MouseLeft),
-    widget.WithWindowResizeBinding(tui.ModAlt, tui.MouseRight))
-body.Add(widget.NewWindowButtons(window.Core())) // optional appearance
-body.AddWeighted(widget.NewEditor(), 1)
-float := widget.NewFloat(window, widget.WithModal(false), widget.WithSizeFraction(80, 70))
+window := core.NewWindowMod(core.NewBox(body, core.WithTitle("Notes")),
+    core.WithWindowMove(), core.WithWindowResize(),
+    core.WithWindowMaximize(), core.WithWindowMinimize(model),
+    core.WithWindowClose(), core.WithWindowLabel("Notes"),
+    core.WithWindowKey("notes"),
+    core.WithWindowMoveBinding(tui.ModAlt, tui.MouseLeft),
+    core.WithWindowResizeBinding(tui.ModAlt, tui.MouseRight))
+body.Add(core.NewWindowButtons(window.Core())) // optional appearance
+body.AddWeighted(editor.NewEditor(), 1)
+float := core.NewFloat(window, core.WithModal(false), core.WithSizeFraction(80, 70))
 host.Attach(float)
-// Place widget.NewWindowTaskbar(model) in the application's layout if wanted.
+// Place core.NewWindowTaskbar(model) in the application's layout if wanted.
 ```
 
 - **Move/resize:** Alt/Option-left/right drag, only for enabled capabilities. On a
@@ -193,7 +193,7 @@ belongs to the originating mount even when its owner re-shows the window inline.
 
 All widgets are retained, mutable `tui.Component` implementations living strictly on the loop goroutine. Every widget method is loop-goroutine-only.
 
-**The One Concurrent Exception:** `BufferView.Writer()` returns an `io.Writer` handle that is safe to call from any background goroutine (e.g. streaming `exec.Cmd.Stdout`). It utilizes a bounded semaphore queue to prevent unbounded memory allocation when the loop lags, guarantees ordered delivery, and returns `widget.ErrClosed` after unmount. The `BufferView` itself remains loop-owned and deliberately does not implement `io.Writer`.
+**The One Concurrent Exception:** `BufferView.Writer()` returns an `io.Writer` handle that is safe to call from any background goroutine (e.g. streaming `exec.Cmd.Stdout`). It utilizes a bounded semaphore queue to prevent unbounded memory allocation when the loop lags, guarantees ordered delivery, and returns `core.ErrClosed` after unmount. The `BufferView` itself remains loop-owned and deliberately does not implement `io.Writer`.
 
 **Async Tasks:** Background workloads schedule work via `App.Go` addressing the widget's `NodeID`, and results arrive safely on the loop as a typed `tui.TaskResult`.
 
@@ -213,21 +213,21 @@ Widgets remain chrome-free. Any visual panel is wrapped in a `Box`:
 `Box` embeds the title in the top border and status hints in the bottom border—consuming **zero extra vertical lines**. When the Box or any child holds focus, the border automatically transitions to `style.TokenBorderFocused` (the `lazygit` active-panel highlight for free).
 
 ```go
-panel := widget.NewBox(list,
-    widget.WithTitle("Tables"),
-    widget.WithStatus("enter: open | /: filter"))
+panel := core.NewBox(list,
+    core.WithTitle("Tables"),
+    core.WithStatus("enter: open | /: filter"))
 ```
 
 ### 3. Base Embedding Contract
 
-Every widget embeds `widget.Base` by value, gaining method promotion (`Context`, `NodeID`, `MarkDirty`, `RequestLayout`) without indirection. Go embedding is not virtual dispatch: `Base` never calls template methods, and capability interfaces (`tui.Focusable`, `tui.Container`, `tui.CursorReporter`) are asserted on the outer type.
+Every widget embeds `core.Base` by value, gaining method promotion (`Context`, `NodeID`, `MarkDirty`, `RequestLayout`) without indirection. Go embedding is not virtual dispatch: `Base` never calls template methods, and capability interfaces (`tui.Focusable`, `tui.Container`, `tui.CursorReporter`) are asserted on the outer type.
 
 ### 4. Stack Overlays & Floating Windows
 
 Wrap your root layout in an `OverlayHost` once:
 
 ```go
-root := widget.NewOverlayHost(mainLayout)
+root := core.NewOverlayHost(mainLayout)
 ```
 
 ```
@@ -259,16 +259,16 @@ root := widget.NewOverlayHost(mainLayout)
 Single-line grapheme-addressed editor with selection, horizontal scrolling, placeholder, password masking, validation hooks, and real hardware cursor positioning for IME composition.
 
 ```go
-input := widget.NewTextInput(
-    widget.WithPlaceholder("Enter database URL..."),
-    widget.WithValidate(func(val string) error {
+input := core.NewTextInput(
+    core.WithPlaceholder("Enter database URL..."),
+    core.WithValidate(func(val string) error {
         if !strings.HasPrefix(val, "postgres://") {
             return errors.New("must be a postgres URL")
         }
         return nil
     }),
     // Synchronous hook advances focus immediately without bus queue lag:
-    widget.WithOnSubmit(func(val string) {
+    core.WithOnSubmit(func(val string) {
         nextField.RequestFocus()
     }),
 )
@@ -279,10 +279,10 @@ input := widget.NewTextInput(
 Multi-line text editor with soft wrapping (`WrapSoft`) or horizontal scrolling (`WrapNone`), grapheme addressing, selection, and clipboard paste safety. Its placeholder (`WithTextAreaPlaceholder`, or `WithTextAreaPlaceholderMessage` for a catalog message) is drawn muted while it is empty.
 
 ```go
-area := widget.NewTextArea(
-    widget.WithWrap(widget.WrapSoft),
-    widget.WithTextAreaPlaceholder("Commit message..."),
-    widget.WithTextAreaStyles(widget.TextInputStyles{
+area := core.NewTextArea(
+    core.WithWrap(core.WrapSoft),
+    core.WithTextAreaPlaceholder("Commit message..."),
+    core.WithTextAreaStyles(core.TextInputStyles{
         Text: style.New().Foreground(style.TokenForeground),
     }),
 )
@@ -293,14 +293,14 @@ area := widget.NewTextArea(
 Dropdown selector with closed-state rendering, filter-as-you-type in the open popup, and asynchronous option loading:
 
 ```go
-sel := widget.NewSelect[string](
-    widget.WithOptions([]widget.SelectItem[string]{
+sel := core.NewSelect[string](
+    core.WithOptions([]core.SelectItem[string]{
         {Label: "PostgreSQL", Value: "postgres"},
         {Label: "SQLite", Value: "sqlite"},
         {Label: "MySQL", Value: "mysql"},
     }),
-    widget.WithFilter(true), // filter-as-you-type
-    widget.WithSelectOnChange[string](func(i int) { useDriver(i) }), // the owner hears a choice at once
+    core.WithFilter(true), // filter-as-you-type
+    core.WithSelectOnChange[string](func(i int) { useDriver(i) }), // the owner hears a choice at once
 )
 ```
 
@@ -311,12 +311,12 @@ sel := widget.NewSelect[string](
 High-performance virtualized list rendering through the `ListSource[T]` seam. Only visible rows are rendered:
 
 ```go
-list := widget.NewList(
-    widget.WithItems(users, func(u User) string {
+list := core.NewList(
+    core.WithItems(users, func(u User) string {
         return fmt.Sprintf("%-20s %s", u.Name, u.Email)
     }),
-    widget.WithEmptyText("No users found"),
-    widget.WithListOnActivate[User](func(i int) { openUser(users[i]) }),
+    core.WithEmptyText("No users found"),
+    core.WithListOnActivate[User](func(i int) { openUser(users[i]) }),
 )
 ```
 
@@ -346,13 +346,13 @@ right press is not handled, as before.
 Column-structured list with fixed and flex column widths, automatic remainder distribution, and header rendering:
 
 ```go
-cols := []widget.TableColumn[Process]{
+cols := []table.TableColumn[Process]{
     {Title: "PID", Width: 8, Cell: func(p Process) string { return strconv.Itoa(p.PID) }},
     {Title: "USER", Width: 12, Cell: func(p Process) string { return p.User }},
     {Title: "COMMAND", Width: 0, Cell: func(p Process) string { return p.Cmd }}, // 0 = flex column
 }
 
-table := widget.NewTable(cols)
+table := table.NewTable(cols)
 table.SetItems(processList)
 ```
 
@@ -361,16 +361,16 @@ table.SetItems(processList)
 Hierarchical tree explorer supporting lazy-loaded asynchronous subtrees via generation tokens (`ExpandRequestEvent`), trailing badges, and structural cursor reconciliation:
 
 ```go
-tree := widget.NewTree(
-    widget.WithRoots(widget.NewTreeNode("src", "src/", widget.WithBadge("dir"))),
+tree := files.NewTree(
+    files.WithRoots(files.NewTreeNode("src", "src/", files.WithBadge("dir"))),
     // A branch opened: load its children off the loop, and give them back on it.
-    widget.WithTreeOnExpandRequest(func(n *widget.TreeNode, gen uint64) {
+    files.WithTreeOnExpandRequest(func(n *files.TreeNode, gen uint64) {
         go func() {
             kids := fetchSubdir(n.ID())
             app.Update(func() { n.SetChildren(gen, kids) }) // a stale gen is ignored
         }()
     }),
-    widget.WithTreeOnActivate(func(n *widget.TreeNode) { open(n.ID()) }),
+    files.WithTreeOnActivate(func(n *files.TreeNode) { open(n.ID()) }),
 )
 ```
 
@@ -429,10 +429,10 @@ by `CellAt`, with no gutter, and a press or drag on its header leaves the select
 names no field it can trust).
 
 ```go
-core := widget.NewTableCore(result, widget.TableSortable(true), widget.TableRowNumbers(true),
-    widget.TableOnActivate(func(row int) { open(row) }))
-view := widget.NewDataTable(core)
-keys, err := widget.ParseTableOrder(`name, "created at" DESC`, core.Fields())
+core := table.NewTableCore(result, table.TableSortable(true), table.TableRowNumbers(true),
+    table.TableOnActivate(func(row int) { open(row) }))
+view := table.NewDataTable(core)
+keys, err := table.ParseTableOrder(`name, "created at" DESC`, core.Fields())
 if err == nil {
     core.SortKeys(keys)
 }
@@ -496,9 +496,9 @@ binds them to) undo and redo in the table as in the text.
 Embedded modal Vim-like editor featuring Normal, Insert, Replace, and Visual modes (characters, lines and blocks), a data-driven keymap, Vim's registers (named, numbered, small-delete and clipboard; blockwise from a Visual block), bounded undo ring (64 edit groups, each keeping only the lines it replaced), and escape chord support ("jk"):
 
 ```go
-editor := widget.NewEditor(widget.WithCore(
-    widget.CoreInitialText("package main\n\nfunc main() {\n}\n"),
-    widget.CoreEscapeChord("jk"), // jk in Insert mode returns to Normal mode
+editor := editor.NewEditor(editor.WithCore(
+    editor.CoreInitialText("package main\n\nfunc main() {\n}\n"),
+    editor.CoreEscapeChord("jk"), // jk in Insert mode returns to Normal mode
 ))
 
 // Unbound Normal-mode keys (like Space) bubble up, enabling app-level leader menus:
@@ -507,9 +507,9 @@ editor := widget.NewEditor(widget.WithCore(
 A right-click menu is opt-in. `WithContextMenu(nil)` gives the stock rows (Undo and Redo when there is an edit to revert or reapply; Copy and Cut on a selection; Paste from the editor's register), opened at the pointer under the nearest `OverlayHost` and closed by Escape, a press outside it, or a chosen row. Pass a builder to supply your own rows; `EditorContextItems` returns the stock ones to extend, and a row runs when its action is an `EditorMenuAction`:
 
 ```go
-editor := widget.NewEditor(widget.WithContextMenu(func(e *widget.Editor) []widget.MenuItemModel {
-    return append(widget.EditorContextItems(e), widget.NewCommand("upper", "Upper case",
-        widget.EditorMenuAction{ID: "upper", Run: func(e *widget.Editor) {
+editor := editor.NewEditor(editor.WithContextMenu(func(e *editor.Editor) []core.MenuItemModel {
+    return append(editor.EditorContextItems(e), core.NewCommand("upper", "Upper case",
+        editor.EditorMenuAction{ID: "upper", Run: func(e *editor.Editor) {
             e.SetValue(strings.ToUpper(e.Core().Value()))
         }}))
 }))
@@ -536,9 +536,9 @@ step through. It also has the command line: `:` opens a **VIM Commands** prompt 
 High-throughput append-oriented log pager with ring-bounded scrollback, ANSI SGR color interpretation, follow-tail auto-scrolling, and thread-safe streaming writer:
 
 ```go
-logs := widget.NewBufferView(
-    widget.WithMaxLines(10000),
-    widget.WithFollowTail(true),
+logs := core.NewBufferView(
+    core.WithMaxLines(10000),
+    core.WithFollowTail(true),
 )
 
 // Pipe command output concurrently from any goroutine:
@@ -554,13 +554,13 @@ go cmd.Run()
 Interactive two-pane divider (horizontal or vertical) with Alt+arrow keyboard resize, mouse drag, deterministic integer division, and zoom toggle (`SplitZoomEvent`):
 
 ```go
-split := widget.NewSplit(widget.Horizontal, leftPane, rightPane,
-    widget.WithRatio(0.3),
-    widget.WithMinSizes(15, 30),
+split := core.NewSplit(core.Horizontal, leftPane, rightPane,
+    core.WithRatio(0.3),
+    core.WithMinSizes(15, 30),
 )
 
 // Zoom a pane to full screen:
-split.Zoom(widget.PaneA)
+split.Zoom(core.PaneA)
 split.Unzoom()
 ```
 
@@ -611,11 +611,11 @@ make every pane's minimum a negotiation with its sibling through a wrapper that
 cannot see it.
 
 ```go
-box := widget.NewResizable(widget.NewBox(tree, widget.WithTitle("Files")),
-    widget.WithMinSize(tui.Size{W: 12, H: 4}),
-    widget.WithMaxSize(tui.Size{W: 60, H: 30}),
-    widget.WithHandles(widget.HandleBottomRight, widget.HandleRight),
-    widget.WithResizeStep(5, widget.StepPercent),
+box := core.NewResizable(core.NewBox(tree, core.WithTitle("Files")),
+    core.WithMinSize(tui.Size{W: 12, H: 4}),
+    core.WithMaxSize(tui.Size{W: 60, H: 30}),
+    core.WithHandles(core.HandleBottomRight, core.HandleRight),
+    core.WithResizeStep(5, core.StepPercent),
 )
 ```
 
@@ -660,8 +660,8 @@ commands := map[tui.ActionID]func() bool{
     "app.quit": app.Quit,
 }
 
-menu := widget.NewMenu(
-    widget.WithActionExecutor(func(inv tui.ActionInvocation) bool {
+menu := core.NewMenu(
+    core.WithActionExecutor(func(inv tui.ActionInvocation) bool {
         run, ok := commands[inv.Action.ActionID()]
         if !ok {
             return false // unhandled: the menu stays open
@@ -669,24 +669,24 @@ menu := widget.NewMenu(
         return run()
     }))
 
-if err := menu.SetModel([]widget.MenuItemModel{
-    widget.NewSubmenu("file", "File", []widget.MenuItemModel{
-        widget.NewCommand("new", "New", NewFileAction{}),
-        widget.NewSeparator("s1"),
-        widget.NewCheck("wrap", "Wrap lines", ToggleWrapAction{}),
+if err := menu.SetModel([]core.MenuItemModel{
+    core.NewSubmenu("file", "File", []core.MenuItemModel{
+        core.NewCommand("new", "New", NewFileAction{}),
+        core.NewSeparator("s1"),
+        core.NewCheck("wrap", "Wrap lines", ToggleWrapAction{}),
     }),
-    widget.NewCommand("quit", "Quit", QuitAction{}),
+    core.NewCommand("quit", "Quit", QuitAction{}),
 }); err != nil {
     return err
 }
 
 // Optional: lay the root level along an edge. The bar wraps a Menu that
 // already exists.
-bar := widget.NewMenuBar(menu, widget.WithBarPlacement(widget.BarPlacementTop))
+bar := core.NewMenuBar(menu, core.WithBarPlacement(core.BarPlacementTop))
 
 // A Menu's levels are anchored overlay layers, so whichever of the two is
 // mounted must sit inside an OverlayHost.
-root := widget.NewOverlayHost(bar)
+root := core.NewOverlayHost(bar)
 ```
 
 This arrangement is compile-checked as `ExampleNewMenu` in
@@ -767,9 +767,9 @@ gives it a look of its own — the red access keys of a 1990s IDE — merged ove
 the row's, so a coloured hotkey keeps the selected row's background:
 
 ```go
-st := widget.NewMenuStyle(surface, selected).
+st := core.NewMenuStyle(surface, selected).
     WithHotkey(style.New().Foreground(style.RGB(0xaa, 0, 0)).Underline(true))
-menu := widget.NewMenu(widget.WithMenuStyle(st))
+menu := core.NewMenu(core.WithMenuStyle(st))
 ```
 
 #### `Modal`
@@ -778,16 +778,16 @@ The composed dialog. `Modal` fills its host, traps focus, and places a card
 carrying a title, your body content and a row of buttons:
 
 ```go
-host := widget.NewOverlayHost(appRoot) // once, wrapping the whole UI
+host := core.NewOverlayHost(appRoot) // once, wrapping the whole UI
 
-ok := widget.NewButton("Save", widget.WithRole(widget.ButtonRoleAccept),
-    widget.WithDefault(true), widget.WithOnActivate(func() { save() }))
-no := widget.NewButton("Cancel", widget.WithRole(widget.ButtonRoleReject))
+ok := core.NewButton("Save", core.WithRole(core.ButtonRoleAccept),
+    core.WithDefault(true), core.WithOnActivate(func() { save() }))
+no := core.NewButton("Cancel", core.WithRole(core.ButtonRoleReject))
 
-dlg := widget.NewModal(widget.NewText("Save your changes?"),
-    widget.WithModalTitle("Unsaved work"),
-    widget.WithButtons(no, ok),
-    widget.WithOnDismiss(func(r widget.DismissReason) { log(r) }))
+dlg := core.NewModal(core.NewText("Save your changes?"),
+    core.WithModalTitle("Unsaved work"),
+    core.WithButtons(no, ok),
+    core.WithOnDismiss(func(r core.DismissReason) { log(r) }))
 
 if err := dlg.Open(host); err != nil { /* … */ } // loop goroutine
 ```
@@ -807,7 +807,7 @@ layer declares these same roles and defaults; it adds no rule of its own.
 message and the buttons, joined to the frame. `WithModalFooter(text)` puts a
 faded help line under the buttons, and `SetFooter` changes it — for a dialog
 whose keys depend on where the keyboard is inside it. The buttons stay the
-card's, so their mnemonics keep working; `WithButtonAlign(widget.ButtonsRight)`
+card's, so their mnemonics keep working; `WithButtonAlign(core.ButtonsRight)`
 moves them to the right.
 
 **Lifecycle.** `Open` mounts the dialog on top and moves focus into it *before
@@ -826,10 +826,10 @@ has a second dismiss key, and a `Modal` traps focus and swallows it, so declare
 it:
 
 ```go
-dlg := widget.NewModal(body,
-    widget.WithModalTitle("Certificate"),
-    widget.WithButtons(ok),
-    widget.WithModalDismissKeys('q'))
+dlg := core.NewModal(body,
+    core.WithModalTitle("Certificate"),
+    core.WithButtons(ok),
+    core.WithModalDismissKeys('q'))
 ```
 
 **Empty by default**, and host-owned: only the application knows which of its
@@ -893,11 +893,11 @@ stays fully operable; no control is reachable only by clicking.
 Floating window for modal dialogs and alert popups, supporting focus trapping, background scrimming (`░`), and percentage-based sizing:
 
 ```go
-modal := widget.NewFloat(
-    widget.NewBox(confirmForm, widget.WithTitle("Confirm Delete")),
-    widget.WithModal(true),
-    widget.WithDimBackground(true),
-    widget.WithSizeFraction(50, 40), // 50% width, 40% height of terminal
+modal := core.NewFloat(
+    core.NewBox(confirmForm, core.WithTitle("Confirm Delete")),
+    core.WithModal(true),
+    core.WithDimBackground(true),
+    core.WithSizeFraction(50, 40), // 50% width, 40% height of terminal
 )
 host.Attach(modal)
 
@@ -925,10 +925,10 @@ files only through `io/fs`:
 | `FileFolderView` | a `FileOpenView` with a path field at the top of its left column: it follows the listing, a path typed in it lists that folder, and the folder chosen is the field's |
 
 ```go
-view := widget.NewFileOpenView(
-    widget.WithFileViewSource(widget.LocalFiles()),       // or any fs.FS
-    widget.WithFileViewDir("/home/me/notes"),
-    widget.WithOnChoose(func() { open(view.Selected()) }),
+view := files.NewFileOpenView(
+    files.WithFileViewSource(files.LocalFiles()),       // or any fs.FS
+    files.WithFileViewDir("/home/me/notes"),
+    files.WithOnChoose(func() { open(view.Selected()) }),
 )
 ```
 
@@ -957,7 +957,7 @@ while the keyboard is inside it.
 One-line docked footer bar with left, center, and right segments. Truncation priority is center-first, then left, preserving critical right-hand keybinding hints:
 
 ```go
-bar := widget.NewStatusBar()
+bar := core.NewStatusBar()
 bar.SetLeft("NORMAL")
 bar.SetCenter("main.go")
 bar.SetRight("utf-8 | 12:45 | ?: help")
@@ -968,21 +968,21 @@ bar.SetRight("utf-8 | 12:45 | ?: help")
 Notifications stacked in a corner over the page, each a box with its message and its age ("now", "15s ago"). Up to three show (WithToastMax); the rest wait and show in order, their age counted from when they were posted. A finished toast lingers (WithToastLinger, default 3s); an ongoing one (a task's progress) stays until it is posted finished or Done, and a post with the same ID updates it in place. WithToastMargin keeps a status line under the stack clear. It is a Float's content: attach its Float to the OverlayHost (a decl program's is `Program.Overlay()`):
 
 ```go
-toasts := widget.NewToasts(widget.WithToastMargin(1)) // bottom right, over the status line
+toasts := core.NewToasts(core.WithToastMargin(1)) // bottom right, over the status line
 host.Attach(toasts.Float())
-toasts.Post(widget.Toast{Text: "saved notes/plan.md"})
-toasts.Post(widget.Toast{ID: "embed", Text: "embedding 612/1000", Ongoing: true})
+toasts.Post(core.Toast{Text: "saved notes/plan.md"})
+toasts.Post(core.Toast{ID: "embed", Text: "embedding 612/1000", Ongoing: true})
 toasts.Done("embed") // lingers, then goes
 ```
 
-A toast only tells, and the pointer passes through it to what is beneath. One with `OnClick` takes a click on its card and runs it (AutoDoc opens its notification history): `toasts.Post(widget.Toast{Text: "saved", OnClick: openHistory})`. This is hit-testing's containment, Qt's `QQuickItem::contains`: a component that is a `tui.PointerContainer` says which of its points it holds (`ContainsPointer`), and the pointer goes on beneath the rest. A `Float`, and a non-modal float's layer, hold none, so an always-shown overlay never takes the clicks meant for the application under it; a modal float's layer holds them all, as the backdrop.
+A toast only tells, and the pointer passes through it to what is beneath. One with `OnClick` takes a click on its card and runs it (AutoDoc opens its notification history): `toasts.Post(core.Toast{Text: "saved", OnClick: openHistory})`. This is hit-testing's containment, Qt's `QQuickItem::contains`: a component that is a `tui.PointerContainer` says which of its points it holds (`ContainsPointer`), and the pointer goes on beneath the rest. A `Float`, and a non-modal float's layer, hold none, so an always-shown overlay never takes the clicks meant for the application under it; a modal float's layer holds them all, as the backdrop.
 
 #### `ProgressBar`
 
 Determinate progress bar (with sub-cell 1/8th block precision), sweeping indeterminate block, or single-cell spinner. Employs zero-wakeup idle timers:
 
 ```go
-progress := widget.NewProgressBar()
+progress := core.NewProgressBar()
 progress.SetProgress(0.75) // determinate 75%
 
 // Or switch to indeterminate spinner:
@@ -998,25 +998,25 @@ Here is how these widgets combine to build a complete master-detail development 
 ```go
 func NewDevWorkspace(app *tui.App) tui.Component {
     // 1. File tree navigation
-    tree := widget.NewTree(widget.NewTreeNode("root", "my-project"))
-    leftPanel := widget.NewBox(tree, widget.WithTitle("Files"))
+    tree := files.NewTree(files.NewTreeNode("root", "my-project"))
+    leftPanel := core.NewBox(tree, core.WithTitle("Files"))
 
     // 2. Code editor and build output split
-    editor := widget.NewEditor(widget.WithCore(widget.CoreEscapeChord("jk")))
-    editorBox := widget.NewBox(editor, widget.WithTitle("Editor"))
+    editor := editor.NewEditor(editor.WithCore(editor.CoreEscapeChord("jk")))
+    editorBox := core.NewBox(editor, core.WithTitle("Editor"))
 
-    logs := widget.NewBufferView(widget.WithFollowTail(true))
-    logsBox := widget.NewBox(logs, widget.WithTitle("Build Output"))
+    logs := core.NewBufferView(core.WithFollowTail(true))
+    logsBox := core.NewBox(logs, core.WithTitle("Build Output"))
 
-    rightSplit := widget.NewSplit(widget.Vertical, editorBox, logsBox,
-        widget.WithRatio(0.7))
+    rightSplit := core.NewSplit(core.Vertical, editorBox, logsBox,
+        core.WithRatio(0.7))
 
     // 3. Main master-detail split
-    mainSplit := widget.NewSplit(widget.Horizontal, leftPanel, rightSplit,
-        widget.WithRatio(0.25))
+    mainSplit := core.NewSplit(core.Horizontal, leftPanel, rightSplit,
+        core.WithRatio(0.25))
 
     // 4. Status bar footer
-    status := widget.NewStatusBar()
+    status := core.NewStatusBar()
     status.SetLeft("Git: main")
     status.SetRight("Ctrl+Q: Quit | Space: Leader")
 
@@ -1025,6 +1025,6 @@ func NewDevWorkspace(app *tui.App) tui.Component {
         Add(status, tui.FlexItem{Fixed: 1})
 
     // 5. Wrap root in OverlayHost to host modals and popups
-    return widget.NewOverlayHost(body)
+    return core.NewOverlayHost(body)
 }
 ```

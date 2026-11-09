@@ -1,8 +1,8 @@
 # 6 — Floats and modals
 
-> **Which one do I want?** `widget.Modal` is the composed dialog — title, body,
+> **Which one do I want?** `core.Modal` is the composed dialog — title, body,
 > role-carrying buttons, Open/Dismiss, LIFO stacking, typed dismissal reasons
-> and one shared backdrop. `widget.Float` is the lower-level floating layer:
+> and one shared backdrop. `core.Float` is the lower-level floating layer:
 > positioned, trapping, and otherwise yours to fill. Reach for `Modal` when you
 > want a dialog; the rest of this page covers `Float`. The composed dialog is
 > documented in the widget package overview and in
@@ -23,23 +23,23 @@ when another component currently has keyboard focus.
 Floats live on overlay layers above your UI. Wrap the root tree once:
 
 ```go
-host := widget.NewOverlayHost(dock) // dock = your normal UI
+host := core.NewOverlayHost(dock) // dock = your normal UI
 r.tree = host                       // keep the host reference!
 ```
 
 ## Opening a modal detail panel
 
 ```go
-func (m *Model) openFloat(title string, content tui.Component) *widget.Float {
-    f := widget.NewFloat(
-        widget.NewBox(content, widget.WithTitle(title)),
-        widget.WithModal(true),         // focus trap + Esc dismisses
-        widget.WithDimBackground(true),
+func (m *Model) openFloat(title string, content tui.Component) *core.Float {
+    f := core.NewFloat(
+        core.NewBox(content, core.WithTitle(title)),
+        core.WithModal(true),         // focus trap + Esc dismisses
+        core.WithDimBackground(true),
     )
     m.host.Attach(f)
     f.Show()
     // Detach on dismissal, or every open stacks another hidden layer.
-    tui.SubscribeScoped(m.ctx, func(ev widget.OverlayDismissedEvent) {
+    tui.SubscribeScoped(m.ctx, func(ev core.OverlayDismissedEvent) {
         if ev.Owner == f.NodeID() {
             m.host.Stack.Remove(f)
         }
@@ -55,7 +55,7 @@ hides it, restoring focus to whatever had it before.
 A scrollable JSON/detail viewer is just a `BufferView` written after Show:
 
 ```go
-view := widget.NewBufferView(widget.WithFollowTail(false))
+view := core.NewBufferView(core.WithFollowTail(false))
 m.openFloat("Release detail", view) // Show mounts it → writer is live
 fmt.Fprintln(view.Writer(), prettyJSON)
 ```
@@ -104,9 +104,9 @@ rows wants "most of the screen", and a fixed column count overflows a
 narrow terminal, wastes a wide one, and ignores a resize.
 
 ```go
-widget.NewFloat(body,
-    widget.WithModal(true),
-    widget.WithSizeFraction(90, 90),   // 90% of the available area
+core.NewFloat(body,
+    core.WithModal(true),
+    core.WithSizeFraction(90, 90),   // 90% of the available area
 )
 ```
 
@@ -181,9 +181,9 @@ To use modals reliably, understand how `OverlayHost`, `Float`, and the render pi
    - **Focus Scope**: If `WithModal(true)` is enabled, `floatLayer.TrapsFocus()` returns `true`. The focus ring is sealed—`Tab` and `Shift-Tab` will never jump outside the modal.
    - **Scrim Rendering**: When `WithDimBackground(true)` is set, `floatLayer.Render()` calls `s.Fill(..., "░", scrim)` over its own layer surface—it paints a stipple pattern over its layer rather than inspecting underlying cells.
    - **Anchoring**: `Float` positions its child using anchors:
-     - `widget.Center`: centered horizontally and vertically.
-     - `widget.TopRight`, `widget.BottomLeft`, etc.: pinned to viewport edges.
-     - `widget.AtRect(r)`: pinned to an explicit overlay-relative coordinate rectangle `r`, kept inside the overlay area (useful for dropdowns, autocomplete menus, and context tooltips).
+     - `core.Center`: centered horizontally and vertically.
+     - `core.TopRight`, `core.BottomLeft`, etc.: pinned to viewport edges.
+     - `core.AtRect(r)`: pinned to an explicit overlay-relative coordinate rectangle `r`, kept inside the overlay area (useful for dropdowns, autocomplete menus, and context tooltips).
 
 ### 2. Double-Buffering & The Render Pass
 

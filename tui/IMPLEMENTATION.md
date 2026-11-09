@@ -36,7 +36,7 @@ scroll, take keys, report a cursor, host a layer, copy, translate, tier itself a
   ```go
   if s, ok := n.comp.(tui.Scroller); ok { … }
   ```
-- **Never reach a capability through a concrete type**: no `x.(*widget.Button)`, no `switch x.(type)`
+- **Never reach a capability through a concrete type**: no `x.(*core.Button)`, no `switch x.(type)`
   over concrete widgets, layers, canvases or nodes, no anonymous `interface{ … }` asserted inline.
   If you need one, the interface is missing: declare it, implement it, assert it.
 - **A capability asked in more than one place gets one predicate** (`hidden(c)`, `RoleOf(c)`); the
@@ -49,7 +49,7 @@ scroll, take keys, report a cursor, host a layer, copy, translate, tier itself a
 - **Every implementation is asserted at compile time**, next to the type:
   `var _ tui.Scroller = (*List)(nil)`.
 - **Consumer-defined interfaces:** the package that uses a dependency declares the interface it
-  needs (`widget.TerminalProcess` over `*pty.PTY`); the producer stays concrete.
+  needs (`terminal.TerminalProcess` over `*pty.PTY`); the producer stays concrete.
 - **New capabilities are listed** in the capability table of `doc.go` for their package, grouped by
   concern. An unlisted capability is unfinished.
 
@@ -84,7 +84,7 @@ in the same change. Never add a second copy "for now".
 | Floating placement (rect, percent, clamp) | `Float.place` / `fixedRect`; the managed (WindowMod) layout adds only its work area and maximize |
 | Text viewport (scroll, reveal, caret placement, paint loop) | one text viewport shared by TextInput, TextArea, Editor, CommandLine |
 | Buffer edits | the line primitives in `widget/internal/text/buffer.go` (`SetLine`, `InsertLines`, `RemoveLines`, `ReplaceLines`, `SetValue`, `DeleteRegion`, `InsertText`); no other file writes `.Lines` (internal/audit) |
-| Pointer policy, focus state, publishing | `widget.Base` |
+| Pointer policy, focus state, publishing | `core.Base` |
 | A widget's shown text, plain or a catalog message | `uiText` (`plainText`, `messageText`, `inLanguage`) in `widget/core/message.go`, read where it is measured and painted, never resolved into a field in Layout |
 | Fatal construction errors | `kit.FatalOf` → `errs.Fatal` |
 | Parsing (expressions, SQL-ish where/order) | golib `parse` first |

@@ -428,12 +428,12 @@ Opening a folder is not a choice — Enter or Open on one goes into it. The foot
 follows the keyboard; Tab moves between the listing, the preview and the
 buttons.
 
-It lists through a `widget.FileSource`: any `io/fs.FS` and the root its paths
+It lists through a `files.FileSource`: any `io/fs.FS` and the root its paths
 are written under. The local disk is the default. **To browse something else,
 give the adapter a source** — nothing in the QML changes:
 
 ```go
-tuidecl.Files(widget.FileSource{FS: sftpFS, Root: "sftp://host/"})   // a NewProgram option
+tuidecl.Files(files.FileSource{FS: sftpFS, Root: "sftp://host/"})   // a NewProgram option
 // or, building the adapter by hand: tuidecl.WithFileSource(…)
 ```
 
@@ -441,7 +441,7 @@ tuidecl.Files(widget.FileSource{FS: sftpFS, Root: "sftp://host/"})   // a NewPro
 chooses; reading and writing the file is the host's, through whatever it has
 for that store.
 
-**One dialog with a source of its own:** `source:` takes a `widget.FileSource`
+**One dialog with a source of its own:** `source:` takes a `files.FileSource`
 the host binds, which replaces the program's `Files` for that dialog alone. A
 rebinding lists the new source at the dialog's `currentFolder`:
 
@@ -450,7 +450,7 @@ FileDialog { id: outside; source: App.outsideFiles; currentFolder: "/" }
 ```
 
 ```go
-p.Set("App.outsideFiles", widget.FileSource{VFS: daemonFS, Root: "/"})
+p.Set("App.outsideFiles", files.FileSource{VFS: daemonFS, Root: "/"})
 ```
 
 **A slow source is a `vfs.FS`.** An `io/fs.FS` is read on the UI loop, as the
@@ -472,7 +472,7 @@ context, so a superseded one can't be cancelled; it runs to its end and its
 answer is dropped.
 
 ```go
-tuidecl.Files(widget.FileSource{FS: os.DirFS("/"), Root: "/", Async: true}) // a ProgramOption
+tuidecl.Files(files.FileSource{FS: os.DirFS("/"), Root: "/", Async: true}) // a ProgramOption
 ```
 
 **Filtering an Open dialog:** `/` in the listing opens a filter field. Typing
@@ -576,7 +576,7 @@ empty one must leave the widget as golib draws it.
 
 **Widgets that open over the screen** — a popup, a prompt — implement
 `Overlaid` (`SetOverlay(host, afterClose)`). One that opens through a
-`widget.Float` embeds an `OverlayLayer` (`NewOverlayLayer(float, "a Popup")`),
+`core.Float` embeds an `OverlayLayer` (`NewOverlayLayer(float, "a Popup")`),
 which implements it: `Open()` shows the Float on its Window's overlay, and
 returns `ErrOutsideWindow` (`errors.Is`) when the node is in no Window. Its
 `Destroyed` hook calls `Detach`. A Window does not lay them out; it
@@ -608,7 +608,7 @@ whose `Build` counts children differently sets `Arity{}` (unchecked) or its own.
 widget takes the Editor's properties through `EditorSetters()` (behaviour:
 keyset, readOnly, text, …) and `EditorViewSetters()` (view: lineNumbers, ruler,
 wrap, cursorColor, contextMenu, view, renderedEnabled), which set capabilities
-(`widget.LineNumberer`, `widget.ViewChooser`, …) rather than a `*widget.Editor`.
+(`editor.LineNumberer`, `editor.ViewChooser`, …) rather than a `*editor.Editor`.
 
 Package [`controls`](controls/) is written this way, with nothing but this
 contract: `TextField` and `Popup`, from Qt Quick Controls.
@@ -646,14 +646,14 @@ adapter := tuidecl.New(tuidecl.StdRegistry(), append(tuidecl.StdProperties(),
 tree := decl.New(adapter, decl.WithScheduler(func(fn func()) { app.Update(fn) }))
 // … declare, inject, parse, tree.Mount(spec) …
 qmlRoot, _ := adapter.Component(tree.Root())
-screen := widget.NewSplit(widget.Horizontal, mySidebar, qmlRoot)   // Go around QML
+screen := core.NewSplit(core.Horizontal, mySidebar, qmlRoot)   // Go around QML
 app = tui.NewApp(screen, tui.WithBackend(backend))
 ```
 
 Reach into a QML-declared widget by its id:
 
 ```go
-editor, ok := tuidecl.FindAs[*widget.Editor](p, "editor")   // with a Program
+editor, ok := tuidecl.FindAs[*editor.Editor](p, "editor")   // with a Program
 // by hand:
 id, _ := tree.NodeByID("editor")
 c, _ := adapter.Component(id)
@@ -668,7 +668,7 @@ and a Go program has no QML Window. Give the adapter the program's own
 `OverlayHost`, the one its Go modals already open on:
 
 ```go
-host := widget.NewOverlayHost(screen)                  // the Go program's layer
+host := core.NewOverlayHost(screen)                  // the Go program's layer
 adapter := tuidecl.New(tuidecl.StdRegistry(), append(tuidecl.StdProperties(),
     tuidecl.WithErrorSink(sink), tuidecl.WithOverlay(host))...)
 // … mount quit.qml, whose root is a Dialog …
