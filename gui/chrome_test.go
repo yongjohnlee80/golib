@@ -48,18 +48,17 @@ func TestMaximizedFollowsTheWindowsConfiguration(t *testing.T) {
 
 // Decorated is what the window's last ConfigEvent said, decorated until one says otherwise; a
 // change once the window runs makes the App lay out again (a ResizeEvent at the grid it has).
-// SystemButtons is macOS's alone, and only undecorated.
 func TestDecoratedFollowsTheWindowAndAChangeRelaysOut(t *testing.T) {
 	b := NewBackend()
 	w, _ := Window(tui.NewApp(&stubPane{}, tui.WithBackend(b)))
-	if !w.Decorated() || w.SystemButtons() {
-		t.Fatalf("before any configuration: Decorated %v SystemButtons %v; want decorated, none", w.Decorated(), w.SystemButtons())
+	if !w.Decorated() {
+		t.Fatal("before any configuration the window is undecorated; want decorated, as a window opens")
 	}
 	b.metrics.Store(&metrics{grid: tui.Size{W: 40, H: 10}})
 	b.startOnce.Do(func() { close(b.started) })
 	b.configure(app.ConfigEvent{Config: app.Config{Decorated: false}})
-	if w.Decorated() || w.SystemButtons() != systemButtonsWhenUndecorated {
-		t.Fatalf("undecorated: Decorated %v SystemButtons %v; want false, %v", w.Decorated(), w.SystemButtons(), systemButtonsWhenUndecorated)
+	if w.Decorated() {
+		t.Fatal("after an undecorated configuration Decorated() = true")
 	}
 	b.configure(app.ConfigEvent{Config: app.Config{Decorated: false}}) // no change: nothing queued
 	b.configure(app.ConfigEvent{Config: app.Config{Decorated: true}})
