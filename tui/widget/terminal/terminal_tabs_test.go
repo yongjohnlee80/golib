@@ -612,11 +612,11 @@ func TestTerminalTabsPassOnlyTheirOwnerKeysUpFromATerminal(t *testing.T) {
 		var active TerminalTabID
 		var focused, menu bool
 		h.OnLoop(func() { active, focused, menu = tabs.Active(), term.Focused(), tabs.MenuOpen() })
-		if !focused {
-			t.Fatalf("after %v the terminal lost focus: the cell no longer sends from a terminal", e)
-		}
 		if active != a || added != 0 || menu {
 			t.Fatalf("%v from the terminal reached the strip: active %q (want %q), + ran %d times, menu %v", e, active, a, added, menu)
+		}
+		if !focused {
+			t.Fatalf("after %v the terminal lost focus: the cell no longer sends from a terminal", e)
 		}
 	}
 	press(next)
