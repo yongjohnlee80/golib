@@ -2,7 +2,8 @@
 // (tui/widget/core, tui/widget/terminal, …): a forward in package widget of every name such a
 // package exports, so a program importing tui/widget compiles unchanged while the widgets move. A type is forwarded as an alias (its methods come with it), a
 // func as a func that calls core's (a func stays a func, not a var), and a const or var as one
-// equal to core's. Doc comments are copied, so go doc reads the same through either path.
+// equal to core's. Doc comments are copied, so go doc reads the same through either path, and each
+// forward's ends in a Deprecated paragraph naming the package to import instead.
 //
 // tui/widget runs it by go generate (facade.go); its test fails when a generated file differs from
 // what Generate writes now, so a name a package exports later cannot go unforwarded.
@@ -124,7 +125,7 @@ func (g *gen) file(f *ast.File) error {
 						if !n.IsExported() {
 							continue
 						}
-						line := g.comment(doc) + n.Name + " = " + g.pkg.Name + "." + n.Name
+						line := g.forward(doc, n.Name) + n.Name + " = " + g.pkg.Name + "." + n.Name
 						if x.Tok == token.CONST {
 							g.consts = append(g.consts, line)
 						} else {
@@ -151,6 +152,16 @@ func (g *gen) comment(doc *ast.CommentGroup) string {
 		b.WriteByte('\n')
 	}
 	return b.String()
+}
+
+// forward is a forward's doc: name's own, then a Deprecated paragraph naming where name lives, so a
+// linter (staticcheck's SA1019) and an editor point each use of the facade at the package to import.
+func (g *gen) forward(doc *ast.CommentGroup, name string) string {
+	c := g.comment(doc)
+	if c != "" {
+		c += "//\n"
+	}
+	return c + "// Deprecated: use [" + g.pkg.Name + "." + name + "], from " + g.pkg.Path + ".\n"
 }
 
 // expr prints e as the forward writes it, recording the imports it names; a lowercase name of
@@ -235,7 +246,7 @@ func (g *gen) typ(s *ast.TypeSpec, doc *ast.CommentGroup) error {
 	if err != nil {
 		return err
 	}
-	g.types = append(g.types, g.comment(doc)+"type "+s.Name.Name+decl+" = "+g.pkg.Name+"."+s.Name.Name+args)
+	g.types = append(g.types, g.forward(doc, s.Name.Name)+"type "+s.Name.Name+decl+" = "+g.pkg.Name+"."+s.Name.Name+args)
 	return nil
 }
 
@@ -294,7 +305,7 @@ func (g *gen) fn(d *ast.FuncDecl) error {
 	if len(results) > 0 {
 		body = "return " + body
 	}
-	g.funcs = append(g.funcs, g.comment(d.Doc)+"func "+d.Name.Name+decl+"("+strings.Join(params, ", ")+")"+res+" {\n\t"+body+"\n}")
+	g.funcs = append(g.funcs, g.forward(d.Doc, d.Name.Name)+"func "+d.Name.Name+decl+"("+strings.Join(params, ", ")+")"+res+" {\n\t"+body+"\n}")
 	return nil
 }
 

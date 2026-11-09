@@ -17,12 +17,18 @@ import (
 // Buffer is an open document. A host keeps one per open file; an EditorCore shows one at a time
 // (SetBuffer), and a core with no widget edits one no editor shows by the same code a user's keys
 // run.
+//
+// Deprecated: use [editor.Buffer], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type Buffer = editor.Buffer
 
 // BufferOption configures a Buffer under construction.
+//
+// Deprecated: use [editor.BufferOption], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type BufferOption = editor.BufferOption
 
 // CellPicture is a diagram drawn in cells: its size, and how it paints at (x0, y0) of a surface.
+//
+// Deprecated: use [editor.CellPicture], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type CellPicture = editor.CellPicture
 
 // THE EDITOR'S ':' PROMPT, AS A MODULE.
@@ -39,6 +45,8 @@ type CellPicture = editor.CellPicture
 //
 // It also asks replace's questions: at each match a small card, "Replace? y / n / q", over the
 // editor with the match selected behind it.
+//
+// Deprecated: use [editor.CommandLine], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type CommandLine = editor.CommandLine
 
 // Editor provides an embedded, configurable multi-line text editor designed for
@@ -185,26 +193,38 @@ type CommandLine = editor.CommandLine
 // way to reach its behaviour (its text, cursor, modes, keys, registers and undo); [WithCore] is the
 // one way to configure it. What the Editor itself holds has its own accessor: the ':' prompt
 // ([Editor.CommandLine]) and the right-click menu ([Editor.ContextMenu]).
+//
+// Deprecated: use [editor.Editor], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type Editor = editor.Editor
 
 // Action is one enumerated Editor operation a chord can bind.
+//
+// Deprecated: use [editor.Action], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type Action = editor.Action
 
 // RegisterKind is what a register holds: characters, whole lines, or a block (Visual block's).
+//
+// Deprecated: use [editor.RegisterKind], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type RegisterKind = editor.RegisterKind
 
 // EditorMenuAction is a context-menu row's action: when the row is chosen, the
 // editor runs Run with itself. A row whose action is neither an EditorMenuAction
 // nor a CoreMenuAction (editormenu.go) does nothing.
+//
+// Deprecated: use [editor.EditorMenuAction], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type EditorMenuAction = editor.EditorMenuAction
 
 // DocumentView is a Rendered view that draws the whole document as one widget. The editor shows and
 // hides it through SetVisible, and the framework reads Visible: a hidden view is not laid out,
 // painted or focused. While shown it takes the keyboard: the editor moves the focus into it
 // (tui.Context.FocusInto), to the view itself or to the focusable part inside it.
+//
+// Deprecated: use [editor.DocumentView], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type DocumentView = editor.DocumentView
 
 // EditorView is the view an editor draws: its text (Raw) or its Rendered view.
+//
+// Deprecated: use [editor.EditorView], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type EditorView = editor.EditorView
 
 // DocumentSlot is an editor's Rendered state: its document view, the view chosen (Raw or
@@ -212,6 +232,8 @@ type EditorView = editor.EditorView
 // the cell Editor and gui's; each does the rest itself: it mounts the view, lays it out, and moves
 // the focus when Show reports the view shown or hidden. An editor that renders text itself as well
 // (gui's, through a Renderer) says so to CanRender and Drawn.
+//
+// Deprecated: use [editor.DocumentSlot], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type DocumentSlot = editor.DocumentSlot
 
 // YankEvent is emitted by Editor when an EXPLICIT yank runs — visual `y` or
@@ -233,57 +255,83 @@ type DocumentSlot = editor.DocumentSlot
 // DELETES DO NOT EMIT THIS. `x`, `D`, `dd` and visual `d` fill the same
 // register, correctly, but exporting them would publish text nobody asked to
 // share.
+//
+// Deprecated: use [editor.YankEvent], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type YankEvent = editor.YankEvent
 
 // MacroStoppedEvent is emitted by an Editor when a macro (@{reg}) is stopped before its end, as
 // Vim ends a macro on an error: Err says why (ErrMacroTooLong). Register is the one played. The
 // keys still queued are dropped; what the macro changed stays, each change its own undo step. A
 // host shows Err where it shows the editor's messages.
+//
+// Deprecated: use [editor.MacroStoppedEvent], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type MacroStoppedEvent = editor.MacroStoppedEvent
 
 // SyntaxStyles is a look per highlight.Style. A zero entry paints as Normal's,
 // and a zero Normal as the text.
+//
+// Deprecated: use [editor.SyntaxStyles], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type SyntaxStyles = editor.SyntaxStyles
 
 // CellImageHost lays a Rendered block's image for a renderer that draws images: the Editor is one,
 // handed to a renderer with a SetImageHost method when it is set (SetRenderer).
+//
+// Deprecated: use [editor.CellImageHost], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type CellImageHost = editor.CellImageHost
 
 // IndentMarks selects which lines show their indentation: each leading space drawn as a dimmed
 // "·" and each leading tab as a dimmed "→", as Vim's listchars does, so the indentation of the
 // line being edited can be read at a glance. Only the leading run is marked; spaces between
 // words stay blank.
+//
+// Deprecated: use [editor.IndentMarks], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type IndentMarks = editor.IndentMarks
 
 // EditorMode is the Editor's modal state.
+//
+// Deprecated: use [editor.EditorMode], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type EditorMode = editor.EditorMode
 
 // ModeChangedEvent publishes every Editor mode transition.
+//
+// Deprecated: use [editor.ModeChangedEvent], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type ModeChangedEvent = editor.ModeChangedEvent
 
 // Keyset selects a predefined editing and keymap profile.
+//
+// Deprecated: use [editor.Keyset], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type Keyset = editor.Keyset
 
 // KeyChord addresses one binding: a mode class and a normalized key. A chord has one spelling: a
 // letter's Shift is its case (Code 'G'), and Shift is set only on a key that is not a letter
 // (Shift+Tab, Shift+Down). A keyed literal written before Alt, Super and Shift existed means the same
 // chord it did; see applyOverlay for a functional key's Shift.
+//
+// Deprecated: use [editor.KeyChord], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type KeyChord = editor.KeyChord
 
 // KeyBinding represents a concrete key chord mapped to an action at runtime.
+//
+// Deprecated: use [editor.KeyBinding], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type KeyBinding = editor.KeyBinding
 
 // KeymapSnapshot provides a structural runtime reflection of the editor's keymap.
+//
+// Deprecated: use [editor.KeymapSnapshot], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type KeymapSnapshot = editor.KeymapSnapshot
 
 // Keymap maps chords to actions. Overlays passed to CoreKeymap replace (or,
 // with ActUnbound, clear) entries in the default table. Chords carry their
 // modes, and disallowed mode/action combinations panic at construction.
+//
+// Deprecated: use [editor.Keymap], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type Keymap = editor.Keymap
 
 // ModeSwitcher is what a ModeSwitch switches: an editor's view, chosen Raw or Rendered, and whether
 // Rendered is available for the document shown. Both golib editors are one: the cell Editor here,
 // and gui's.
+//
+// Deprecated: use [editor.ModeSwitcher], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type ModeSwitcher = editor.ModeSwitcher
 
 // ModeSwitch is an editor's [ Raw | Rendered ] control: one row, the view chosen bold and
@@ -291,11 +339,15 @@ type ModeSwitcher = editor.ModeSwitcher
 // at each paint, so it shows the view whoever chose it (the control, the editor's toggle key, the
 // host); its owner marks it dirty when the view or its availability changes. It draws with text
 // attributes alone, never a colour, so it reads in every theme.
+//
+// Deprecated: use [editor.ModeSwitch], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type ModeSwitch = editor.ModeSwitch
 
 // ModeSwitchShower is a ModeSwitcher that says when its switch is shown at all: the cell Editor's
 // only while it has a document view, as its own row is. A switch placed outside its owner (a
 // frame's title slot) is laid out empty, and so hidden, while it says false.
+//
+// Deprecated: use [editor.ModeSwitchShower], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type ModeSwitchShower = editor.ModeSwitchShower
 
 // ModeSwitchSlot is a ModeSwitch mounted on its own, outside its owner: what an owner hands a
@@ -303,24 +355,36 @@ type ModeSwitchShower = editor.ModeSwitchShower
 // press moves focus, as a toolbar's control does, so the press is never skipped as focus
 // redirected. It is a type of its own, not methods on ModeSwitch, so a widget that embeds ModeSwitch
 // (gui's title-bar switch) keeps its own press handling.
+//
+// Deprecated: use [editor.ModeSwitchSlot], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type ModeSwitchSlot = editor.ModeSwitchSlot
 
 // EditorViewAction is a view chosen on an editor's Raw | Rendered switch.
+//
+// Deprecated: use [editor.EditorViewAction], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type EditorViewAction = editor.EditorViewAction
 
 // EditorOption customizes an Editor under construction.
+//
+// Deprecated: use [editor.EditorOption], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type EditorOption = editor.EditorOption
 
 // CellPictureHost lays a Rendered block's picture for a renderer that draws pictures: the Editor
 // is one, handed to a renderer with a SetPictureHost method when it is set (SetRenderer).
+//
+// Deprecated: use [editor.CellPictureHost], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type CellPictureHost = editor.CellPictureHost
 
 // PointerView is what an EditorPointer reads of the view it works for. An editor implements it on
 // a value of its own, so its methods do not join the editor's API.
+//
+// Deprecated: use [editor.PointerView], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type PointerView = editor.PointerView
 
 // PointerInert is a PointerView with places a press does nothing at, and is consumed: the cell
 // Editor's scroll-indicator column, which is not text.
+//
+// Deprecated: use [editor.PointerInert], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type PointerInert = editor.PointerInert
 
 // EditorPointer is an editor's pointer over its core:
@@ -332,10 +396,14 @@ type PointerInert = editor.PointerInert
 //   - the release, or the capture lost, ends the drag, the selection staying;
 //   - the right button opens the context menu at the pointer, and the key map's menu key
 //     (EditorContextMenu) at the caret, the selection left for its Copy and Cut.
+//
+// Deprecated: use [editor.EditorPointer], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type EditorPointer = editor.EditorPointer
 
 // CellRenderer is the cell Editor's counterpart of gui's Renderer: it splits lines into blocks and
 // lays one out as rows of cells.
+//
+// Deprecated: use [editor.CellRenderer], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type CellRenderer = editor.CellRenderer
 
 // CellBlockContext is a CellRenderer whose blocks the Editor may keep across an edit: a block whose
@@ -343,117 +411,177 @@ type CellRenderer = editor.CellRenderer
 // unchanged is not laid again. BlockContext stamps what block b's LayOut reads beyond its own lines'
 // text (the lines around it that classify it, its renderer's settings): it must change whenever such
 // an input changes LayOut's result. A renderer without it is laid whole on every change.
+//
+// Deprecated: use [editor.CellBlockContext], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type CellBlockContext = editor.CellBlockContext
 
 // CellBlock is a block laid out: its rows, and the widest of them in cells.
+//
+// Deprecated: use [editor.CellBlock], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type CellBlock = editor.CellBlock
 
 // CellRow is one display row. Anchor is the source line it stands for when it shows none of that
 // line's clusters (an empty line, a line whose markup is all concealed), -1 otherwise; a row of
 // decorations only (a box's rule) has none. Unnumbered: no line number in the gutter.
+//
+// Deprecated: use [editor.CellRow], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type CellRow = editor.CellRow
 
 // RowCell is one cluster drawn: its text, its width in cells, its look, and the source cluster it
 // shows (Line -1: a decoration, a box's rule or a bullet glyph).
+//
+// Deprecated: use [editor.RowCell], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type RowCell = editor.RowCell
 
 // CellTheme is what a CellRenderer draws with: the text's look and the editor's syntax styles,
 // which a Markdown renderer reads its headings, emphasis, links and code from.
+//
+// Deprecated: use [editor.CellTheme], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type CellTheme = editor.CellTheme
 
 // MarkdownStructure is a renderer that knows where its document's code and tables are: an editor
 // runs list editing in its Rendered view outside code, and on a table's lines only where they are
 // not rows. MarkdownBlocks is one, and so is a renderer that embeds it; gui's StructureRenderer
 // has the same two methods.
+//
+// Deprecated: use [editor.MarkdownStructure], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type MarkdownStructure = editor.MarkdownStructure
 
 // LineNumberer shows each line's number in a gutter, in a colour of its own.
+//
+// Deprecated: use [editor.LineNumberer], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type LineNumberer = editor.LineNumberer
 
 // Ruler draws a vertical guide at a column (1-based), where text is meant to wrap; 0 for none.
+//
+// Deprecated: use [editor.Ruler], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type Ruler = editor.Ruler
 
 // Wrapper wraps long lines, or not.
+//
+// Deprecated: use [editor.Wrapper], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type Wrapper = editor.Wrapper
 
 // CursorColorer draws the text cursor in a colour of its own.
+//
+// Deprecated: use [editor.CursorColorer], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type CursorColorer = editor.CursorColorer
 
 // ContextMenuEnabler turns the right-click menu on or off.
+//
+// Deprecated: use [editor.ContextMenuEnabler], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type ContextMenuEnabler = editor.ContextMenuEnabler
 
 // ViewChooser chooses the view: Raw, or Rendered where it is available.
+//
+// Deprecated: use [editor.ViewChooser], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type ViewChooser = editor.ViewChooser
 
 // EditorFoldLayout is an EditorLayout that draws some runs of lines as one.
+//
+// Deprecated: use [editor.EditorFoldLayout], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type EditorFoldLayout = editor.EditorFoldLayout
 
 // EditorViewport is an EditorLayout that knows which buffer lines it shows and can scroll by
 // lines: H, M and L move within the lines shown, and Ctrl-d and Ctrl-u scroll the view with the
 // cursor, as Vim's do. A layout without it leaves H, M and L consumed with the cursor where it is,
 // and makes Ctrl-d and Ctrl-u cursor motions the view follows.
+//
+// Deprecated: use [editor.EditorViewport], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type EditorViewport = editor.EditorViewport
 
 // EditorRowLayout is an EditorLayout that wraps lines into display rows, for gj and gk. Positions
 // are in the layout's units (cells in the terminal, pixels in the GUI). A break space the wrap
 // consumed is drawn at the end of the row before it, and maps there.
+//
+// Deprecated: use [editor.EditorRowLayout], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type EditorRowLayout = editor.EditorRowLayout
 
 // FindRequest is a find the editor's keys ask a host for (* # g* g#): Term found again from the
 // cursor, which is on the term's start, Count times, back or on, wrapping.
+//
+// Deprecated: use [editor.FindRequest], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type FindRequest = editor.FindRequest
 
 // EditorLayout is what the core needs of the widget that draws it, in that widget's units:
 // cells for the tui Editor, pixels for a graphical one.
+//
+// Deprecated: use [editor.EditorLayout], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type EditorLayout = editor.EditorLayout
 
 // EditorSideScroller is an EditorLayout whose view scrolls sideways under the cursor (zh, zl):
 // ScrollColumns moves it n columns, right when n is positive, and reports whether it moved.
+//
+// Deprecated: use [editor.EditorSideScroller], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type EditorSideScroller = editor.EditorSideScroller
 
 // EditorCore is an editor's behaviour: text, cursor, modes, keys, undo, register, selection and
 // highlighting. See the package's EDITOR CORE notes.
+//
+// Deprecated: use [editor.EditorCore], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type EditorCore = editor.EditorCore
 
 // CoreOption configures an EditorCore under construction.
+//
+// Deprecated: use [editor.CoreOption], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type CoreOption = editor.CoreOption
 
 // IndentUnitError describes an invalid runtime indentation unit.
+//
+// Deprecated: use [editor.IndentUnitError], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type IndentUnitError = editor.IndentUnitError
 
 // Command is one verb of the command line.
+//
+// Deprecated: use [editor.Command], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type Command = editor.Command
 
 // CompleteContext is what a command's Complete gets: the line typed so far, up to the word Tab
 // completes.
+//
+// Deprecated: use [editor.CompleteContext], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type CompleteContext = editor.CompleteContext
 
 // CommandContext is what a command runs with.
+//
+// Deprecated: use [editor.CommandContext], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type CommandContext = editor.CommandContext
 
 // Commands is a command registry: an editor's verbs, in the order they were added.
+//
+// Deprecated: use [editor.Commands], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type Commands = editor.Commands
 
 // TextPos is a place in an editor's text: Line counts lines from 0, Col counts grapheme clusters
 // from 0. A position past a line's end is its end; a line past the last is the last.
+//
+// Deprecated: use [editor.TextPos], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type TextPos = editor.TextPos
 
 // TextRange is the text from From up to, not including, To. A range across lines includes the
 // line breaks between them. Every function that takes one orders and clamps it first.
+//
+// Deprecated: use [editor.TextRange], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type TextRange = editor.TextRange
 
 // FindOptions narrow a find. The zero value is a literal, case-sensitive, forward search that
 // stops at the end.
+//
+// Deprecated: use [editor.FindOptions], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type FindOptions = editor.FindOptions
 
 // ReplaceSession is replace's walk through the matches, one question at a time: a widget asks the
 // user at each match and answers with Answer. It walks the whole document from the top, each match
 // once, so a replacement that contains the term is never asked about again. Every replacement of
 // one session undoes with a single u.
+//
+// Deprecated: use [editor.ReplaceSession], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type ReplaceSession = editor.ReplaceSession
 
 // HighlightFrame is one render's walk over the highlighter's styles, from the first visible
 // line on. Ask Styles for the visible lines in order.
+//
+// Deprecated: use [editor.HighlightFrame], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type HighlightFrame = editor.HighlightFrame
 
 // THE EDITOR'S RIGHT-CLICK MENU, AS A MODULE.
@@ -462,34 +590,50 @@ type HighlightFrame = editor.HighlightFrame
 // shows, and the popup while it is open. It belongs to the widget it opens over (its owner, which
 // must sit under an OverlayHost), and its stock rows act on that widget's EditorCore. The tui
 // Editor holds one; so can any other editor widget.
+//
+// Deprecated: use [editor.EditorMenu], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type EditorMenu = editor.EditorMenu
 
 // CoreMenuAction is a menu row's action on an EditorCore: when the row is chosen, Run runs with
 // the menu's core. A graphical editor's rows use it; the tui Editor's may use EditorMenuAction.
+//
+// Deprecated: use [editor.CoreMenuAction], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type CoreMenuAction = editor.CoreMenuAction
 
 // JumpPos is a place: a document (the host's key for it; "" for an editor on its own), a line and a
 // column (grapheme clusters, from 0), and the host's view of the document there ("" for the
 // editor's own view): what going back restores.
+//
+// Deprecated: use [editor.JumpPos], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type JumpPos = editor.JumpPos
 
 // JumpList is a jumplist. Its methods run on the owner's goroutine (the loop's).
+//
+// Deprecated: use [editor.JumpList], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type JumpList = editor.JumpList
 
 // JumpStep is a proposed move along a list: To is where it goes.
+//
+// Deprecated: use [editor.JumpStep], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type JumpStep = editor.JumpStep
 
 // Block is lines [From, To) of a buffer.
+//
+// Deprecated: use [editor.Block], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type Block = editor.Block
 
 // MarkdownBlocks splits a Markdown buffer into blocks. Its zero value splits without hiding
 // metadata. It belongs to one renderer or editor: Blocks prepares Meta for the lines it is given,
 // and a painter reads Meta for the same lines.
+//
+// Deprecated: use [editor.MarkdownBlocks], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type MarkdownBlocks = editor.MarkdownBlocks
 
 // MarkdownMetadata caches parser-identified comments in source-cluster coordinates. It never
 // strips the buffer: a span after a comment still addresses the same source line and cluster. It
 // belongs to one renderer or editor: a painter reads the mask its Blocks call prepared.
+//
+// Deprecated: use [editor.MarkdownMetadata], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type MarkdownMetadata = editor.MarkdownMetadata
 
 // MarkdownCellRenderer draws Markdown in the cell Editor's Rendered view: headings, emphasis,
@@ -501,206 +645,391 @@ type MarkdownMetadata = editor.MarkdownMetadata
 // by the Editor (SetPictureHost), its fences no rows: the source until it is laid, or when it can't be.
 // An image-only paragraph is its image on a terminal that draws images, laid by the Editor
 // (SetImageHost): its text (the alt text) until it loads, and wherever it can't be drawn.
+//
+// Deprecated: use [editor.MarkdownCellRenderer], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type MarkdownCellRenderer = editor.MarkdownCellRenderer
 
 // MarkdownAttr is how one byte of a line is drawn: hidden (a mark: emphasis's stars, a code span's
 // backticks, a heading's #s, a link's brackets and target, an escape's backslash, a bare <br>), and
 // the styles of the constructs it is in.
+//
+// Deprecated: use [editor.MarkdownAttr], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type MarkdownAttr = editor.MarkdownAttr
 
 // TableText is the Markdown table holding a line of an EditorCore's buffer: a header row, a
 // delimiter row, and the rows under them.
+//
+// Deprecated: use [editor.TableText], from github.com/yongjohnlee80/golib/tui/widget/editor.
 type TableText = editor.TableText
 
 const (
 	// CommandLineScope is the command-line prompt's own keys: Tab and Shift+Tab complete, and with the
 	// candidates' dropdown open, Down and Up move through it as they do. Each with any other modifier too.
+	//
+	// Deprecated: use [editor.CommandLineScope], from github.com/yongjohnlee80/golib/tui/widget/editor.
 	CommandLineScope = editor.CommandLineScope
 	// CommandLineReplaceScope is the keys of a command's replace question (:s with c): Y, N and Q, either
 	// case, with any modifier, as its handler took them.
+	//
+	// Deprecated: use [editor.CommandLineReplaceScope], from github.com/yongjohnlee80/golib/tui/widget/editor.
 	CommandLineReplaceScope = editor.CommandLineReplaceScope
 	// ActUnbound removes a default binding (overlay-only sentinel).
+	//
+	// Deprecated: use [editor.ActUnbound], from github.com/yongjohnlee80/golib/tui/widget/editor.
 	ActUnbound = editor.ActUnbound
 	// Motions (Normal + Visual, count-prefixable).
-	ActLeft        = editor.ActLeft
-	ActDown        = editor.ActDown
-	ActUp          = editor.ActUp
-	ActRight       = editor.ActRight
-	ActLineStart   = editor.ActLineStart
-	ActLineEnd     = editor.ActLineEnd
+	//
+	// Deprecated: use [editor.ActLeft], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActLeft = editor.ActLeft
+	// Deprecated: use [editor.ActDown], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActDown = editor.ActDown
+	// Deprecated: use [editor.ActUp], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActUp = editor.ActUp
+	// Deprecated: use [editor.ActRight], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActRight = editor.ActRight
+	// Deprecated: use [editor.ActLineStart], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActLineStart = editor.ActLineStart
+	// Deprecated: use [editor.ActLineEnd], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActLineEnd = editor.ActLineEnd
+	// Deprecated: use [editor.ActWordForward], from github.com/yongjohnlee80/golib/tui/widget/editor.
 	ActWordForward = editor.ActWordForward
-	ActWordBack    = editor.ActWordBack
-	ActWordEnd     = editor.ActWordEnd
+	// Deprecated: use [editor.ActWordBack], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActWordBack = editor.ActWordBack
+	// Deprecated: use [editor.ActWordEnd], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActWordEnd = editor.ActWordEnd
+	// Deprecated: use [editor.ActParaForward], from github.com/yongjohnlee80/golib/tui/widget/editor.
 	ActParaForward = editor.ActParaForward
-	ActParaBack    = editor.ActParaBack
-	ActGoBottom    = editor.ActGoBottom
-	ActPageUp      = editor.ActPageUp
-	ActPageDown    = editor.ActPageDown
+	// Deprecated: use [editor.ActParaBack], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActParaBack = editor.ActParaBack
+	// Deprecated: use [editor.ActGoBottom], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActGoBottom = editor.ActGoBottom
+	// Deprecated: use [editor.ActPageUp], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActPageUp = editor.ActPageUp
+	// Deprecated: use [editor.ActPageDown], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActPageDown = editor.ActPageDown
 	// Double-key prefixes (the one-key pending buffer).
+	//
+	// Deprecated: use [editor.ActDeletePrefix], from github.com/yongjohnlee80/golib/tui/widget/editor.
 	ActDeletePrefix = editor.ActDeletePrefix
-	ActYankPrefix   = editor.ActYankPrefix
-	ActGoPrefix     = editor.ActGoPrefix
+	// Deprecated: use [editor.ActYankPrefix], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActYankPrefix = editor.ActYankPrefix
+	// Deprecated: use [editor.ActGoPrefix], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActGoPrefix = editor.ActGoPrefix
 	// Insert entries (Normal only).
-	ActInsert          = editor.ActInsert
-	ActAppend          = editor.ActAppend
+	//
+	// Deprecated: use [editor.ActInsert], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActInsert = editor.ActInsert
+	// Deprecated: use [editor.ActAppend], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActAppend = editor.ActAppend
+	// Deprecated: use [editor.ActInsertLineStart], from github.com/yongjohnlee80/golib/tui/widget/editor.
 	ActInsertLineStart = editor.ActInsertLineStart
-	ActAppendLineEnd   = editor.ActAppendLineEnd
-	ActOpenBelow       = editor.ActOpenBelow
-	ActOpenAbove       = editor.ActOpenAbove
+	// Deprecated: use [editor.ActAppendLineEnd], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActAppendLineEnd = editor.ActAppendLineEnd
+	// Deprecated: use [editor.ActOpenBelow], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActOpenBelow = editor.ActOpenBelow
+	// Deprecated: use [editor.ActOpenAbove], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActOpenAbove = editor.ActOpenAbove
 	// Edits (Normal only).
-	ActDeleteChar  = editor.ActDeleteChar
+	//
+	// Deprecated: use [editor.ActDeleteChar], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActDeleteChar = editor.ActDeleteChar
+	// Deprecated: use [editor.ActDeleteToEnd], from github.com/yongjohnlee80/golib/tui/widget/editor.
 	ActDeleteToEnd = editor.ActDeleteToEnd
-	ActPasteAfter  = editor.ActPasteAfter
+	// Deprecated: use [editor.ActPasteAfter], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActPasteAfter = editor.ActPasteAfter
+	// Deprecated: use [editor.ActPasteBefore], from github.com/yongjohnlee80/golib/tui/widget/editor.
 	ActPasteBefore = editor.ActPasteBefore
-	ActUndo        = editor.ActUndo
-	ActRedo        = editor.ActRedo
+	// Deprecated: use [editor.ActUndo], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActUndo = editor.ActUndo
+	// Deprecated: use [editor.ActRedo], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActRedo = editor.ActRedo
 	// Visual-mode entry/exit and operations.
-	ActVisual       = editor.ActVisual
-	ActVisualLine   = editor.ActVisualLine
-	ActVisualYank   = editor.ActVisualYank
+	//
+	// Deprecated: use [editor.ActVisual], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActVisual = editor.ActVisual
+	// Deprecated: use [editor.ActVisualLine], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActVisualLine = editor.ActVisualLine
+	// Deprecated: use [editor.ActVisualYank], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActVisualYank = editor.ActVisualYank
+	// Deprecated: use [editor.ActVisualDelete], from github.com/yongjohnlee80/golib/tui/widget/editor.
 	ActVisualDelete = editor.ActVisualDelete
 	// General non-modal & standard editor actions (Nano / TextEdit).
-	ActCut       = editor.ActCut
-	ActCopy      = editor.ActCopy
-	ActPaste     = editor.ActPaste
+	//
+	// Deprecated: use [editor.ActCut], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActCut = editor.ActCut
+	// Deprecated: use [editor.ActCopy], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActCopy = editor.ActCopy
+	// Deprecated: use [editor.ActPaste], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActPaste = editor.ActPaste
+	// Deprecated: use [editor.ActSelectAll], from github.com/yongjohnlee80/golib/tui/widget/editor.
 	ActSelectAll = editor.ActSelectAll
-	ActEscape    = editor.ActEscape
+	// Deprecated: use [editor.ActEscape], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActEscape = editor.ActEscape
 	// ActToggleRendered switches an editor with a Rendered view between it and Raw (Ctrl+T).
 	// An editor without one does not take it: the key bubbles.
+	//
+	// Deprecated: use [editor.ActToggleRendered], from github.com/yongjohnlee80/golib/tui/widget/editor.
 	ActToggleRendered = editor.ActToggleRendered
 	// ActFindNext and ActFindPrev go to the active find's next and previous match (n, N in the Vim
 	// keyset), wrapping. With no active find the key is not consumed: it reaches the application.
+	//
+	// Deprecated: use [editor.ActFindNext], from github.com/yongjohnlee80/golib/tui/widget/editor.
 	ActFindNext = editor.ActFindNext
+	// Deprecated: use [editor.ActFindPrev], from github.com/yongjohnlee80/golib/tui/widget/editor.
 	ActFindPrev = editor.ActFindPrev
 	// ActCommandLine opens the editor's ':' prompt (the Vim keyset's ':'), when its widget has
 	// one (SetCommandLine). Without one the key is not consumed.
+	//
+	// Deprecated: use [editor.ActCommandLine], from github.com/yongjohnlee80/golib/tui/widget/editor.
 	ActCommandLine = editor.ActCommandLine
 	// Vim line and character motions (Normal + Visual, count-prefixable): appended, so no
 	// earlier action's value moves.
-	ActLineDownFirst    = editor.ActLineDownFirst
-	ActLineUpFirst      = editor.ActLineUpFirst
-	ActFirstNonBlank    = editor.ActFirstNonBlank
-	ActLeftWrap         = editor.ActLeftWrap
-	ActFindCharForward  = editor.ActFindCharForward
-	ActFindCharBack     = editor.ActFindCharBack
-	ActTillCharForward  = editor.ActTillCharForward
-	ActTillCharBack     = editor.ActTillCharBack
-	ActFindCharRepeat   = editor.ActFindCharRepeat
-	ActFindCharReverse  = editor.ActFindCharReverse
-	ActMatchPair        = editor.ActMatchPair
-	ActViewTop          = editor.ActViewTop
-	ActViewMiddle       = editor.ActViewMiddle
-	ActViewBottom       = editor.ActViewBottom
-	ActHalfPageDown     = editor.ActHalfPageDown
-	ActHalfPageUp       = editor.ActHalfPageUp
-	ActWORDForward      = editor.ActWORDForward
-	ActWORDBack         = editor.ActWORDBack
-	ActWORDEnd          = editor.ActWORDEnd
-	ActWordEndBack      = editor.ActWordEndBack
-	ActWORDEndBack      = editor.ActWORDEndBack
-	ActChangePrefix     = editor.ActChangePrefix
-	ActChangeToEnd      = editor.ActChangeToEnd
-	ActSubstChar        = editor.ActSubstChar
-	ActSubstLine        = editor.ActSubstLine
-	ActYankToEnd        = editor.ActYankToEnd
-	ActReplaceChar      = editor.ActReplaceChar
-	ActJoin             = editor.ActJoin
-	ActJoinRaw          = editor.ActJoinRaw
-	ActToggleCase       = editor.ActToggleCase
-	ActCaseToggleOp     = editor.ActCaseToggleOp
-	ActLowerOp          = editor.ActLowerOp
-	ActUpperOp          = editor.ActUpperOp
-	ActIndentPrefix     = editor.ActIndentPrefix
-	ActOutdentPrefix    = editor.ActOutdentPrefix
-	ActRepeat           = editor.ActRepeat
-	ActRegisterPrefix   = editor.ActRegisterPrefix
-	ActMarkSet          = editor.ActMarkSet
-	ActMarkLine         = editor.ActMarkLine
-	ActMarkExact        = editor.ActMarkExact
-	ActMacroRecord      = editor.ActMacroRecord
-	ActMacroPlay        = editor.ActMacroPlay
-	ActJumpBack         = editor.ActJumpBack
-	ActJumpForward      = editor.ActJumpForward
-	ActVisualChange     = editor.ActVisualChange
-	ActVisualReplace    = editor.ActVisualReplace
+	//
+	// Deprecated: use [editor.ActLineDownFirst], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActLineDownFirst = editor.ActLineDownFirst
+	// Deprecated: use [editor.ActLineUpFirst], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActLineUpFirst = editor.ActLineUpFirst
+	// Deprecated: use [editor.ActFirstNonBlank], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActFirstNonBlank = editor.ActFirstNonBlank
+	// Deprecated: use [editor.ActLeftWrap], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActLeftWrap = editor.ActLeftWrap
+	// Deprecated: use [editor.ActFindCharForward], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActFindCharForward = editor.ActFindCharForward
+	// Deprecated: use [editor.ActFindCharBack], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActFindCharBack = editor.ActFindCharBack
+	// Deprecated: use [editor.ActTillCharForward], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActTillCharForward = editor.ActTillCharForward
+	// Deprecated: use [editor.ActTillCharBack], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActTillCharBack = editor.ActTillCharBack
+	// Deprecated: use [editor.ActFindCharRepeat], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActFindCharRepeat = editor.ActFindCharRepeat
+	// Deprecated: use [editor.ActFindCharReverse], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActFindCharReverse = editor.ActFindCharReverse
+	// Deprecated: use [editor.ActMatchPair], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActMatchPair = editor.ActMatchPair
+	// Deprecated: use [editor.ActViewTop], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActViewTop = editor.ActViewTop
+	// Deprecated: use [editor.ActViewMiddle], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActViewMiddle = editor.ActViewMiddle
+	// Deprecated: use [editor.ActViewBottom], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActViewBottom = editor.ActViewBottom
+	// Deprecated: use [editor.ActHalfPageDown], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActHalfPageDown = editor.ActHalfPageDown
+	// Deprecated: use [editor.ActHalfPageUp], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActHalfPageUp = editor.ActHalfPageUp
+	// Deprecated: use [editor.ActWORDForward], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActWORDForward = editor.ActWORDForward
+	// Deprecated: use [editor.ActWORDBack], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActWORDBack = editor.ActWORDBack
+	// Deprecated: use [editor.ActWORDEnd], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActWORDEnd = editor.ActWORDEnd
+	// Deprecated: use [editor.ActWordEndBack], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActWordEndBack = editor.ActWordEndBack
+	// Deprecated: use [editor.ActWORDEndBack], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActWORDEndBack = editor.ActWORDEndBack
+	// Deprecated: use [editor.ActChangePrefix], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActChangePrefix = editor.ActChangePrefix
+	// Deprecated: use [editor.ActChangeToEnd], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActChangeToEnd = editor.ActChangeToEnd
+	// Deprecated: use [editor.ActSubstChar], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActSubstChar = editor.ActSubstChar
+	// Deprecated: use [editor.ActSubstLine], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActSubstLine = editor.ActSubstLine
+	// Deprecated: use [editor.ActYankToEnd], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActYankToEnd = editor.ActYankToEnd
+	// Deprecated: use [editor.ActReplaceChar], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActReplaceChar = editor.ActReplaceChar
+	// Deprecated: use [editor.ActJoin], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActJoin = editor.ActJoin
+	// Deprecated: use [editor.ActJoinRaw], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActJoinRaw = editor.ActJoinRaw
+	// Deprecated: use [editor.ActToggleCase], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActToggleCase = editor.ActToggleCase
+	// Deprecated: use [editor.ActCaseToggleOp], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActCaseToggleOp = editor.ActCaseToggleOp
+	// Deprecated: use [editor.ActLowerOp], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActLowerOp = editor.ActLowerOp
+	// Deprecated: use [editor.ActUpperOp], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActUpperOp = editor.ActUpperOp
+	// Deprecated: use [editor.ActIndentPrefix], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActIndentPrefix = editor.ActIndentPrefix
+	// Deprecated: use [editor.ActOutdentPrefix], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActOutdentPrefix = editor.ActOutdentPrefix
+	// Deprecated: use [editor.ActRepeat], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActRepeat = editor.ActRepeat
+	// Deprecated: use [editor.ActRegisterPrefix], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActRegisterPrefix = editor.ActRegisterPrefix
+	// Deprecated: use [editor.ActMarkSet], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActMarkSet = editor.ActMarkSet
+	// Deprecated: use [editor.ActMarkLine], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActMarkLine = editor.ActMarkLine
+	// Deprecated: use [editor.ActMarkExact], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActMarkExact = editor.ActMarkExact
+	// Deprecated: use [editor.ActMacroRecord], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActMacroRecord = editor.ActMacroRecord
+	// Deprecated: use [editor.ActMacroPlay], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActMacroPlay = editor.ActMacroPlay
+	// Deprecated: use [editor.ActJumpBack], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActJumpBack = editor.ActJumpBack
+	// Deprecated: use [editor.ActJumpForward], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActJumpForward = editor.ActJumpForward
+	// Deprecated: use [editor.ActVisualChange], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActVisualChange = editor.ActVisualChange
+	// Deprecated: use [editor.ActVisualReplace], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActVisualReplace = editor.ActVisualReplace
+	// Deprecated: use [editor.ActVisualToggleCase], from github.com/yongjohnlee80/golib/tui/widget/editor.
 	ActVisualToggleCase = editor.ActVisualToggleCase
-	ActVisualLower      = editor.ActVisualLower
-	ActVisualUpper      = editor.ActVisualUpper
-	ActVisualIndent     = editor.ActVisualIndent
-	ActVisualOutdent    = editor.ActVisualOutdent
-	ActVisualOther      = editor.ActVisualOther
-	ActDeleteWordBack   = editor.ActDeleteWordBack
-	ActDeleteLineBack   = editor.ActDeleteLineBack
-	ActInsertOneShot    = editor.ActInsertOneShot
-	ActVisualBlock      = editor.ActVisualBlock
-	ActVisualOtherCol   = editor.ActVisualOtherCol
-	ActVisualInsert     = editor.ActVisualInsert
-	ActVisualAppend     = editor.ActVisualAppend
-	ActSentenceForward  = editor.ActSentenceForward
-	ActSentenceBack     = editor.ActSentenceBack
-	ActStarForward      = editor.ActStarForward
-	ActStarBack         = editor.ActStarBack
-	ActReplaceMode      = editor.ActReplaceMode
+	// Deprecated: use [editor.ActVisualLower], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActVisualLower = editor.ActVisualLower
+	// Deprecated: use [editor.ActVisualUpper], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActVisualUpper = editor.ActVisualUpper
+	// Deprecated: use [editor.ActVisualIndent], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActVisualIndent = editor.ActVisualIndent
+	// Deprecated: use [editor.ActVisualOutdent], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActVisualOutdent = editor.ActVisualOutdent
+	// Deprecated: use [editor.ActVisualOther], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActVisualOther = editor.ActVisualOther
+	// Deprecated: use [editor.ActDeleteWordBack], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActDeleteWordBack = editor.ActDeleteWordBack
+	// Deprecated: use [editor.ActDeleteLineBack], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActDeleteLineBack = editor.ActDeleteLineBack
+	// Deprecated: use [editor.ActInsertOneShot], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActInsertOneShot = editor.ActInsertOneShot
+	// Deprecated: use [editor.ActVisualBlock], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActVisualBlock = editor.ActVisualBlock
+	// Deprecated: use [editor.ActVisualOtherCol], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActVisualOtherCol = editor.ActVisualOtherCol
+	// Deprecated: use [editor.ActVisualInsert], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActVisualInsert = editor.ActVisualInsert
+	// Deprecated: use [editor.ActVisualAppend], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActVisualAppend = editor.ActVisualAppend
+	// Deprecated: use [editor.ActSentenceForward], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActSentenceForward = editor.ActSentenceForward
+	// Deprecated: use [editor.ActSentenceBack], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActSentenceBack = editor.ActSentenceBack
+	// Deprecated: use [editor.ActStarForward], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActStarForward = editor.ActStarForward
+	// Deprecated: use [editor.ActStarBack], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActStarBack = editor.ActStarBack
+	// Deprecated: use [editor.ActReplaceMode], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActReplaceMode = editor.ActReplaceMode
 	// Insert's editing keys, as commands (appended, so every value above is kept).
-	ActInsertTab     = editor.ActInsertTab
-	ActNewline       = editor.ActNewline
-	ActBackspace     = editor.ActBackspace
+	//
+	// Deprecated: use [editor.ActInsertTab], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActInsertTab = editor.ActInsertTab
+	// Deprecated: use [editor.ActNewline], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActNewline = editor.ActNewline
+	// Deprecated: use [editor.ActBackspace], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActBackspace = editor.ActBackspace
+	// Deprecated: use [editor.ActDeleteForward], from github.com/yongjohnlee80/golib/tui/widget/editor.
 	ActDeleteForward = editor.ActDeleteForward
-	ActScrollPrefix  = editor.ActScrollPrefix
-	RegisterChars    = editor.RegisterChars
-	RegisterLines    = editor.RegisterLines
-	RegisterBlock    = editor.RegisterBlock
-	EditorMenuUndo   = editor.EditorMenuUndo
-	EditorMenuRedo   = editor.EditorMenuRedo
-	EditorMenuEdits  = editor.EditorMenuEdits
-	EditorMenuCopy   = editor.EditorMenuCopy
-	EditorMenuCut    = editor.EditorMenuCut
-	EditorMenuPaste  = editor.EditorMenuPaste
-	ViewRaw          = editor.ViewRaw
-	ViewRendered     = editor.ViewRendered
+	// Deprecated: use [editor.ActScrollPrefix], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ActScrollPrefix = editor.ActScrollPrefix
+	// Deprecated: use [editor.RegisterChars], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	RegisterChars = editor.RegisterChars
+	// Deprecated: use [editor.RegisterLines], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	RegisterLines = editor.RegisterLines
+	// Deprecated: use [editor.RegisterBlock], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	RegisterBlock = editor.RegisterBlock
+	// Deprecated: use [editor.EditorMenuUndo], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	EditorMenuUndo = editor.EditorMenuUndo
+	// Deprecated: use [editor.EditorMenuRedo], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	EditorMenuRedo = editor.EditorMenuRedo
+	// Deprecated: use [editor.EditorMenuEdits], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	EditorMenuEdits = editor.EditorMenuEdits
+	// Deprecated: use [editor.EditorMenuCopy], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	EditorMenuCopy = editor.EditorMenuCopy
+	// Deprecated: use [editor.EditorMenuCut], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	EditorMenuCut = editor.EditorMenuCut
+	// Deprecated: use [editor.EditorMenuPaste], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	EditorMenuPaste = editor.EditorMenuPaste
+	// Deprecated: use [editor.ViewRaw], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ViewRaw = editor.ViewRaw
+	// Deprecated: use [editor.ViewRendered], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ViewRendered = editor.ViewRendered
 	// IndentMarksOff marks nothing (the default).
+	//
+	// Deprecated: use [editor.IndentMarksOff], from github.com/yongjohnlee80/golib/tui/widget/editor.
 	IndentMarksOff = editor.IndentMarksOff
 	// IndentMarksCursorLine marks the cursor's line while the editor has the focus, in any
 	// mode: the line the cursor is on is the line being edited.
+	//
+	// Deprecated: use [editor.IndentMarksCursorLine], from github.com/yongjohnlee80/golib/tui/widget/editor.
 	IndentMarksCursorLine = editor.IndentMarksCursorLine
 	// IndentMarksAll marks every line.
+	//
+	// Deprecated: use [editor.IndentMarksAll], from github.com/yongjohnlee80/golib/tui/widget/editor.
 	IndentMarksAll = editor.IndentMarksAll
 	// ModeNormal is command mode: the cursor sits ON a grapheme.
+	//
+	// Deprecated: use [editor.ModeNormal], from github.com/yongjohnlee80/golib/tui/widget/editor.
 	ModeNormal = editor.ModeNormal
 	// ModeInsert is text-entry mode: the cursor is an insertion point.
+	//
+	// Deprecated: use [editor.ModeInsert], from github.com/yongjohnlee80/golib/tui/widget/editor.
 	ModeInsert = editor.ModeInsert
 	// ModeVisual is char-wise selection (inclusive at both endpoints).
+	//
+	// Deprecated: use [editor.ModeVisual], from github.com/yongjohnlee80/golib/tui/widget/editor.
 	ModeVisual = editor.ModeVisual
 	// ModeVisualLine is line-wise selection.
+	//
+	// Deprecated: use [editor.ModeVisualLine], from github.com/yongjohnlee80/golib/tui/widget/editor.
 	ModeVisualLine = editor.ModeVisualLine
 	// ModeVisualBlock is a block of lines and display columns (Vim's Ctrl-v). It shares Visual's
 	// bindings, as ModeVisualLine does.
+	//
+	// Deprecated: use [editor.ModeVisualBlock], from github.com/yongjohnlee80/golib/tui/widget/editor.
 	ModeVisualBlock = editor.ModeVisualBlock
 	// ModeReplace is Replace mode (Vim's R): typing overwrites. It is Insert underneath, and shares
 	// Insert's bindings; Mode reports it while it lasts.
+	//
+	// Deprecated: use [editor.ModeReplace], from github.com/yongjohnlee80/golib/tui/widget/editor.
 	ModeReplace = editor.ModeReplace
 	// KeysetVim enables classical modal editing (Normal, Insert, Visual).
+	//
+	// Deprecated: use [editor.KeysetVim], from github.com/yongjohnlee80/golib/tui/widget/editor.
 	KeysetVim = editor.KeysetVim
 	// KeysetNano enables non-modal Nano-style editing (Ctrl+K cut, Ctrl+U paste, etc.).
+	//
+	// Deprecated: use [editor.KeysetNano], from github.com/yongjohnlee80/golib/tui/widget/editor.
 	KeysetNano = editor.KeysetNano
 	// KeysetStandard enables non-modal GUI/TextEdit-style editing (Ctrl+X/C/V/Z/A).
-	KeysetStandard     = editor.KeysetStandard
-	ModeSwitchRaw      = editor.ModeSwitchRaw
-	ModeSwitchSep      = editor.ModeSwitchSep
+	//
+	// Deprecated: use [editor.KeysetStandard], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	KeysetStandard = editor.KeysetStandard
+	// Deprecated: use [editor.ModeSwitchRaw], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ModeSwitchRaw = editor.ModeSwitchRaw
+	// Deprecated: use [editor.ModeSwitchSep], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ModeSwitchSep = editor.ModeSwitchSep
+	// Deprecated: use [editor.ModeSwitchRendered], from github.com/yongjohnlee80/golib/tui/widget/editor.
 	ModeSwitchRendered = editor.ModeSwitchRendered
 	// ModeSwitchWidth is the switch's width in cells.
+	//
+	// Deprecated: use [editor.ModeSwitchWidth], from github.com/yongjohnlee80/golib/tui/widget/editor.
 	ModeSwitchWidth = editor.ModeSwitchWidth
 	// DefaultJumpLimit is how many entries a JumpList keeps unless told otherwise: Vim's JUMPLISTSIZE.
-	DefaultJumpLimit     = editor.DefaultJumpLimit
+	//
+	// Deprecated: use [editor.DefaultJumpLimit], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	DefaultJumpLimit = editor.DefaultJumpLimit
+	// Deprecated: use [editor.MarkdownHeadingStyle], from github.com/yongjohnlee80/golib/tui/widget/editor.
 	MarkdownHeadingStyle = editor.MarkdownHeadingStyle
-	MarkdownStrongStyle  = editor.MarkdownStrongStyle
-	MarkdownEmphStyle    = editor.MarkdownEmphStyle
-	MarkdownCodeStyle    = editor.MarkdownCodeStyle
-	MarkdownLinkStyle    = editor.MarkdownLinkStyle
-	MarkdownMarkerStyle  = editor.MarkdownMarkerStyle
-	MarkdownQuietStyle   = editor.MarkdownQuietStyle
-	MarkdownWikiStyle    = editor.MarkdownWikiStyle
-	MarkdownTagStyle     = editor.MarkdownTagStyle
+	// Deprecated: use [editor.MarkdownStrongStyle], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	MarkdownStrongStyle = editor.MarkdownStrongStyle
+	// Deprecated: use [editor.MarkdownEmphStyle], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	MarkdownEmphStyle = editor.MarkdownEmphStyle
+	// Deprecated: use [editor.MarkdownCodeStyle], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	MarkdownCodeStyle = editor.MarkdownCodeStyle
+	// Deprecated: use [editor.MarkdownLinkStyle], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	MarkdownLinkStyle = editor.MarkdownLinkStyle
+	// Deprecated: use [editor.MarkdownMarkerStyle], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	MarkdownMarkerStyle = editor.MarkdownMarkerStyle
+	// Deprecated: use [editor.MarkdownQuietStyle], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	MarkdownQuietStyle = editor.MarkdownQuietStyle
+	// Deprecated: use [editor.MarkdownWikiStyle], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	MarkdownWikiStyle = editor.MarkdownWikiStyle
+	// Deprecated: use [editor.MarkdownTagStyle], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	MarkdownTagStyle = editor.MarkdownTagStyle
 )
 
 // The forwarded vars are editor's values, copied: read them, never assign one, since
@@ -708,53 +1037,84 @@ const (
 var (
 	// ErrNoCellPicture is a diagram the terminal doesn't draw: a fence of another language, or a laid
 	// diagram with no rows.
-	ErrNoCellPicture    = editor.ErrNoCellPicture
-	CmdlineComplete     = editor.CmdlineComplete
+	//
+	// Deprecated: use [editor.ErrNoCellPicture], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	ErrNoCellPicture = editor.ErrNoCellPicture
+	// Deprecated: use [editor.CmdlineComplete], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	CmdlineComplete = editor.CmdlineComplete
+	// Deprecated: use [editor.CmdlineCompletePrev], from github.com/yongjohnlee80/golib/tui/widget/editor.
 	CmdlineCompletePrev = editor.CmdlineCompletePrev
-	CmdlineNext         = editor.CmdlineNext
-	CmdlinePrev         = editor.CmdlinePrev
-	CmdlineReplaceYes   = editor.CmdlineReplaceYes
-	CmdlineReplaceNo    = editor.CmdlineReplaceNo
-	CmdlineReplaceQuit  = editor.CmdlineReplaceQuit
+	// Deprecated: use [editor.CmdlineNext], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	CmdlineNext = editor.CmdlineNext
+	// Deprecated: use [editor.CmdlinePrev], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	CmdlinePrev = editor.CmdlinePrev
+	// Deprecated: use [editor.CmdlineReplaceYes], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	CmdlineReplaceYes = editor.CmdlineReplaceYes
+	// Deprecated: use [editor.CmdlineReplaceNo], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	CmdlineReplaceNo = editor.CmdlineReplaceNo
+	// Deprecated: use [editor.CmdlineReplaceQuit], from github.com/yongjohnlee80/golib/tui/widget/editor.
+	CmdlineReplaceQuit = editor.CmdlineReplaceQuit
 	// EditorContextMenu opens the editor's context menu, in every keyset and mode.
+	//
+	// Deprecated: use [editor.EditorContextMenu], from github.com/yongjohnlee80/golib/tui/widget/editor.
 	EditorContextMenu = editor.EditorContextMenu
 	// ErrMacroTooLong is why a macro stopped when it played more than one @ may (macroBudget). It is
 	// an errs.ErrUnsupported: the editor plays no more than that, so playing the same macro again stops
 	// the same way.
+	//
+	// Deprecated: use [editor.ErrMacroTooLong], from github.com/yongjohnlee80/golib/tui/widget/editor.
 	ErrMacroTooLong = editor.ErrMacroTooLong
 	// ErrUnknownCommand is RunCommand's answer to a verb the registry does not have. It is an
 	// errs.ErrInvalidArgument.
+	//
+	// Deprecated: use [editor.ErrUnknownCommand], from github.com/yongjohnlee80/golib/tui/widget/editor.
 	ErrUnknownCommand = editor.ErrUnknownCommand
 	// ErrCommandExists is Add's answer to a name or alias already registered. It is an
 	// errs.ErrInvalidArgument.
+	//
+	// Deprecated: use [editor.ErrCommandExists], from github.com/yongjohnlee80/golib/tui/widget/editor.
 	ErrCommandExists = editor.ErrCommandExists
 	// ErrNoWriter is w's answer when the host gave the core no way to save (CoreOnWrite). It is an
 	// errs.ErrUnsupported: this editor cannot, whatever is asked again.
+	//
+	// Deprecated: use [editor.ErrNoWriter], from github.com/yongjohnlee80/golib/tui/widget/editor.
 	ErrNoWriter = editor.ErrNoWriter
 	// ErrNoQuit is q's answer when the host gave the core no way to quit (CoreOnQuit). It is an
 	// errs.ErrUnsupported.
+	//
+	// Deprecated: use [editor.ErrNoQuit], from github.com/yongjohnlee80/golib/tui/widget/editor.
 	ErrNoQuit = editor.ErrNoQuit
 	// ErrReadOnly is what an edit returns on a read-only core. It is an errs.ErrPrecondition: the core
 	// must be writable first.
+	//
+	// Deprecated: use [editor.ErrReadOnly], from github.com/yongjohnlee80/golib/tui/widget/editor.
 	ErrReadOnly = editor.ErrReadOnly
 )
 
 // NewBuffer is an empty document, or as its options make it.
+//
+// Deprecated: use [editor.NewBuffer], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func NewBuffer(a0 ...BufferOption) *Buffer {
 	return editor.NewBuffer(a0...)
 }
 
 // BufferText seeds the buffer's text, normalizing newlines: unmodified, with no undo history.
+//
+// Deprecated: use [editor.BufferText], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func BufferText(a0 string) BufferOption {
 	return editor.BufferText(a0)
 }
 
 // BufferSourceFactory makes the buffer's highlighting source, as CoreSourceFactory does an editor's.
+//
+// Deprecated: use [editor.BufferSourceFactory], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func BufferSourceFactory(a0 func() highlight.Source) BufferOption {
 	return editor.BufferSourceFactory(a0)
 }
 
 // BufferName names the buffer as the jump list knows it (Buffer.SetName).
+//
+// Deprecated: use [editor.BufferName], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func BufferName(a0 string) BufferOption {
 	return editor.BufferName(a0)
 }
@@ -764,6 +1124,8 @@ func BufferName(a0 string) BufferOption {
 // to cols where its kind can be laid narrower, else at its own width; a Vega-Lite spec by
 // tui/vegalite's first tier that takes it. Its error says why there is none: a kind or a spec the
 // terminal doesn't draw, one that doesn't parse, one too large.
+//
+// Deprecated: use [editor.LayCellPicture], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func LayCellPicture(a0 context.Context, a1, a2 string, a3 func(string) int, a4 int, a5 SyntaxStyles) (CellPicture, error) {
 	return editor.LayCellPicture(a0, a1, a2, a3, a4, a5)
 }
@@ -771,12 +1133,16 @@ func LayCellPicture(a0 context.Context, a1, a2 string, a3 func(string) int, a4 i
 // CellPictureThemes are a picture's styles: a chart's series in the code colours syntax gives (with
 // none, the tokens), a diagram's diagramTheme with the charts' series, so a pie's slices and a
 // chart's series take the same colours.
+//
+// Deprecated: use [editor.CellPictureThemes], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func CellPictureThemes(a0 SyntaxStyles) (tuimermaid.Theme, tuivegalite.Theme) {
 	return editor.CellPictureThemes(a0)
 }
 
 // NewCommandLine is a prompt over owner running lines on core. It is off until SetEnabled(true).
 // It opens only while owner is mounted.
+//
+// Deprecated: use [editor.NewCommandLine], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func NewCommandLine(a0 core.ContextOwner, a1 *EditorCore) *CommandLine {
 	return editor.NewCommandLine(a0, a1)
 }
@@ -785,16 +1151,22 @@ func NewCommandLine(a0 core.ContextOwner, a1 *EditorCore) *CommandLine {
 // modal editing enabled, and the "jk" escape chord armed. Custom options
 // can select alternative keysets (WithCore(CoreKeyset(KeysetNano)), say)
 // or customize capabilities and styles.
+//
+// Deprecated: use [editor.NewEditor], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func NewEditor(a0 ...EditorOption) *Editor {
 	return editor.NewEditor(a0...)
 }
 
 // CoreBuffer makes the editor show b from the start, in place of an empty buffer of its own.
+//
+// Deprecated: use [editor.CoreBuffer], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func CoreBuffer(a0 *Buffer) CoreOption {
 	return editor.CoreBuffer(a0)
 }
 
 // EditorCommands is every editor command of every keyset, and the context menu's.
+//
+// Deprecated: use [editor.EditorCommands], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func EditorCommands() []keymap.Command {
 	return editor.EditorCommands()
 }
@@ -803,6 +1175,8 @@ func EditorCommands() []keymap.Command {
 // (Commands is the Editor command line's registry; these are keys.) It sits with the editor's, the
 // last it gathers: it reads every package's commands, so it goes to tui/widget itself when the
 // widgets are packages of their own.
+//
+// Deprecated: use [editor.KeyCommands], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func KeyCommands() []keymap.Command {
 	return editor.KeyCommands()
 }
@@ -816,12 +1190,16 @@ func KeyCommands() []keymap.Command {
 //
 // Their actions are EditorMenuActions. A consumer that wants the stock rows plus its own builds
 // on this slice. CoreContextItems is the same rows over an EditorCore.
+//
+// Deprecated: use [editor.EditorContextItems], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func EditorContextItems(a0 *Editor) []core.MenuItemModel {
 	return editor.EditorContextItems(a0)
 }
 
 // WithContextMenu turns the right-click menu on. build returns the rows to
 // show and runs each time the menu opens; nil means EditorContextItems.
+//
+// Deprecated: use [editor.WithContextMenu], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func WithContextMenu(a0 func(e *Editor) []core.MenuItemModel) EditorOption {
 	return editor.WithContextMenu(a0)
 }
@@ -830,50 +1208,68 @@ func WithContextMenu(a0 func(e *Editor) []core.MenuItemModel) EditorOption {
 // the desktop convention, or the Menu key where the backend delivers it. A golib widget matches its own
 // context-menu command instead (EditorContextMenu, ListMenu), which a key map may move; this stays for
 // a host that has no command of its own.
+//
+// Deprecated: use [editor.IsContextMenuKey], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func IsContextMenuKey(a0 tui.KeyEvent) bool {
 	return editor.IsContextMenuKey(a0)
 }
 
 // CoreIndentMarks sets which lines show their indentation.
+//
+// Deprecated: use [editor.CoreIndentMarks], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func CoreIndentMarks(a0 IndentMarks) CoreOption {
 	return editor.CoreIndentMarks(a0)
 }
 
 // DefaultKeymap returns a fresh COPY of the default Vim binding table.
+//
+// Deprecated: use [editor.DefaultKeymap], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func DefaultKeymap() Keymap {
 	return editor.DefaultKeymap()
 }
 
 // VimKeymap returns a fresh COPY of the modal Vim keymap: the projection of its declarations
 // without the editing commands, so it is the table it always was.
+//
+// Deprecated: use [editor.VimKeymap], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func VimKeymap() Keymap {
 	return editor.VimKeymap()
 }
 
 // NanoKeymap returns a fresh COPY of the non-modal Nano-style keymap: the projection of its declarations
 // without the editing commands, so it is the table it always was.
+//
+// Deprecated: use [editor.NanoKeymap], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func NanoKeymap() Keymap {
 	return editor.NanoKeymap()
 }
 
 // StandardKeymap returns a fresh COPY of the standard GUI / TextEdit-style keymap: the projection of its declarations
 // without the editing commands, so it is the table it always was.
+//
+// Deprecated: use [editor.StandardKeymap], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func StandardKeymap() Keymap {
 	return editor.StandardKeymap()
 }
 
 // CoreListEditing turns list editing on or off.
+//
+// Deprecated: use [editor.CoreListEditing], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func CoreListEditing(a0 bool) CoreOption {
 	return editor.CoreListEditing(a0)
 }
 
 // MarkdownListItem reads line as a Markdown list item, as list editing does: its indentation
 // and its marker (the bullet or number, the spaces after it, and a task's box).
+//
+// Deprecated: use [editor.MarkdownListItem], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func MarkdownListItem(a0 string) (string, string, bool) {
 	return editor.MarkdownListItem(a0)
 }
 
 // NewModeSwitch is the switch for of.
+//
+// Deprecated: use [editor.NewModeSwitch], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func NewModeSwitch(a0 ModeSwitcher) *ModeSwitch {
 	return editor.NewModeSwitch(a0)
 }
@@ -884,11 +1280,15 @@ func NewModeSwitch(a0 ModeSwitcher) *ModeSwitch {
 // the cell Editor's press resolver read the one hit-test, and an embedder's override is never
 // bypassed by a call on the switch's own receiver. Exported: the Editor's files read it from outside
 // the switch's own group.
+//
+// Deprecated: use [editor.ModeSwitchChoice], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func ModeSwitchChoice(a0 ModeSwitcher, a1 int) (EditorView, bool) {
 	return editor.ModeSwitchChoice(a0, a1)
 }
 
 // WithCore applies core options to an Editor: every behaviour EditorOption is one.
+//
+// Deprecated: use [editor.WithCore], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func WithCore(a0 ...CoreOption) EditorOption {
 	return editor.WithCore(a0...)
 }
@@ -896,32 +1296,44 @@ func WithCore(a0 ...CoreOption) EditorOption {
 // WithRuler marks column col (1-based: 120 marks the 120th) with a vertical guide, where text is
 // meant to wrap: vim's colorcolumn, as a line. It is drawn in the empty cells past each line's
 // text, in the placeholder's muted look, so a line that crosses it stays readable. 0 draws none.
+//
+// Deprecated: use [editor.WithRuler], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func WithRuler(a0 int) EditorOption {
 	return editor.WithRuler(a0)
 }
 
 // WithEditorStyles overrides the style hooks (TextInput slots); zero fields keep defaults.
+//
+// Deprecated: use [editor.WithEditorStyles], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func WithEditorStyles(a0 core.TextInputStyles) EditorOption {
 	return editor.WithEditorStyles(a0)
 }
 
 // WithEditorLineNumbers shows each line's number in a gutter at the left.
+//
+// Deprecated: use [editor.WithEditorLineNumbers], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func WithEditorLineNumbers(a0 bool) EditorOption {
 	return editor.WithEditorLineNumbers(a0)
 }
 
 // WithEditorWrap selects WrapNone (default) or WrapSoft; any other mode is WrapNone (SetWrap).
+//
+// Deprecated: use [editor.WithEditorWrap], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func WithEditorWrap(a0 core.WrapMode) EditorOption {
 	return editor.WithEditorWrap(a0)
 }
 
 // EditorModeSwitch shows the [ Raw | Rendered ] switch on the editor's first row while it has a
 // document view (Editor.SetModeSwitch).
+//
+// Deprecated: use [editor.EditorModeSwitch], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func EditorModeSwitch(a0 bool) EditorOption {
 	return editor.EditorModeSwitch(a0)
 }
 
 // NewEditorPointer is an EditorPointer over core, opening menu (nil: none), for view.
+//
+// Deprecated: use [editor.NewEditorPointer], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func NewEditorPointer(a0 *EditorCore, a1 *EditorMenu, a2 PointerView) *EditorPointer {
 	return editor.NewEditorPointer(a0, a1, a2)
 }
@@ -931,54 +1343,74 @@ func NewEditorPointer(a0 *EditorCore, a1 *EditorMenu, a2 PointerView) *EditorPoi
 // row is a row: the table keys (CoreTableEditing) run on the rows they read, the ones with both
 // outer pipes, which no list item starts with; a row GFM reads without them takes neither, so its
 // "- x" is not an item either. Both editors, the cell one and gui's, edit lists by it.
+//
+// Deprecated: use [editor.MarkdownListWhere], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func MarkdownListWhere(a0 *EditorCore, a1 MarkdownStructure) func(ln int) bool {
 	return editor.MarkdownListWhere(a0, a1)
 }
 
 // CoreTableEditing turns table editing on or off.
+//
+// Deprecated: use [editor.CoreTableEditing], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func CoreTableEditing(a0 bool) CoreOption {
 	return editor.CoreTableEditing(a0)
 }
 
 // NewEditorCore builds a core with the default Vim keymap, modal editing and the "jk" escape
 // chord. It draws nothing: a widget binds it to its layout and context (Bind).
+//
+// Deprecated: use [editor.NewEditorCore], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func NewEditorCore(a0 ...CoreOption) *EditorCore {
 	return editor.NewEditorCore(a0...)
 }
 
 // CoreSelection configures whether visual selection is enabled.
+//
+// Deprecated: use [editor.CoreSelection], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func CoreSelection(a0 bool) CoreOption {
 	return editor.CoreSelection(a0)
 }
 
 // CoreYank configures whether yanking to the register and the system clipboard is enabled.
+//
+// Deprecated: use [editor.CoreYank], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func CoreYank(a0 bool) CoreOption {
 	return editor.CoreYank(a0)
 }
 
 // CoreUndo configures whether the core keeps undo/redo history.
+//
+// Deprecated: use [editor.CoreUndo], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func CoreUndo(a0 bool) CoreOption {
 	return editor.CoreUndo(a0)
 }
 
 // CoreHighlighter sets the highlighter; nil is none.
+//
+// Deprecated: use [editor.CoreHighlighter], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func CoreHighlighter(a0 highlight.Highlighter) CoreOption {
 	return editor.CoreHighlighter(a0)
 }
 
 // CoreSyntaxStyles sets what each highlight style looks like.
+//
+// Deprecated: use [editor.CoreSyntaxStyles], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func CoreSyntaxStyles(a0 SyntaxStyles) CoreOption {
 	return editor.CoreSyntaxStyles(a0)
 }
 
 // CoreInitialText seeds the buffer: the cursor at the document start, the initial editing mode,
 // an empty undo history.
+//
+// Deprecated: use [editor.CoreInitialText], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func CoreInitialText(a0 string) CoreOption {
 	return editor.CoreInitialText(a0)
 }
 
 // CoreEscapeChord sets the Insert-mode escape chord (default "jk"): exactly two unmodified
 // printable runes, or "" to disable (Esc alone). Anything else panics.
+//
+// Deprecated: use [editor.CoreEscapeChord], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func CoreEscapeChord(a0 string) CoreOption {
 	return editor.CoreEscapeChord(a0)
 }
@@ -986,41 +1418,55 @@ func CoreEscapeChord(a0 string) CoreOption {
 // CoreKeymap overlays entries onto the default table. ActUnbound removes a default binding; every
 // entry is validated when the option applies (panics on unknown actions or unsupported
 // mode/action combinations).
+//
+// Deprecated: use [editor.CoreKeymap], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func CoreKeymap(a0 Keymap) CoreOption {
 	return editor.CoreKeymap(a0)
 }
 
 // CoreModal configures whether the core runs the Vim modal state machine (Normal, Insert, Visual)
 // or edits modelessly.
+//
+// Deprecated: use [editor.CoreModal], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func CoreModal(a0 bool) CoreOption {
 	return editor.CoreModal(a0)
 }
 
 // CoreReadOnly configures whether the core is a viewer.
+//
+// Deprecated: use [editor.CoreReadOnly], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func CoreReadOnly(a0 bool) CoreOption {
 	return editor.CoreReadOnly(a0)
 }
 
 // CoreKeyset selects a predefined keyset and editing profile. Vim also arms the "jk" escape
 // chord when none is set.
+//
+// Deprecated: use [editor.CoreKeyset], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func CoreKeyset(a0 Keyset) CoreOption {
 	return editor.CoreKeyset(a0)
 }
 
 // CoreOnModeChange calls fn with the new mode whenever the mode changes, and not when it is set to
 // the mode it already has. It is the constructor-time twin of ModeChangedEvent.
+//
+// Deprecated: use [editor.CoreOnModeChange], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func CoreOnModeChange(a0 func(EditorMode)) CoreOption {
 	return editor.CoreOnModeChange(a0)
 }
 
 // CoreOnKeyScopeChange calls fn with KeyScope each time it moves: a mode change into another binding
 // class, or a keyset switch (Standard to Nano moves it with the mode unchanged).
+//
+// Deprecated: use [editor.CoreOnKeyScopeChange], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func CoreOnKeyScopeChange(a0 func(keymap.Scope)) CoreOption {
 	return editor.CoreOnKeyScopeChange(a0)
 }
 
 // CoreOnChange calls fn after every EDIT, the moment ChangeEvent is published. SetValue is not an
 // edit.
+//
+// Deprecated: use [editor.CoreOnChange], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func CoreOnChange(a0 func()) CoreOption {
 	return editor.CoreOnChange(a0)
 }
@@ -1028,32 +1474,44 @@ func CoreOnChange(a0 func()) CoreOption {
 // CoreOnCursorPositionChange calls fn whenever the cursor moves to another line or column: by a
 // key, a click, an edit, or the program (SetValue, SetLine, SetCursorPosition). It is told once
 // per input, after the input is handled.
+//
+// Deprecated: use [editor.CoreOnCursorPositionChange], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func CoreOnCursorPositionChange(a0 func()) CoreOption {
 	return editor.CoreOnCursorPositionChange(a0)
 }
 
 // CoreSourceFactory selects a fresh paired source for each document.
+//
+// Deprecated: use [editor.CoreSourceFactory], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func CoreSourceFactory(a0 func() highlight.Source) CoreOption {
 	return editor.CoreSourceFactory(a0)
 }
 
 // CoreAutoIndent opts an editor into source-language indentation.
+//
+// Deprecated: use [editor.CoreAutoIndent], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func CoreAutoIndent(a0 bool) CoreOption {
 	return editor.CoreAutoIndent(a0)
 }
 
 // CoreIndentUnit overrides the language's indent unit. It must be whitespace.
+//
+// Deprecated: use [editor.CoreIndentUnit], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func CoreIndentUnit(a0 string) CoreOption {
 	return editor.CoreIndentUnit(a0)
 }
 
 // NewCommands is a registry holding cmds; a name given twice is ErrCommandExists.
+//
+// Deprecated: use [editor.NewCommands], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func NewCommands(a0 ...Command) (*Commands, error) {
 	return editor.NewCommands(a0...)
 }
 
 // CoreCommands gives the core a registry of its own in place of DefaultCommands; nil leaves it
 // with none, so ':' is not consumed.
+//
+// Deprecated: use [editor.CoreCommands], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func CoreCommands(a0 *Commands) CoreOption {
 	return editor.CoreCommands(a0)
 }
@@ -1061,12 +1519,16 @@ func CoreCommands(a0 *Commands) CoreOption {
 // CoreOnWrite is how w, wq and x save: the host writes the text where it belongs and, when quit is
 // true, quits once the write succeeded (its write may finish later: a Save As dialog, a daemon).
 // The host calls MarkSaved after a successful write.
+//
+// Deprecated: use [editor.CoreOnWrite], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func CoreOnWrite(a0 func(quit bool) error) CoreOption {
 	return editor.CoreOnWrite(a0)
 }
 
 // CoreOnQuit is how q quits; force is q!'s bang. What an unforced quit over unsaved work does is
 // the host's choice: ask, or refuse as vim does.
+//
+// Deprecated: use [editor.CoreOnQuit], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func CoreOnQuit(a0 func(force bool) error) CoreOption {
 	return editor.CoreOnQuit(a0)
 }
@@ -1081,12 +1543,16 @@ func CoreOnQuit(a0 func(force bool) error) CoreOption {
 //	find <term>             mark term and go to it; n and N go on
 //	replace <term> <with>   replace each match, asking y / n (every match, with no one to ask)
 //	nohl                    clear the find's marks
+//
+// Deprecated: use [editor.DefaultCommands], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func DefaultCommands() []Command {
 	return editor.DefaultCommands()
 }
 
 // IsKeyword reports a keyword cluster, as Vim's \< and \> and its w motions see one: a letter, a
 // digit or _, a CJK script's character, or an emoji (Vim's utf_class of 2 or more).
+//
+// Deprecated: use [editor.IsKeyword], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func IsKeyword(a0 string) bool {
 	return editor.IsKeyword(a0)
 }
@@ -1094,17 +1560,23 @@ func IsKeyword(a0 string) bool {
 // NewEditorMenu is a menu over owner whose stock rows act on core. It is off until
 // SetEnabled(true), and opens only while owner is mounted. With a nil
 // core there are no stock rows: the menu shows SetRows's, and a CoreMenuAction's Run is given nil.
+//
+// Deprecated: use [editor.NewEditorMenu], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func NewEditorMenu(a0 core.ContextOwner, a1 *EditorCore) *EditorMenu {
 	return editor.NewEditorMenu(a0, a1)
 }
 
 // CoreContextItems are the stock rows over c, as EditorContextItems describes them, with
 // CoreMenuAction actions.
+//
+// Deprecated: use [editor.CoreContextItems], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func CoreContextItems(a0 *EditorCore) []core.MenuItemModel {
 	return editor.CoreContextItems(a0)
 }
 
 // NewJumpList is an empty list keeping limit entries (DefaultJumpLimit for 0 or less).
+//
+// Deprecated: use [editor.NewJumpList], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func NewJumpList(a0 int) *JumpList {
 	return editor.NewJumpList(a0)
 }
@@ -1112,6 +1584,8 @@ func NewJumpList(a0 int) *JumpList {
 // MarkdownFrontmatterEnd is where a document's frontmatter ends, past its closing line, as the
 // Raw view's highlighter reads it: a "---" first line, closed by "---" or "...". Unclosed (while it
 // is being written), it runs to the end. 0: none.
+//
+// Deprecated: use [editor.MarkdownFrontmatterEnd], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func MarkdownFrontmatterEnd(a0 []string) (int, bool) {
 	return editor.MarkdownFrontmatterEnd(a0)
 }
@@ -1120,18 +1594,24 @@ func MarkdownFrontmatterEnd(a0 []string) (int, bool) {
 // header row with a pipe, a delimiter row with as many cells, then body rows until a blank line or
 // the start of another block (a heading, a quote, a fence, a rule, a list item), a row with no pipe
 // included. 0: no table there.
+//
+// Deprecated: use [editor.MarkdownTableEnd], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func MarkdownTableEnd(a0 []string, a1 int) int {
 	return editor.MarkdownTableEnd(a0, a1)
 }
 
 // MarkdownGFMRow is a table row with its outer pipes, as GFM reads one whose pipes are optional,
 // and how many bytes the opening pipe added before the line's own text (0 or 1).
+//
+// Deprecated: use [editor.MarkdownGFMRow], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func MarkdownGFMRow(a0 string) (string, int) {
 	return editor.MarkdownGFMRow(a0)
 }
 
 // MarkdownQuoteDepth reads a line's blockquote marks: how many '>' (each with the space after it)
 // before its text, and where the text starts.
+//
+// Deprecated: use [editor.MarkdownQuoteDepth], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func MarkdownQuoteDepth(a0 string) (int, int) {
 	return editor.MarkdownQuoteDepth(a0)
 }
@@ -1139,11 +1619,15 @@ func MarkdownQuoteDepth(a0 string) (int, int) {
 // MarkdownStartsIndentedCode reports whether line i starts an indented code block: indented as
 // code, at the top or after a blank line, and not inside a list, where indentation nests an item
 // or continues one.
+//
+// Deprecated: use [editor.MarkdownStartsIndentedCode], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func MarkdownStartsIndentedCode(a0 []string, a1 int) bool {
 	return editor.MarkdownStartsIndentedCode(a0, a1)
 }
 
 // MarkdownIndentedCode reports a line indented as code: four spaces or a tab before any text.
+//
+// Deprecated: use [editor.MarkdownIndentedCode], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func MarkdownIndentedCode(a0 string) bool {
 	return editor.MarkdownIndentedCode(a0)
 }
@@ -1151,30 +1635,40 @@ func MarkdownIndentedCode(a0 string) bool {
 // MarkdownLineAttrs reads one line's Markdown: each byte's attributes, and the line's heading
 // level (0 for none). A list item's marker is the caller's (MarkdownListItem, MarkdownBullet): read
 // the text after it.
+//
+// Deprecated: use [editor.MarkdownLineAttrs], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func MarkdownLineAttrs(a0 string) ([]MarkdownAttr, int) {
 	return editor.MarkdownLineAttrs(a0)
 }
 
 // MarkdownBullet is the glyph a "-", "*" or "+" item is drawn with, by its indentation: two columns
 // a level, a tab four.
+//
+// Deprecated: use [editor.MarkdownBullet], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func MarkdownBullet(a0 string) string {
 	return editor.MarkdownBullet(a0)
 }
 
 // MarkdownTableCells is a table row's cells, each the [start, end) cluster columns of its text,
 // spaces at either end left out; an escaped \| is text. ok is false for a line that is not a row.
+//
+// Deprecated: use [editor.MarkdownTableCells], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func MarkdownTableCells(a0 string) ([][2]int, bool) {
 	return editor.MarkdownTableCells(a0)
 }
 
 // MarkdownDelimiterAligns is a delimiter row's alignment per column: :-- and --- left, :-: centre,
 // --: right. ok is false for a line that is not a delimiter row.
+//
+// Deprecated: use [editor.MarkdownDelimiterAligns], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func MarkdownDelimiterAligns(a0 string) ([]style.Align, bool) {
 	return editor.MarkdownDelimiterAligns(a0)
 }
 
 // TableAt is the table holding line ln: the run of table rows around it (the lines table editing
 // applies on), whose second line is a delimiter row. ok is false off a table.
+//
+// Deprecated: use [editor.TableAt], from github.com/yongjohnlee80/golib/tui/widget/editor.
 func TableAt(a0 *EditorCore, a1 int) (*TableText, bool) {
 	return editor.TableAt(a0, a1)
 }

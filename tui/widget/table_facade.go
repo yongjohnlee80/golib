@@ -10,13 +10,19 @@ import (
 )
 
 // DataTableStyles are DataTable's looks. Zero fields keep the defaults.
+//
+// Deprecated: use [table.DataTableStyles], from github.com/yongjohnlee80/golib/tui/widget/table.
 type DataTableStyles = table.DataTableStyles
 
 // DataTable is the terminal view of a TableCore.
+//
+// Deprecated: use [table.DataTable], from github.com/yongjohnlee80/golib/tui/widget/table.
 type DataTable = table.DataTable
 
 // TableLayoutPointer is a bound layout that places the pointer itself: a pixel layout's rows and
 // fields do not fall on cells. Its points are pixels from the view's top-left.
+//
+// Deprecated: use [table.TableLayoutPointer], from github.com/yongjohnlee80/golib/tui/widget/table.
 type TableLayoutPointer = table.TableLayoutPointer
 
 // TableLayoutHitter is a TableLayoutPointer that tells every part of the table apart, the row
@@ -24,10 +30,14 @@ type TableLayoutPointer = table.TableLayoutPointer
 // which has no gutter: its header row is TableHitHeader, a cell TableHitCell, anything else
 // TableHitNone. CellAt names no header field a press can trust, so a header press there selects
 // nothing and leaves the selection as it is.
+//
+// Deprecated: use [table.TableLayoutHitter], from github.com/yongjohnlee80/golib/tui/widget/table.
 type TableLayoutHitter = table.TableLayoutHitter
 
 // TableColumn describes one column of a [Table]: a header title, a width specification,
 // and a cell extractor function for row items.
+//
+// Deprecated: use [table.TableColumn], from github.com/yongjohnlee80/golib/tui/widget/table.
 type TableColumn[T any] = table.TableColumn[T]
 
 // Table provides a column-structured tabular view atop a virtualized [List].
@@ -106,28 +116,42 @@ type TableColumn[T any] = table.TableColumn[T]
 //		widget.WithEmptyText("No active processes"),
 //	)
 //	table.SetItems(runningProcesses)
+//
+// Deprecated: use [table.Table], from github.com/yongjohnlee80/golib/tui/widget/table.
 type Table[T any] = table.Table[T]
 
 // StyledCell is the stateless display template's answer for one visible cell.
 // The table still owns column geometry; the list still owns cursor/focus.
+//
+// Deprecated: use [table.StyledCell], from github.com/yongjohnlee80/golib/tui/widget/table.
 type StyledCell = table.StyledCell
 
 // TableRevisioner is a source whose content has a revision: two equal revisions are the same
 // content. A TableCore fences an open edit to it.
+//
+// Deprecated: use [table.TableRevisioner], from github.com/yongjohnlee80/golib/tui/widget/table.
 type TableRevisioner = table.TableRevisioner
 
 // TableCommitter is a source that applies a whole edit as one operation: every step validated
 // first, then the text written once (one undo step); false writes nothing.
+//
+// Deprecated: use [table.TableCommitter], from github.com/yongjohnlee80/golib/tui/widget/table.
 type TableCommitter = table.TableCommitter
 
 // TableOp is one edit: an optional new row and/or field, then a cell's value.
+//
+// Deprecated: use [table.TableOp], from github.com/yongjohnlee80/golib/tui/widget/table.
 type TableOp = table.TableOp
 
 // TableCSV is a CSV (comma ',') or TSV ('\t') document in an EditorCore. Loop-owned, as its core.
+//
+// Deprecated: use [table.TableCSV], from github.com/yongjohnlee80/golib/tui/widget/table.
 type TableCSV = table.TableCSV
 
 // TableCellsCommitter is a source that applies a compound edit as one operation: the whole plan
 // validated first, then the text written once (one undo step); false writes nothing.
+//
+// Deprecated: use [table.TableCellsCommitter], from github.com/yongjohnlee80/golib/tui/widget/table.
 type TableCellsCommitter = table.TableCellsCommitter
 
 // TableCellsOp is one compound edit over ONE snapshot of the source.
@@ -142,12 +166,18 @@ type TableCellsCommitter = table.TableCellsCommitter
 //
 // Refused whole, nothing written: a duplicate or out-of-range index, no field left, a cell outside
 // the result, a cell named twice. Repeated insert positions are allowed: they go in list order.
+//
+// Deprecated: use [table.TableCellsOp], from github.com/yongjohnlee80/golib/tui/widget/table.
 type TableCellsOp = table.TableCellsOp
 
 // TableFieldAt is a field inserted before the field At as read.
+//
+// Deprecated: use [table.TableFieldAt], from github.com/yongjohnlee80/golib/tui/widget/table.
 type TableFieldAt = table.TableFieldAt
 
 // TableCell is a cell's new value, in the result's coordinates; Row -1 is a title.
+//
+// Deprecated: use [table.TableCell], from github.com/yongjohnlee80/golib/tui/widget/table.
 type TableCell = table.TableCell
 
 // TableDocument is a document view of a CSV or TSV EditorCore: a DataTable over a TableCore over a
@@ -158,175 +188,295 @@ type TableCell = table.TableCell
 //
 // It holds its DataTable as its one child rather than embedding it: the focus goes into the table,
 // and the table's own methods stay the table's.
+//
+// Deprecated: use [table.TableDocument], from github.com/yongjohnlee80/golib/tui/widget/table.
 type TableDocument = table.TableDocument
 
 // TableBar is the clause a TableFieldCompleter completes for. The two bars read a position
 // differently, so a field two fields share is completed differently in each.
+//
+// Deprecated: use [table.TableBar], from github.com/yongjohnlee80/golib/tui/widget/table.
 type TableBar = table.TableBar
 
 // TableSource is the rows a TableCore shows. Like ListSource it is read on the loop only, and Cell
 // must be cheap and non-blocking: a source fetches elsewhere and serves from memory. Any change to
 // the fields, Len or a cell is followed, in the same loop callback, by TableCore.Changed.
+//
+// Deprecated: use [table.TableSource], from github.com/yongjohnlee80/golib/tui/widget/table.
 type TableSource = table.TableSource
 
 // TablePager is a source with rows still to load.
+//
+// Deprecated: use [table.TablePager], from github.com/yongjohnlee80/golib/tui/widget/table.
 type TablePager = table.TablePager
 
 // TableEditor is a source whose cells and shape can change. Each method is one undo step in the
 // source; ok false refuses.
+//
+// Deprecated: use [table.TableEditor], from github.com/yongjohnlee80/golib/tui/widget/table.
 type TableEditor = table.TableEditor
 
 // TableLayout is how a TableCore reaches its view, in the view's own units.
+//
+// Deprecated: use [table.TableLayout], from github.com/yongjohnlee80/golib/tui/widget/table.
 type TableLayout = table.TableLayout
 
 // TablePos is a cell: a display row and a field.
+//
+// Deprecated: use [table.TablePos], from github.com/yongjohnlee80/golib/tui/widget/table.
 type TablePos = table.TablePos
 
 // TableOption configures a TableCore.
+//
+// Deprecated: use [table.TableOption], from github.com/yongjohnlee80/golib/tui/widget/table.
 type TableOption = table.TableOption
 
 // TableCopyFormat is the text a table's copies are written in, and its register's pastes read
 // back in. A paste from outside the table (a PasteEvent: a spreadsheet's cells) is TSV whatever it
 // is.
+//
+// Deprecated: use [table.TableCopyFormat], from github.com/yongjohnlee80/golib/tui/widget/table.
 type TableCopyFormat = table.TableCopyFormat
 
 // TableCore holds a table's behaviour apart from any view.
+//
+// Deprecated: use [table.TableCore], from github.com/yongjohnlee80/golib/tui/widget/table.
 type TableCore = table.TableCore
 
 // TableLayoutFields is a layout that scrolls its fields sideways: Shift+wheel and a horizontal
 // wheel.
+//
+// Deprecated: use [table.TableLayoutFields], from github.com/yongjohnlee80/golib/tui/widget/table.
 type TableLayoutFields = table.TableLayoutFields
 
 // TableRegisterStore is where a table's yanks go and its pastes come from. EditorCore is one.
+//
+// Deprecated: use [table.TableRegisterStore], from github.com/yongjohnlee80/golib/tui/widget/table.
 type TableRegisterStore = table.TableRegisterStore
 
 // TablePasteKind is how a paste writes.
+//
+// Deprecated: use [table.TablePasteKind], from github.com/yongjohnlee80/golib/tui/widget/table.
 type TablePasteKind = table.TablePasteKind
 
 // TableReadOnlySource is a source that can say it may not be edited now: a parse error, a limit.
+//
+// Deprecated: use [table.TableReadOnlySource], from github.com/yongjohnlee80/golib/tui/widget/table.
 type TableReadOnlySource = table.TableReadOnlySource
 
 // TableEdit is the cell being edited.
+//
+// Deprecated: use [table.TableEdit], from github.com/yongjohnlee80/golib/tui/widget/table.
 type TableEdit = table.TableEdit
 
 // TableRowKind is what a drawn row is: one of the core's display rows, o's new row not yet in the
 // source, or the empty row after the last (TableAppendEdges).
+//
+// Deprecated: use [table.TableRowKind], from github.com/yongjohnlee80/golib/tui/widget/table.
 type TableRowKind = table.TableRowKind
 
 // TableSelectKind is what a selection covers between the anchor and the cursor.
+//
+// Deprecated: use [table.TableSelectKind], from github.com/yongjohnlee80/golib/tui/widget/table.
 type TableSelectKind = table.TableSelectKind
 
 // TableHit is where a pointer is over a table.
+//
+// Deprecated: use [table.TableHit], from github.com/yongjohnlee80/golib/tui/widget/table.
 type TableHit = table.TableHit
 
 // TableSortKey is one field of a sort and its direction.
+//
+// Deprecated: use [table.TableSortKey], from github.com/yongjohnlee80/golib/tui/widget/table.
 type TableSortKey = table.TableSortKey
 
 // TableKinds is a TableSource that knows each cell's kind; Kind is read on the loop, for a source
 // row and a field, as Cell is. Without it every cell is text, ordered by kit.CompareCells.
+//
+// Deprecated: use [table.TableKinds], from github.com/yongjohnlee80/golib/tui/widget/table.
 type TableKinds = table.TableKinds
 
 // TableCellKind is what a cell holds, as one byte. A byte that is none of these is text.
+//
+// Deprecated: use [table.TableCellKind], from github.com/yongjohnlee80/golib/tui/widget/table.
 type TableCellKind = table.TableCellKind
 
 // TableBarError is text a table bar could not read (ParseTableOrder, ParseTableWhere): Offset is the
 // byte of the token at fault (len(text) when the text ended too soon), Msg what is wrong with it.
+//
+// Deprecated: use [table.TableBarError], from github.com/yongjohnlee80/golib/tui/widget/table.
 type TableBarError = table.TableBarError
 
 // TableTruth is a predicate's answer for one row: one of SQL's three values. The order false <
 // unknown < true is the one AND (the least) and OR (the greatest) take.
+//
+// Deprecated: use [table.TableTruth], from github.com/yongjohnlee80/golib/tui/widget/table.
 type TableTruth = table.TableTruth
 
 // TablePredicate is a filter over a table's rows (TableCore.SetFilter). Eval is the predicate on
 // source row r of src, read on the loop as Cell is; a row is shown only when it is TableTrue.
+//
+// Deprecated: use [table.TablePredicate], from github.com/yongjohnlee80/golib/tui/widget/table.
 type TablePredicate = table.TablePredicate
 
 const (
 	// TableScope is a table's keys (TableCore: DataTable, and the GUI's table).
+	//
+	// Deprecated: use [table.TableScope], from github.com/yongjohnlee80/golib/tui/widget/table.
 	TableScope = table.TableScope
 	// TableFieldScope is the keys of a table cell's open field (TableEdit), before its TextArea's.
+	//
+	// Deprecated: use [table.TableFieldScope], from github.com/yongjohnlee80/golib/tui/widget/table.
 	TableFieldScope = table.TableFieldScope
-	TableOrderBar   = table.TableOrderBar
-	TableWhereBar   = table.TableWhereBar
+	// Deprecated: use [table.TableOrderBar], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TableOrderBar = table.TableOrderBar
+	// Deprecated: use [table.TableWhereBar], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TableWhereBar = table.TableWhereBar
 	// TableCopyTSV is tab-separated: an editable table's quoted as EncodeTableText has it, a
 	// read-only table's values joined by tabs. The default.
+	//
+	// Deprecated: use [table.TableCopyTSV], from github.com/yongjohnlee80/golib/tui/widget/table.
 	TableCopyTSV = table.TableCopyTSV
 	// TableCopyCSV is comma-separated, quoted as RFC 4180 has it, editable or not.
-	TableCopyCSV    = table.TableCopyCSV
+	//
+	// Deprecated: use [table.TableCopyCSV], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TableCopyCSV = table.TableCopyCSV
+	// Deprecated: use [table.TablePasteBlock], from github.com/yongjohnlee80/golib/tui/widget/table.
 	TablePasteBlock = table.TablePasteBlock
-	TablePasteRows  = table.TablePasteRows
-	TableRowData    = table.TableRowData
+	// Deprecated: use [table.TablePasteRows], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TablePasteRows = table.TablePasteRows
+	// Deprecated: use [table.TableRowData], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TableRowData = table.TableRowData
+	// Deprecated: use [table.TableRowPending], from github.com/yongjohnlee80/golib/tui/widget/table.
 	TableRowPending = table.TableRowPending
-	TableRowEdge    = table.TableRowEdge
+	// Deprecated: use [table.TableRowEdge], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TableRowEdge = table.TableRowEdge
 	// TableSelectCells (v) is the anchor's cell to the cursor's in reading order, as vim's
 	// charwise Visual: the first row from its field to the last field, the rows between whole,
 	// the last row up to its field.
+	//
+	// Deprecated: use [table.TableSelectCells], from github.com/yongjohnlee80/golib/tui/widget/table.
 	TableSelectCells = table.TableSelectCells
 	// TableSelectRows (V) is whole rows, the anchor's row to the cursor's.
+	//
+	// Deprecated: use [table.TableSelectRows], from github.com/yongjohnlee80/golib/tui/widget/table.
 	TableSelectRows = table.TableSelectRows
 	// TableSelectBlock (Ctrl+V) is the rectangle with the anchor and the cursor at its corners.
+	//
+	// Deprecated: use [table.TableSelectBlock], from github.com/yongjohnlee80/golib/tui/widget/table.
 	TableSelectBlock = table.TableSelectBlock
-	TableHitNone     = table.TableHitNone
-	TableHitCell     = table.TableHitCell
-	TableHitHeader   = table.TableHitHeader
-	TableHitGutter   = table.TableHitGutter
-	TableCellText    = table.TableCellText
-	TableCellNull    = table.TableCellNull
-	TableCellNumber  = table.TableCellNumber
-	TableCellBool    = table.TableCellBool
-	TableCellJSON    = table.TableCellJSON
-	TableFalse       = table.TableFalse
-	TableUnknown     = table.TableUnknown
-	TableTrue        = table.TableTrue
+	// Deprecated: use [table.TableHitNone], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TableHitNone = table.TableHitNone
+	// Deprecated: use [table.TableHitCell], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TableHitCell = table.TableHitCell
+	// Deprecated: use [table.TableHitHeader], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TableHitHeader = table.TableHitHeader
+	// Deprecated: use [table.TableHitGutter], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TableHitGutter = table.TableHitGutter
+	// Deprecated: use [table.TableCellText], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TableCellText = table.TableCellText
+	// Deprecated: use [table.TableCellNull], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TableCellNull = table.TableCellNull
+	// Deprecated: use [table.TableCellNumber], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TableCellNumber = table.TableCellNumber
+	// Deprecated: use [table.TableCellBool], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TableCellBool = table.TableCellBool
+	// Deprecated: use [table.TableCellJSON], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TableCellJSON = table.TableCellJSON
+	// Deprecated: use [table.TableFalse], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TableFalse = table.TableFalse
+	// Deprecated: use [table.TableUnknown], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TableUnknown = table.TableUnknown
+	// Deprecated: use [table.TableTrue], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TableTrue = table.TableTrue
 )
 
 // The forwarded vars are table's values, copied: read them, never assign one, since
 // table's widgets read table's.
 var (
-	TableUp          = table.TableUp
-	TableDown        = table.TableDown
-	TableLeft        = table.TableLeft
-	TableRight       = table.TableRight
-	TableFieldNext   = table.TableFieldNext
-	TableFieldPrev   = table.TableFieldPrev
-	TablePageUp      = table.TablePageUp
-	TablePageDown    = table.TablePageDown
-	TableGoPrefix    = table.TableGoPrefix
-	TableLast        = table.TableLast
-	TableFieldFirst  = table.TableFieldFirst
-	TableFieldLast   = table.TableFieldLast
-	TableVisual      = table.TableVisual
-	TableVisualRows  = table.TableVisualRows
+	// Deprecated: use [table.TableUp], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TableUp = table.TableUp
+	// Deprecated: use [table.TableDown], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TableDown = table.TableDown
+	// Deprecated: use [table.TableLeft], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TableLeft = table.TableLeft
+	// Deprecated: use [table.TableRight], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TableRight = table.TableRight
+	// Deprecated: use [table.TableFieldNext], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TableFieldNext = table.TableFieldNext
+	// Deprecated: use [table.TableFieldPrev], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TableFieldPrev = table.TableFieldPrev
+	// Deprecated: use [table.TablePageUp], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TablePageUp = table.TablePageUp
+	// Deprecated: use [table.TablePageDown], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TablePageDown = table.TablePageDown
+	// Deprecated: use [table.TableGoPrefix], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TableGoPrefix = table.TableGoPrefix
+	// Deprecated: use [table.TableLast], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TableLast = table.TableLast
+	// Deprecated: use [table.TableFieldFirst], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TableFieldFirst = table.TableFieldFirst
+	// Deprecated: use [table.TableFieldLast], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TableFieldLast = table.TableFieldLast
+	// Deprecated: use [table.TableVisual], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TableVisual = table.TableVisual
+	// Deprecated: use [table.TableVisualRows], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TableVisualRows = table.TableVisualRows
+	// Deprecated: use [table.TableVisualBlock], from github.com/yongjohnlee80/golib/tui/widget/table.
 	TableVisualBlock = table.TableVisualBlock
-	TableEscape      = table.TableEscape
-	TableYank        = table.TableYank
-	TableRowCursor   = table.TableRowCursor
-	TableSort        = table.TableSort
-	TableActivate    = table.TableActivate
+	// Deprecated: use [table.TableEscape], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TableEscape = table.TableEscape
+	// Deprecated: use [table.TableYank], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TableYank = table.TableYank
+	// Deprecated: use [table.TableRowCursor], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TableRowCursor = table.TableRowCursor
+	// Deprecated: use [table.TableSort], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TableSort = table.TableSort
+	// Deprecated: use [table.TableActivate], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TableActivate = table.TableActivate
 	// An editable source's: open the cell's field, a new row below, delete the
 	// row (d, then d), empty the cell.
-	TableEditCell  = table.TableEditCell
-	TableOpenRow   = table.TableOpenRow
+	//
+	// Deprecated: use [table.TableEditCell], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TableEditCell = table.TableEditCell
+	// Deprecated: use [table.TableOpenRow], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TableOpenRow = table.TableOpenRow
+	// Deprecated: use [table.TableDeleteRow], from github.com/yongjohnlee80/golib/tui/widget/table.
 	TableDeleteRow = table.TableDeleteRow
+	// Deprecated: use [table.TableClearCell], from github.com/yongjohnlee80/golib/tui/widget/table.
 	TableClearCell = table.TableClearCell
 	// p and P paste the register after and before; O opens a row above, as o below.
-	TablePasteAfter    = table.TablePasteAfter
-	TablePasteBefore   = table.TablePasteBefore
-	TableOpenRowAbove  = table.TableOpenRowAbove
-	TableFieldKeep     = table.TableFieldKeep
-	TableFieldNewline  = table.TableFieldNewline
+	//
+	// Deprecated: use [table.TablePasteAfter], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TablePasteAfter = table.TablePasteAfter
+	// Deprecated: use [table.TablePasteBefore], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TablePasteBefore = table.TablePasteBefore
+	// Deprecated: use [table.TableOpenRowAbove], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TableOpenRowAbove = table.TableOpenRowAbove
+	// Deprecated: use [table.TableFieldKeep], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TableFieldKeep = table.TableFieldKeep
+	// Deprecated: use [table.TableFieldNewline], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TableFieldNewline = table.TableFieldNewline
+	// Deprecated: use [table.TableFieldNextCell], from github.com/yongjohnlee80/golib/tui/widget/table.
 	TableFieldNextCell = table.TableFieldNextCell
+	// Deprecated: use [table.TableFieldPrevCell], from github.com/yongjohnlee80/golib/tui/widget/table.
 	TableFieldPrevCell = table.TableFieldPrevCell
-	TableFieldDrop     = table.TableFieldDrop
-	TableFieldLiteral  = table.TableFieldLiteral
+	// Deprecated: use [table.TableFieldDrop], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TableFieldDrop = table.TableFieldDrop
+	// Deprecated: use [table.TableFieldLiteral], from github.com/yongjohnlee80/golib/tui/widget/table.
+	TableFieldLiteral = table.TableFieldLiteral
 )
 
 // TableCellLine is a cell's value as a table's one-line cell shows it: a newline as ⏎, a tab as →.
+//
+// Deprecated: use [table.TableCellLine], from github.com/yongjohnlee80/golib/tui/widget/table.
 func TableCellLine(a0 string) string {
 	return table.TableCellLine(a0)
 }
 
 // NewDataTable is a view of core, laid out in cells until a backend binds another layout.
+//
+// Deprecated: use [table.NewDataTable], from github.com/yongjohnlee80/golib/tui/widget/table.
 func NewDataTable(a0 *TableCore) *DataTable {
 	return table.NewDataTable(a0)
 }
@@ -334,6 +484,8 @@ func NewDataTable(a0 *TableCore) *DataTable {
 // NewTable builds a table from column definitions. NO COLUMNS is a table too,
 // as a Qt model with none is: an empty header and blank rows — a query that
 // returned no columns, or columns not known yet.
+//
+// Deprecated: use [table.NewTable], from github.com/yongjohnlee80/golib/tui/widget/table.
 func NewTable[T any](a0 []TableColumn[T], a1 ...core.ListOption[T]) *Table[T] {
 	return table.NewTable[T](a0, a1...)
 }
@@ -341,6 +493,8 @@ func NewTable[T any](a0 []TableColumn[T], a1 ...core.ListOption[T]) *Table[T] {
 // EncodeTableText is rows as quoted TSV: each row written as TableCSV writes a record (a lone
 // empty cell as ""), joined by "\n", with no final line ending. A value with no tab, newline,
 // quote or leading space is written as it is.
+//
+// Deprecated: use [table.EncodeTableText], from github.com/yongjohnlee80/golib/tui/widget/table.
 func EncodeTableText(a0 [][]string) string {
 	return table.EncodeTableText(a0)
 }
@@ -350,6 +504,8 @@ func EncodeTableText(a0 [][]string) string {
 // record holds is blank (the reader skips those) and is a row of one empty cell, found as the file
 // reader finds a record's span: from its first field's line (FieldPos) to its end (InputOffset), so
 // a blank line inside a quoted value stays in its cell. A parse error is returned with no rows.
+//
+// Deprecated: use [table.DecodeTableText], from github.com/yongjohnlee80/golib/tui/widget/table.
 func DecodeTableText(a0 string) ([][]string, error) {
 	return table.DecodeTableText(a0)
 }
@@ -357,12 +513,16 @@ func DecodeTableText(a0 string) ([][]string, error) {
 // NewTableCSV reads core as CSV (comma ',') or TSV ('\t'). A delimiter encoding/csv cannot use
 // (a quote, a line break, NUL, an invalid rune) is a programmer error and panics: read with it,
 // every record would fail, and written with it, every edit would write nothing.
+//
+// Deprecated: use [table.NewTableCSV], from github.com/yongjohnlee80/golib/tui/widget/table.
 func NewTableCSV(a0 *editor.EditorCore, a1 rune) *TableCSV {
 	return table.NewTableCSV(a0, a1)
 }
 
 // NewTableDocument is a table view of ed's text, read as CSV (comma ',') or TSV ('\t'). opts are
 // the TableCore's, after TableAppendEdges.
+//
+// Deprecated: use [table.NewTableDocument], from github.com/yongjohnlee80/golib/tui/widget/table.
 func NewTableDocument(a0 *editor.EditorCore, a1 rune, a2 ...TableOption) *TableDocument {
 	return table.NewTableDocument(a0, a1, a2...)
 }
@@ -370,6 +530,8 @@ func NewTableDocument(a0 *editor.EditorCore, a1 rune, a2 ...TableOption) *TableD
 // TableRevealRow is the first row a table body of body rows shows once row is in it: top kept
 // within the count rows (rows gone leave no blank below the last), then moved just far enough, up
 // or down, and never above row 0.
+//
+// Deprecated: use [table.TableRevealRow], from github.com/yongjohnlee80/golib/tui/widget/table.
 func TableRevealRow(a0, a1, a2, a3 int) int {
 	return table.TableRevealRow(a0, a1, a2, a3)
 }
@@ -377,6 +539,8 @@ func TableRevealRow(a0, a1, a2, a3 int) int {
 // TableRevealField is the first field shown once field col shows whole: left moved back to col when
 // col is before it, or on, one field at a time, while fits(left, col) says the fields left..col do
 // not fit the view. fits is the view's own measure: cells, or pixels.
+//
+// Deprecated: use [table.TableRevealField], from github.com/yongjohnlee80/golib/tui/widget/table.
 func TableRevealField(a0, a1 int, a2 func(from, to int) bool) int {
 	return table.TableRevealField(a0, a1, a2)
 }
@@ -384,6 +548,8 @@ func TableRevealField(a0, a1 int, a2 func(from, to int) bool) int {
 // TableFieldName is a field's title as ParseTableOrder and ParseTableWhere both read it back: bare
 // when it can be, else in double quotes ("" for a quote inside). A title two fields share reads
 // back as an error either way, which names their positions.
+//
+// Deprecated: use [table.TableFieldName], from github.com/yongjohnlee80/golib/tui/widget/table.
 func TableFieldName(a0 string) string {
 	return table.TableFieldName(a0)
 }
@@ -395,11 +561,15 @@ func TableFieldName(a0 string) string {
 // matches a field by its title or by what the bar writes for it, and one opened with a double
 // quote matches past the quote. It offers nothing for an empty word, inside a 'string', or where
 // a value is due: after a comparison's operator or LIKE.
+//
+// Deprecated: use [table.TableFieldCompleter], from github.com/yongjohnlee80/golib/tui/widget/table.
 func TableFieldCompleter(a0 TableBar, a1 func() []core.TableField) core.TextCompleter {
 	return table.TableFieldCompleter(a0, a1)
 }
 
 // TableSortable lets the s key sort the loaded rows by the cursor's field.
+//
+// Deprecated: use [table.TableSortable], from github.com/yongjohnlee80/golib/tui/widget/table.
 func TableSortable(a0 bool) TableOption {
 	return table.TableSortable(a0)
 }
@@ -407,18 +577,24 @@ func TableSortable(a0 bool) TableOption {
 // TableRowNumbers shows each display row's number, counted from 1, in a gutter before the first
 // field. A view draws it; the core only says whether it is on (RowNumbers) and how many digits the
 // widest number has (RowNumberDigits).
+//
+// Deprecated: use [table.TableRowNumbers], from github.com/yongjohnlee80/golib/tui/widget/table.
 func TableRowNumbers(a0 bool) TableOption {
 	return table.TableRowNumbers(a0)
 }
 
 // TableCopyAs is the format a table's copies are written in (TableCopyTSV, the default, or
 // TableCopyCSV). A format that is neither is a programmer error, refused as the core is built.
+//
+// Deprecated: use [table.TableCopyAs], from github.com/yongjohnlee80/golib/tui/widget/table.
 func TableCopyAs(a0 TableCopyFormat) TableOption {
 	return table.TableCopyAs(a0)
 }
 
 // TableOnSort is called with the sort keys whenever the sort changes: SortKeys, SortBy, the s key,
 // or a new source or a removed field ending it. Rows merged into an unchanged sort call nothing.
+//
+// Deprecated: use [table.TableOnSort], from github.com/yongjohnlee80/golib/tui/widget/table.
 func TableOnSort(a0 func(keys []TableSortKey)) TableOption {
 	return table.TableOnSort(a0)
 }
@@ -426,11 +602,15 @@ func TableOnSort(a0 func(keys []TableSortKey)) TableOption {
 // TableCopyLimit bounds what Copy and the y keys put on the clipboard, in bytes: a copy longer
 // than that copies nothing, and TableOnCopyRefused hears of it, so the host can say why. 0, the
 // default, is no limit.
+//
+// Deprecated: use [table.TableCopyLimit], from github.com/yongjohnlee80/golib/tui/widget/table.
 func TableCopyLimit(a0 int) TableOption {
 	return table.TableCopyLimit(a0)
 }
 
 // TableOnCopyRefused is called with the limit when a copy past TableCopyLimit copied nothing.
+//
+// Deprecated: use [table.TableOnCopyRefused], from github.com/yongjohnlee80/golib/tui/widget/table.
 func TableOnCopyRefused(a0 func(limit int)) TableOption {
 	return table.TableOnCopyRefused(a0)
 }
@@ -438,6 +618,8 @@ func TableOnCopyRefused(a0 func(limit int)) TableOption {
 // TableOnCopy receives text copied with y, yy or Copy, after the copy limit has accepted it.
 // A host can keep its editor register in step with the system clipboard. The callback is also
 // a copy target when a backend has no clipboard; invoking it counts as delivery to the host.
+//
+// Deprecated: use [table.TableOnCopy], from github.com/yongjohnlee80/golib/tui/widget/table.
 func TableOnCopy(a0 func(text string)) TableOption {
 	return table.TableOnCopy(a0)
 }
@@ -446,17 +628,23 @@ func TableOnCopy(a0 func(text string)) TableOption {
 // opens: a cell (the cursor moves there), a row's number (its row), a title (its field). Off, the
 // default, the selection stays wherever the press was, for the menu's rows to act on (the results
 // tables of AutoDoc rely on it). TableDocument turns it on.
+//
+// Deprecated: use [table.TableMenuSelects], from github.com/yongjohnlee80/golib/tui/widget/table.
 func TableMenuSelects(a0 bool) TableOption {
 	return table.TableMenuSelects(a0)
 }
 
 // TableFetchAhead is how near the end of the loaded rows, in rows, the cursor asks a pager for
 // more, and how many it asks for; at least 1.
+//
+// Deprecated: use [table.TableFetchAhead], from github.com/yongjohnlee80/golib/tui/widget/table.
 func TableFetchAhead(a0 int) TableOption {
 	return table.TableFetchAhead(a0)
 }
 
 // TableOnActivate is called with the source row under the cursor when Enter is pressed.
+//
+// Deprecated: use [table.TableOnActivate], from github.com/yongjohnlee80/golib/tui/widget/table.
 func TableOnActivate(a0 func(row int)) TableOption {
 	return table.TableOnActivate(a0)
 }
@@ -465,28 +653,38 @@ func TableOnActivate(a0 func(row int)) TableOption {
 // a new source, rows arriving under a sort. A sort that keeps the cursor on its row calls nothing.
 // It may replace the source (SetSource) or change it in place: the operation that moved the cursor
 // does nothing more on the old rows.
+//
+// Deprecated: use [table.TableOnCursor], from github.com/yongjohnlee80/golib/tui/widget/table.
 func TableOnCursor(a0 func(row int)) TableOption {
 	return table.TableOnCursor(a0)
 }
 
 // NewTableCore is a core over src, which may be nil until SetSource.
+//
+// Deprecated: use [table.NewTableCore], from github.com/yongjohnlee80/golib/tui/widget/table.
 func NewTableCore(a0 TableSource, a1 ...TableOption) *TableCore {
 	return table.NewTableCore(a0, a1...)
 }
 
 // TableRegister gives the core the host's register; without it the core keeps one of its own.
+//
+// Deprecated: use [table.TableRegister], from github.com/yongjohnlee80/golib/tui/widget/table.
 func TableRegister(a0 TableRegisterStore) TableOption {
 	return table.TableRegister(a0)
 }
 
 // TableOnPasteClipped is called once when a paste was cut off at the table's edge: rows past the
 // last in a view that cannot grow, fields past the last.
+//
+// Deprecated: use [table.TableOnPasteClipped], from github.com/yongjohnlee80/golib/tui/widget/table.
 func TableOnPasteClipped(a0 func()) TableOption {
 	return table.TableOnPasteClipped(a0)
 }
 
 // TableAppendEdges shows one empty row after the last and one empty field after the last, to type
 // into, on a source that is a TableCommitter; on any other it does nothing.
+//
+// Deprecated: use [table.TableAppendEdges], from github.com/yongjohnlee80/golib/tui/widget/table.
 func TableAppendEdges() TableOption {
 	return table.TableAppendEdges()
 }
@@ -494,6 +692,8 @@ func TableAppendEdges() TableOption {
 // TableOnEditDropped is told when an open edit is dropped by a change under it (the source's
 // revision moving, a sort, a filter, a new source, CancelEdit) or refused by the source: a host says
 // so ("the table changed; the edit was dropped").
+//
+// Deprecated: use [table.TableOnEditDropped], from github.com/yongjohnlee80/golib/tui/widget/table.
 func TableOnEditDropped(a0 func()) TableOption {
 	return table.TableOnEditDropped(a0)
 }
@@ -501,6 +701,8 @@ func TableOnEditDropped(a0 func()) TableOption {
 // TableKeysFirst is asked for each key the table's own commands leave, while no field is open,
 // before typing opens a cell with it: the host's actions on that key win (a document view's undo
 // and redo). True takes the key.
+//
+// Deprecated: use [table.TableKeysFirst], from github.com/yongjohnlee80/golib/tui/widget/table.
 func TableKeysFirst(a0 func(k tui.KeyEvent) bool) TableOption {
 	return table.TableKeysFirst(a0)
 }
@@ -509,6 +711,8 @@ func TableKeysFirst(a0 func(k tui.KeyEvent) bool) TableOption {
 // exactly; failing that, the one field whose title matches it case-insensitively. A name two
 // fields share is an error that names their positions, so the user can write one. Text of only
 // spaces is no sort: nil keys and no error.
+//
+// Deprecated: use [table.ParseTableOrder], from github.com/yongjohnlee80/golib/tui/widget/table.
 func ParseTableOrder(a0 string, a1 []core.TableField) ([]TableSortKey, error) {
 	return table.ParseTableOrder(a0, a1)
 }
@@ -516,6 +720,8 @@ func ParseTableOrder(a0 string, a1 []core.TableField) ([]TableSortKey, error) {
 // FormatTableOrder writes keys as ParseTableOrder reads them back: `name ASC, "a name" DESC`. A
 // field's name is quoted when it would not read back bare, and a name two fields share is written
 // as its position. Keys on fields that fields lacks are left out.
+//
+// Deprecated: use [table.FormatTableOrder], from github.com/yongjohnlee80/golib/tui/widget/table.
 func FormatTableOrder(a0 []TableSortKey, a1 []core.TableField) string {
 	return table.FormatTableOrder(a0, a1)
 }
@@ -537,6 +743,8 @@ func FormatTableOrder(a0 []TableSortKey, a1 []core.TableField) string {
 // big.Rat, never a float64. A source without kinds is all text: no cell is NULL, so IS NULL is true
 // for none. IS [NOT] NULL is never unknown. LIKE matches a non-NULL cell's text, case-sensitive: %
 // is any run of characters, _ one character, and \ makes the next character itself.
+//
+// Deprecated: use [table.ParseTableWhere], from github.com/yongjohnlee80/golib/tui/widget/table.
 func ParseTableWhere(a0 string, a1 []core.TableField) (TablePredicate, error) {
 	return table.ParseTableWhere(a0, a1)
 }

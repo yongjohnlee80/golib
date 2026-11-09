@@ -11,6 +11,24 @@ import "github.com/yongjohnlee80/golib/tui/widget"
 
 Dependency footprint: standard library + `golib/tui` + `golib/tui/style` only.
 
+## Where the widgets live
+
+The widgets live in packages of their own. `tui/widget` forwards every name
+they export, each marked `Deprecated`, so a program importing it still
+compiles; new code imports the package a widget lives in:
+
+| Package              | Holds                                                         |
+| -------------------- | ------------------------------------------------------------- |
+| `tui/widget/core`    | `Base`, `Box`, the overlays, menus, controls, lists, tabs, windows |
+| `tui/widget/editor`  | `Editor` and `EditorCore`, the command line, the Markdown cells |
+| `tui/widget/table`   | `Table`, `DataTable` and their sources                        |
+| `tui/widget/files`   | the file list, the open and save views, the tree              |
+| `tui/widget/htmlview`| the HTML view and its images                                  |
+| `tui/widget/terminal`| the PTY terminal and its tabs                                 |
+
+A forwarded type is an alias, so `%T` prints the package it lives in
+(`*core.Box`), not `widget`. The names below are the same in either path.
+
 ---
 
 ## Complete Widget Inventory
