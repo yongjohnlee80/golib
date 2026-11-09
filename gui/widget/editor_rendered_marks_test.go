@@ -9,7 +9,7 @@ import (
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/tui/style"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // The window's Rendered view lays the core's overlay under its text, as Raw's highlighting shows
@@ -17,14 +17,14 @@ import (
 // (SetHighlightOverlay) show too. On a sepia page and on a dark one.
 func TestTheWindowsRenderedViewMarksEveryMatch(t *testing.T) {
 	h := startEditor(t, 60, 8, WithRenderer(NewMarkdownRenderer()),
-		WithCore(tuiwidget.CoreInitialText("# Head\n\nalpha beta alpha")))
+		WithCore(editor.CoreInitialText("# Head\n\nalpha beta alpha")))
 	red, blue := color.NRGBA{R: 200, A: 0x66}, color.NRGBA{B: 200, A: 0x66} // the tint's opacity, markAlpha
-	var st tuiwidget.SyntaxStyles
+	var st editor.SyntaxStyles
 	st[highlight.Alert] = style.New().Foreground(style.RGB(200, 0, 0))
 	st[highlight.Keyword] = style.New().Foreground(style.RGB(0, 0, 200))
 	h.onLoop(func() {
 		h.e.core.SetSyntaxStyles(st)
-		h.e.SetView(tuiwidget.ViewRendered)
+		h.e.SetView(editor.ViewRendered)
 	})
 	for _, page := range []struct {
 		name    string
@@ -54,11 +54,11 @@ func TestTheWindowsRenderedViewMarksEveryMatch(t *testing.T) {
 			})
 			return reds, blues
 		}
-		h.onLoop(func() { h.e.core.SetFind("", tuiwidget.FindOptions{}); h.e.core.SetHighlightOverlay(nil) })
+		h.onLoop(func() { h.e.core.SetFind("", editor.FindOptions{}); h.e.core.SetHighlightOverlay(nil) })
 		if r, b := tints(); len(r)+len(b) != 0 {
 			t.Fatalf("%s, no find: %d red and %d blue tints, want none", page.name, len(r), len(b))
 		}
-		h.onLoop(func() { h.e.core.SetFind("alpha", tuiwidget.FindOptions{}) })
+		h.onLoop(func() { h.e.core.SetFind("alpha", editor.FindOptions{}) })
 		r, b := tints()
 		if len(r) != 2 || len(b) != 0 || !(r[0] < r[1]) {
 			t.Fatalf("%s, a find of alpha: red tints at %v, blue %v; want two red (both matches), none blue", page.name, r, b)
@@ -85,15 +85,15 @@ func TestTheWindowsRenderedViewMarksEveryMatch(t *testing.T) {
 // dark one.
 func TestTheWindowsMarksSitBetweenTheBlockAndTheSelection(t *testing.T) {
 	h := startEditor(t, 60, 10, WithRenderer(NewMarkdownRenderer()),
-		WithCore(tuiwidget.CoreInitialText("| alpha | b |\n| --- | --- |\n| c | d |\n\nalpha beta `alpha`")))
+		WithCore(editor.CoreInitialText("| alpha | b |\n| --- | --- |\n| c | d |\n\nalpha beta `alpha`")))
 	red := color.NRGBA{R: 200, A: 0x66}
-	var st tuiwidget.SyntaxStyles
+	var st editor.SyntaxStyles
 	st[highlight.Alert] = style.New().Foreground(style.RGB(200, 0, 0))
 	h.onLoop(func() {
 		h.e.core.SetSyntaxStyles(st)
-		h.e.SetView(tuiwidget.ViewRendered)
-		h.e.core.SetFind("alpha", tuiwidget.FindOptions{})
-		h.e.core.SetCurrentMatch(tuiwidget.TextRange{From: tuiwidget.TextPos{Line: 4}, To: tuiwidget.TextPos{Line: 4, Col: 5}})
+		h.e.SetView(editor.ViewRendered)
+		h.e.core.SetFind("alpha", editor.FindOptions{})
+		h.e.core.SetCurrentMatch(editor.TextRange{From: editor.TextPos{Line: 4}, To: editor.TextPos{Line: 4, Col: 5}})
 	})
 	overlaps := func(a, b gui.Rect) bool { // by more than an edge
 		const e = 0.5

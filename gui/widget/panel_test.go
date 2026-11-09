@@ -11,7 +11,7 @@ import (
 	"github.com/yongjohnlee80/golib/gui"
 	gw "github.com/yongjohnlee80/golib/gui/widget"
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 type panelHarness struct {
@@ -30,12 +30,12 @@ func startPanel(t *testing.T, at tui.Rect, opts ...gw.PanelOption) *panelHarness
 // startPanelOn floats a panel titled Notes at at, over a background, on a backend reporting caps.
 func startPanelOn(t *testing.T, caps tui.Capabilities, at tui.Rect, opts ...gw.PanelOption) *panelHarness {
 	t.Helper()
-	panel := gw.NewPanel(widget.NewText("content"), append([]gw.PanelOption{gw.WithTitle("Notes")}, opts...)...)
-	float := widget.NewFloat(panel)
+	panel := gw.NewPanel(core.NewText("content"), append([]gw.PanelOption{gw.WithTitle("Notes")}, opts...)...)
+	float := core.NewFloat(panel)
 	bg := tui.NewStack()
-	bg.AddAt(widget.NewText("background"), 0, 0)
-	bg.AddAt(widget.NewText("under the panel"), 5, 4)
-	host := widget.NewOverlayHost(bg)
+	bg.AddAt(core.NewText("background"), 0, 0)
+	bg.AddAt(core.NewText("under the panel"), 5, 4)
+	host := core.NewOverlayHost(bg)
 	tb := tui.NewTestBackend(60, 20, tui.WithTestCapabilities(caps))
 	app := tui.NewApp(host, tui.WithBackend(tb))
 	ctx, cancel := context.WithCancel(context.Background())
@@ -174,10 +174,10 @@ func TestPanelWithoutTheOptionsStaysPut(t *testing.T) {
 
 func TestPanelControls(t *testing.T) {
 	var closed atomic.Bool
-	dock := widget.NewMinimizedWindows()
+	dock := core.NewMinimizedWindows()
 	h := startPanel(t, tui.Rect{X: 2, Y: 2, W: 30, H: 6},
 		gw.WithClosable(func() { closed.Store(true) }), gw.WithMaximizable(),
-		gw.WithWindowCapabilities(widget.WithWindowMinimize(dock)))
+		gw.WithWindowCapabilities(core.WithWindowMinimize(dock)))
 	title := h.row(2)
 	for _, c := range []string{"[x]", "[□]", "[_]"} {
 		if !strings.Contains(title, c) {
@@ -218,8 +218,8 @@ func TestPanelControls(t *testing.T) {
 }
 
 func TestPanelNativeBar(t *testing.T) {
-	p := gw.NewPanel(widget.NewText("x"), gw.WithTitle("Notes"), gw.WithClosable(func() {}), gw.WithMaximizable(),
-		gw.WithWindowCapabilities(widget.WithWindowMinimize(widget.NewMinimizedWindows())))
+	p := gw.NewPanel(core.NewText("x"), gw.WithTitle("Notes"), gw.WithClosable(func() {}), gw.WithMaximizable(),
+		gw.WithWindowCapabilities(core.WithWindowMinimize(core.NewMinimizedWindows())))
 	v, ok := p.NativeView()
 	if !ok {
 		t.Fatal("no native view")
@@ -253,7 +253,7 @@ func TestPanelBoundsWhileMaximized(t *testing.T) {
 // The bar is a surface of the page around the panel, not the cells' reversed row: on a dark page
 // with a reversed bar style (white cells), the bar stays dark and the title is a muted light.
 func TestPanelBarIsAPageSurface(t *testing.T) {
-	p := gw.NewPanel(widget.NewText("x"), gw.WithTitle("Notes"))
+	p := gw.NewPanel(core.NewText("x"), gw.WithTitle("Notes"))
 	v, _ := p.NativeView()
 	white := color.NRGBA{R: 0xee, G: 0xee, B: 0xee, A: 0xff}
 	page := color.NRGBA{R: 0x1e, G: 0x1e, B: 0x24, A: 0xff}
@@ -286,13 +286,13 @@ func TestPanelBarIsAPageSurface(t *testing.T) {
 // TestPanelTitleTrailingSitsAtTheRight: a trailing widget sits at the bar's right, before the
 // controls; the title keeps to the room left of it, cut where it would run under it.
 func TestPanelTitleTrailingSitsAtTheRight(t *testing.T) {
-	h := startPanel(t, tui.Rect{X: 2, Y: 2, W: 40, H: 6}, gw.WithTitleTrailing(widget.NewText("TRAIL")))
+	h := startPanel(t, tui.Rect{X: 2, Y: 2, W: 40, H: 6}, gw.WithTitleTrailing(core.NewText("TRAIL")))
 	h.until("the trailing widget", func() bool { return strings.Contains(h.row(2), "TRAIL") })
 	if r := h.row(2); r[2+40-len("TRAIL"):2+40] != "TRAIL" || !strings.Contains(r, "Notes") {
 		t.Fatalf("the bar: %q; want Notes, and TRAIL at its right edge", r)
 	}
 
-	long := startPanel(t, tui.Rect{X: 2, Y: 2, W: 24, H: 6}, gw.WithTitle("Notes with a title far too long"), gw.WithTitleTrailing(widget.NewText("TRAIL")))
+	long := startPanel(t, tui.Rect{X: 2, Y: 2, W: 24, H: 6}, gw.WithTitle("Notes with a title far too long"), gw.WithTitleTrailing(core.NewText("TRAIL")))
 	long.until("the trailing widget", func() bool { return strings.Contains(long.row(2), "TRAIL") })
 	// cut a cell short of TRAIL, as the leading widgets keep a cell between them
 	if r := long.row(2); r[2+24-len("TRAIL"):2+24] != "TRAIL" || r[2+24-len("TRAIL")-1] != ' ' || strings.Contains(r, "too long") || !strings.Contains(r, "Notes") {
@@ -304,9 +304,9 @@ func TestPanelTitleTrailingSitsAtTheRight(t *testing.T) {
 // either side of it sit side by side. The panel's own painter gave it a cell of its own, a blank
 // column inside the title that its measured width had not counted.
 func TestAPanelTitleGivesAZeroWidthClusterNoColumn(t *testing.T) {
-	panel := gw.NewPanel(widget.NewText("content"), gw.WithTitle("Ab\u200bCd"))
-	float := widget.NewFloat(panel)
-	host := widget.NewOverlayHost(widget.NewText("background"))
+	panel := gw.NewPanel(core.NewText("content"), gw.WithTitle("Ab\u200bCd"))
+	float := core.NewFloat(panel)
+	host := core.NewOverlayHost(core.NewText("background"))
 	tb := tui.NewTestBackend(60, 20)
 	app := tui.NewApp(host, tui.WithBackend(tb))
 	ctx, cancel := context.WithCancel(context.Background())
@@ -339,7 +339,7 @@ func TestAPanelTitleGivesAZeroWidthClusterNoColumn(t *testing.T) {
 // (tui/style's measure): on a mid grey page, black (5.24:1), not white (4.0:1), which a difference of
 // gamma-unaware luminances picked.
 func TestPanelBarTextHasTheHigherWCAGContrast(t *testing.T) {
-	p := gw.NewPanel(widget.NewText("x"), gw.WithTitle("Notes"))
+	p := gw.NewPanel(core.NewText("x"), gw.WithTitle("Notes"))
 	v, _ := p.NativeView()
 	black := color.NRGBA{A: 0xff}
 	white := color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff}

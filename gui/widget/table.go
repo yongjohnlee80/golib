@@ -11,7 +11,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/table"
 )
 
 // TABLE — a tui DataTable drawn in pixels: the same TableCore (its rows, cell cursor, selection,
@@ -35,7 +35,7 @@ import (
 
 // BindTable lays a DataTable out in pixels and draws it natively, the same widget to the host.
 // A native style calls it once, before the first paint.
-func BindTable(t *tuiwidget.DataTable) {
+func BindTable(t *table.DataTable) {
 	if t == nil {
 		return
 	}
@@ -57,7 +57,7 @@ type tableColumn struct {
 }
 
 type tableLayout struct {
-	t      *tuiwidget.DataTable
+	t      *table.DataTable
 	shaper *gui.TextShaper
 	pal    gui.Palette // the window's palette, from the canvas the look was last adopted from
 
@@ -89,29 +89,29 @@ type tableLayout struct {
 
 // editMark is an open field's edit, text and caret.
 type editMark struct {
-	e       *tuiwidget.TableEdit
+	e       *table.TableEdit
 	text    string
 	ln, col int
 }
 
 var (
-	_ tuiwidget.TableLayout        = (*tableLayout)(nil)
-	_ tuiwidget.TableLayoutPointer = (*tableLayout)(nil)
-	_ tuiwidget.TableLayoutHitter  = (*tableLayout)(nil)
-	_ tuiwidget.TableLayoutFields  = (*tableLayout)(nil)
-	_ gui.View                     = (*tableLayout)(nil)
+	_ table.TableLayout        = (*tableLayout)(nil)
+	_ table.TableLayoutPointer = (*tableLayout)(nil)
+	_ table.TableLayoutHitter  = (*tableLayout)(nil)
+	_ table.TableLayoutFields  = (*tableLayout)(nil)
+	_ gui.View                 = (*tableLayout)(nil)
 )
 
 // tableTextPx is the text size before the first paint, which gives the window's.
 const tableTextPx = 14
 
-func newTableLayout(t *tuiwidget.DataTable) *tableLayout {
+func newTableLayout(t *table.DataTable) *tableLayout {
 	l := &tableLayout{t: t}
 	l.sizeText(tableTextPx)
 	return l
 }
 
-func (l *tableLayout) core() *tuiwidget.TableCore { return l.t.Core() }
+func (l *tableLayout) core() *table.TableCore { return l.t.Core() }
 
 // sizeText sizes the rows and the padding by the text's size.
 func (l *tableLayout) sizeText(px float32) {
@@ -137,11 +137,11 @@ func (l *tableLayout) Reveal(row, col int) {
 // revealDrawn scrolls so drawn row v shows.
 func (l *tableLayout) revealDrawn(v int) {
 	// rows gone (a filter, a new result) leave no blank below the last
-	l.top = tuiwidget.TableRevealRow(l.top, v, l.core().DrawnRows(), l.bodyRows())
+	l.top = table.TableRevealRow(l.top, v, l.core().DrawnRows(), l.bodyRows())
 }
 
 // revealField scrolls sideways so field col shows whole, the edge field after the last among them.
-func (l *tableLayout) revealField(col int) { l.left = tuiwidget.TableRevealField(l.left, col, l.fits) }
+func (l *tableLayout) revealField(col int) { l.left = table.TableRevealField(l.left, col, l.fits) }
 
 // revealEdit scrolls the open field into sight when it is new or its text or caret moved: its
 // first row, its caret's line under it as far as the view allows, and its field.
@@ -193,7 +193,7 @@ func (l *tableLayout) PageRows() int { return max(l.bodyRows()-1, 1) }
 // Measure implements tuiwidget.TableLayout: the width of s in pixels, in the header's bold, the
 // widest it is drawn in.
 func (l *tableLayout) Measure(s string) int {
-	s = tuiwidget.TableCellLine(s)
+	s = table.TableCellLine(s)
 	if l.shaper == nil {
 		return int(math.Ceil(float64(float32(len([]rune(s))) * l.body.Size * 0.6)))
 	}
@@ -206,55 +206,55 @@ func (l *tableLayout) Changed() { l.t.MarkDirty() }
 
 // CellAt implements tuiwidget.TableLayoutPointer: the header row is TablePos{}, a row number is
 // no cell. DataTable asks HitAt.
-func (l *tableLayout) CellAt(x, y float32) (tuiwidget.TablePos, bool, bool) {
+func (l *tableLayout) CellAt(x, y float32) (table.TablePos, bool, bool) {
 	if y < l.rowH {
-		return tuiwidget.TablePos{}, true, true
+		return table.TablePos{}, true, true
 	}
 	row := l.top + int((y-l.rowH)/l.rowH)
 	if row < l.core().DrawnRows() {
 		kind, r := l.core().DrawnRow(row)
-		if kind == tuiwidget.TableRowPending {
-			return tuiwidget.TablePos{}, false, false
+		if kind == table.TableRowPending {
+			return table.TablePos{}, false, false
 		}
 		row = r
 	}
 	if col, ok := l.cellFieldAt(x); ok {
-		return tuiwidget.TablePos{Row: row, Col: col}, false, true
+		return table.TablePos{Row: row, Col: col}, false, true
 	}
-	return tuiwidget.TablePos{}, false, false
+	return table.TablePos{}, false, false
 }
 
 // HitAt implements tuiwidget.TableLayoutHitter: a field's title over the header row (the gutter's
 // corner is nothing), a row's number over the gutter, a cell over a row band's field, and nothing
 // past the last field, below the last row or above and left of the view.
-func (l *tableLayout) HitAt(x, y float32) (tuiwidget.TablePos, tuiwidget.TableHit) {
+func (l *tableLayout) HitAt(x, y float32) (table.TablePos, table.TableHit) {
 	if x < 0 || y < 0 || x >= l.size.W || y >= l.size.H {
-		return tuiwidget.TablePos{}, tuiwidget.TableHitNone
+		return table.TablePos{}, table.TableHitNone
 	}
 	if y < l.rowH {
 		if col, ok := l.fieldAt(x); ok {
-			return tuiwidget.TablePos{Col: col}, tuiwidget.TableHitHeader
+			return table.TablePos{Col: col}, table.TableHitHeader
 		}
-		return tuiwidget.TablePos{}, tuiwidget.TableHitNone
+		return table.TablePos{}, table.TableHitNone
 	}
 	v := l.top + int((y-l.rowH)/l.rowH)
 	if v >= l.core().DrawnRows() {
-		return tuiwidget.TablePos{}, tuiwidget.TableHitNone
+		return table.TablePos{}, table.TableHitNone
 	}
 	kind, row := l.core().DrawnRow(v)
 	switch {
-	case kind == tuiwidget.TableRowPending:
-		return tuiwidget.TablePos{}, tuiwidget.TableHitNone
+	case kind == table.TableRowPending:
+		return table.TablePos{}, table.TableHitNone
 	case x < l.gutter():
-		if kind == tuiwidget.TableRowEdge {
-			return tuiwidget.TablePos{}, tuiwidget.TableHitNone
+		if kind == table.TableRowEdge {
+			return table.TablePos{}, table.TableHitNone
 		}
-		return tuiwidget.TablePos{Row: row}, tuiwidget.TableHitGutter
+		return table.TablePos{Row: row}, table.TableHitGutter
 	}
 	if col, ok := l.cellFieldAt(x); ok {
-		return tuiwidget.TablePos{Row: row, Col: col}, tuiwidget.TableHitCell
+		return table.TablePos{Row: row, Col: col}, table.TableHitCell
 	}
-	return tuiwidget.TablePos{}, tuiwidget.TableHitNone
+	return table.TablePos{}, table.TableHitNone
 }
 
 // cellFieldAt is the field at x over a row: a field shown, or the edge field after the last.
@@ -405,9 +405,9 @@ func (l *tableLayout) Paint(c gui.Canvas) {
 		y := l.rowH * float32(v-l.top+1)
 		kind, row := core.DrawnRow(v)
 		switch kind {
-		case tuiwidget.TableRowPending:
+		case table.TableRowPending:
 			continue // the open field covers it
-		case tuiwidget.TableRowEdge:
+		case table.TableRowEdge:
 			if gutter > 0 {
 				l.drawBandAt(c, l.plus, gutter-l.pad-l.rowH, y, l.muted)
 			}
@@ -417,7 +417,7 @@ func (l *tableLayout) Paint(c gui.Canvas) {
 			continue
 		}
 		for i, col := range cols {
-			texts[i] = tuiwidget.TableCellLine(core.Cell(row, col.col))
+			texts[i] = table.TableCellLine(core.Cell(row, col.col))
 		}
 		bands[row] = l.shapeRuns(l.bands[row], texts, cols, aligns, l.body)
 		l.drawBand(c, bands[row], y, l.fg)
@@ -437,7 +437,7 @@ func (l *tableLayout) Paint(c gui.Canvas) {
 // text from the row's band in the cursor's colour: the band is shaped once, and the ordinary
 // foreground would vanish on a light cursor fill.
 func (l *tableLayout) paintCursorCell(c gui.Canvas, cols []tableColumn, edge tableColumn, edgeShown bool,
-	cur tuiwidget.TablePos, last int, band *tableBand) {
+	cur table.TablePos, last int, band *tableBand) {
 	fill := l.cursorFill()
 	if cur.Col == len(l.core().Fields()) {
 		if v := l.core().DrawnOf(cur.Row); edgeShown && v >= l.top && v < last {
@@ -541,7 +541,7 @@ func (l *tableLayout) paintSelection(c gui.Canvas, cols []tableColumn, last int)
 		next = next[:0]
 		kind, row := core.DrawnRow(v)
 		for _, col := range cols {
-			if kind != tuiwidget.TableRowData {
+			if kind != table.TableRowData {
 				break // o's new row and the edge row are in no selection
 			}
 			if !core.InSelection(row, col.col) {
@@ -614,7 +614,7 @@ func (l *tableLayout) cursorText(fill color.NRGBA) color.NRGBA {
 }
 
 // cellsRect is the rectangle of the cells from..to that are shown, rows before last.
-func (l *tableLayout) cellsRect(cols []tableColumn, from, to tuiwidget.TablePos, last int) (gui.Rect, bool) {
+func (l *tableLayout) cellsRect(cols []tableColumn, from, to table.TablePos, last int) (gui.Rect, bool) {
 	top, bottom := max(l.core().DrawnOf(from.Row), l.top), min(l.core().DrawnOf(to.Row), last-1)
 	var x0, x1 float32
 	shown := false
@@ -707,7 +707,7 @@ func (l *tableLayout) shapeRuns(old *tableBand, texts []string, cols []tableColu
 	}
 	runs := make([]gui.TextRun, 0, len(cols))
 	for i, c := range cols {
-		s := l.elide(tuiwidget.TableCellLine(texts[i]), c.w, f)
+		s := l.elide(table.TableCellLine(texts[i]), c.w, f)
 		if s == "" {
 			continue
 		}

@@ -9,13 +9,14 @@ import (
 	"github.com/yongjohnlee80/golib/gui"
 	gw "github.com/yongjohnlee80/golib/gui/widget"
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 func TestNativeEditorWindowAltDragAndEscapeUseSharedBehavior(t *testing.T) {
-	editor := gw.NewEditor(gw.WithPanel(gw.WithTitle("Notes"), gw.WithWindowCapabilities(widget.WithWindowMove(), widget.WithWindowResize())))
-	float := widget.NewFloat(editor)
-	host := widget.NewOverlayHost(widget.NewButton("base"))
+	editor := gw.NewEditor(gw.WithPanel(gw.WithTitle("Notes"), gw.WithWindowCapabilities(core.WithWindowMove(), core.WithWindowResize())))
+	float := core.NewFloat(editor)
+	host := core.NewOverlayHost(core.NewButton("base"))
 	tb := tui.NewTestBackend(60, 20)
 	app := tui.NewApp(host, tui.WithBackend(tb), tui.WithMinFrameInterval(0))
 	ctx, cancel := context.WithCancel(context.Background())
@@ -55,14 +56,14 @@ func TestNativeEditorWindowAltDragAndEscapeUseSharedBehavior(t *testing.T) {
 }
 
 func TestGuiWindowButtonsPaintRealControlGeometry(t *testing.T) {
-	model := widget.NewMinimizedWindows()
+	model := core.NewMinimizedWindows()
 	body := tui.NewFlex(tui.Vertical)
-	window := widget.NewWindowMod(body, widget.WithWindowMaximize(), widget.WithWindowMinimize(model), widget.WithWindowClose())
+	window := core.NewWindowMod(body, core.WithWindowMaximize(), core.WithWindowMinimize(model), core.WithWindowClose())
 	controls := gw.NewWindowButtons(window.Core())
 	body.Add(controls)
-	body.AddWeighted(widget.NewEditor(), 1)
-	float := widget.NewFloat(window, widget.WithAnchor(widget.AtRect(tui.Rect{X: 2, Y: 2, W: 20, H: 8})))
-	host := widget.NewOverlayHost(widget.NewButton("base"))
+	body.AddWeighted(editor.NewEditor(), 1)
+	float := core.NewFloat(window, core.WithAnchor(core.AtRect(tui.Rect{X: 2, Y: 2, W: 20, H: 8})))
+	host := core.NewOverlayHost(core.NewButton("base"))
 	tb := tui.NewTestBackend(40, 15)
 	app := tui.NewApp(host, tui.WithBackend(tb), tui.WithMinFrameInterval(0))
 	ctx, cancel := context.WithCancel(context.Background())
@@ -91,7 +92,7 @@ func TestGuiWindowButtonsPaintRealControlGeometry(t *testing.T) {
 		dots := 0
 		var centres []gui.Point
 		for _, child := range window.Context().Children(controls) {
-			if button, ok := child.(*widget.Button); ok {
+			if button, ok := child.(*core.Button); ok {
 				if r, valid := window.Context().ResolveAnchor(button.Context().NodeAnchor()); valid {
 					centres = append(centres, gui.Pt((float32(r.X)+float32(r.W)/2)*8, (float32(r.Y)+float32(r.H)/2)*16))
 				}
@@ -129,7 +130,7 @@ func TestGuiWindowButtonsPaintRealControlGeometry(t *testing.T) {
 }
 
 func TestPanelCapabilityOnlyDoubleClickMaximize(t *testing.T) {
-	h := startPanel(t, tui.Rect{X: 2, Y: 2, W: 30, H: 6}, gw.WithWindowCapabilities(widget.WithWindowMaximize()))
+	h := startPanel(t, tui.Rect{X: 2, Y: 2, W: 30, H: 6}, gw.WithWindowCapabilities(core.WithWindowMaximize()))
 	h.mouse(tui.MousePress, 10, 2)
 	h.mouse(tui.MouseRelease, 10, 2)
 	h.mouse(tui.MousePress, 10, 2)
@@ -139,7 +140,7 @@ func TestPanelCapabilityOnlyDoubleClickMaximize(t *testing.T) {
 
 func TestPanelConsumerResizeMinimumIsNotOverwritten(t *testing.T) {
 	h := startPanel(t, tui.Rect{X: 2, Y: 2, W: 30, H: 10}, gw.WithResizable(),
-		gw.WithWindowCapabilities(widget.WithWindowMinSize(tui.Size{W: 25, H: 8})))
+		gw.WithWindowCapabilities(core.WithWindowMinSize(tui.Size{W: 25, H: 8})))
 	h.onLoop(func() {
 		if !h.panel.WindowBehavior().ResizeBy(-100, -100) {
 			t.Error("resize refused")

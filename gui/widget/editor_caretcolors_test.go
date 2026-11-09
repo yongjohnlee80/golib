@@ -6,7 +6,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/tui"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // The editor reports the colours of the text at its caret, for the text an input method is
@@ -15,7 +15,7 @@ import (
 // colours, a dark box on a light page.
 func TestTheEditorReportsItsCaretsColours(t *testing.T) {
 	h := startEditor(t, 60, 8, WithRenderer(NewMarkdownRenderer()),
-		WithCore(tuiwidget.CoreInitialText("prose\n\n```\ncode\n```")))
+		WithCore(editor.CoreInitialText("prose\n\n```\ncode\n```")))
 	ink, page := color.NRGBA{R: 0x30, G: 0x28, B: 0x20, A: 0xff}, color.NRGBA{R: 0xe8, G: 0xdc, B: 0xc0, A: 0xff}
 	// paint on a canvas whose cells are a sepia page, as a light theme's window is
 	paint := func() (fg, bg color.NRGBA, th Theme) {
@@ -34,7 +34,7 @@ func TestTheEditorReportsItsCaretsColours(t *testing.T) {
 		t.Fatalf("on the prose line: %v on %v, want the text %v on the page %v", fg, bg, th.Text, page)
 	}
 
-	h.onLoop(func() { h.e.SetView(tuiwidget.ViewRendered); h.e.core.SetLine(3, 0) })
+	h.onLoop(func() { h.e.SetView(editor.ViewRendered); h.e.core.SetLine(3, 0) })
 	_, bg, th = paint()
 	if th.CodeBackground.A == 0 || th.CodeBackground == page {
 		t.Fatalf("the theme's code background %v must be its own for this cell to observe anything", th.CodeBackground)
@@ -46,13 +46,13 @@ func TestTheEditorReportsItsCaretsColours(t *testing.T) {
 	// In Visual mode the caret's cluster is selected and painted on the selection's colour:
 	// the composition sits on that, not on the page under it.
 	h.onLoop(func() {
-		h.e.SetView(tuiwidget.ViewRaw)
+		h.e.SetView(editor.ViewRaw)
 		h.e.core.SetLine(0, 1)
 		h.e.core.HandleKey(tui.KeyEvent{Code: 'v', Text: "v"})
 	})
-	var mode tuiwidget.EditorMode
+	var mode editor.EditorMode
 	h.onLoop(func() { mode = h.e.core.Mode() })
-	if mode != tuiwidget.ModeVisual {
+	if mode != editor.ModeVisual {
 		t.Fatalf("mode %v after v, want Visual", mode)
 	}
 	_, bg, th = paint()

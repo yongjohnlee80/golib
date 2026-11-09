@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/gui"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // The native editor draws the cursor line's indentation in Raw mode: "·" centred in each leading
@@ -12,7 +12,7 @@ import (
 // over the same paint with the marks off. The Rendered view draws none.
 func TestIndentMarksDrawOnTheCursorLineInRawOnly(t *testing.T) {
 	h := startEditor(t, 60, 8, WithRenderer(NewMarkdownRenderer()),
-		WithCore(tuiwidget.CoreInitialText("  a b\n\tc")))
+		WithCore(editor.CoreInitialText("  a b\n\tc")))
 	texts := func(rc *gui.RecordingCanvas) []gui.PaintCall {
 		var out []gui.PaintCall
 		for _, c := range rc.Calls {
@@ -23,8 +23,8 @@ func TestIndentMarksDrawOnTheCursorLineInRawOnly(t *testing.T) {
 		return out
 	}
 	// marks are the text calls painted with marks on that the same paint with marks off lacks
-	marks := func(m tuiwidget.IndentMarks) []gui.PaintCall {
-		h.onLoop(func() { h.e.core.SetIndentMarks(tuiwidget.IndentMarksOff) })
+	marks := func(m editor.IndentMarks) []gui.PaintCall {
+		h.onLoop(func() { h.e.core.SetIndentMarks(editor.IndentMarksOff) })
 		base := texts(h.paint())
 		h.onLoop(func() { h.e.core.SetIndentMarks(m) })
 		with := texts(h.paint())
@@ -45,7 +45,7 @@ func TestIndentMarksDrawOnTheCursorLineInRawOnly(t *testing.T) {
 	var x0, cell float32
 	h.onLoop(func() { cell = h.e.layout.monoCell(); x0 = h.e.layout.textX() })
 
-	got := marks(tuiwidget.IndentMarksCursorLine)
+	got := marks(editor.IndentMarksCursorLine)
 	if len(got) != 2 {
 		t.Fatalf("cursor on line 0 (two leading spaces): %d marks, want 2: %+v", len(got), got)
 	}
@@ -56,17 +56,17 @@ func TestIndentMarksDrawOnTheCursorLineInRawOnly(t *testing.T) {
 	}
 
 	h.onLoop(func() { h.e.core.SetLine(1, 1) })
-	got = marks(tuiwidget.IndentMarksCursorLine)
+	got = marks(editor.IndentMarksCursorLine)
 	if len(got) != 1 || got[0].Rect.X != x0 {
 		t.Fatalf("cursor on line 1 (a leading tab): marks %+v, want one at the tab's left edge x %v", got, x0)
 	}
 
-	if got = marks(tuiwidget.IndentMarksAll); len(got) != 3 {
+	if got = marks(editor.IndentMarksAll); len(got) != 3 {
 		t.Errorf("all lines: %d marks, want 3 (two spaces and a tab)", len(got))
 	}
 
-	h.onLoop(func() { h.e.SetView(tuiwidget.ViewRendered) })
-	if got = marks(tuiwidget.IndentMarksAll); len(got) != 0 {
+	h.onLoop(func() { h.e.SetView(editor.ViewRendered) })
+	if got = marks(editor.IndentMarksAll); len(got) != 0 {
 		t.Errorf("the Rendered view drew %d marks, want none", len(got))
 	}
 }

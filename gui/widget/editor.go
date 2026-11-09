@@ -9,7 +9,8 @@ import (
 	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // Dual-Mode Editor Architecture:
@@ -47,30 +48,30 @@ import (
 type Editor struct {
 	panel *Panel // a field, not embedded: Panel's methods call each other on their receiver
 
-	core      *tuiwidget.EditorCore
+	core      *editor.EditorCore
 	body      *editorBody
 	stack     *editorStack // the Panel's content: the body, and the document view
 	layout    *pixelLayout
 	keepPlace bool // a text set keeps the reader's place (SetKeepPlace, ReplaceValue)
-	menu      *tuiwidget.EditorMenu
-	pointer   *tuiwidget.EditorPointer // the press, the drag and its auto-scroll, the menu's keys (editor_body.go)
-	cmdline   *tuiwidget.CommandLine   // the ':' prompt, shared with the terminal's Editor
+	menu      *editor.EditorMenu
+	pointer   *editor.EditorPointer // the press, the drag and its auto-scroll, the menu's keys (editor_body.go)
+	cmdline   *editor.CommandLine   // the ':' prompt, shared with the terminal's Editor
 	sw        *modeSwitch
-	tabs      *tuiwidget.TabStrip // the host's tabs on the title bar (Tabs)
+	tabs      *core.TabStrip // the host's tabs on the title bar (Tabs)
 
 	// doc is the Rendered state: the view chosen (View), whether the document can render, and the
 	// whole-document Rendered view (editor_document.go). The Renderer is the editor's own.
-	doc      tuiwidget.DocumentSlot
-	drawn    tuiwidget.EditorView // the view the layout was last made for (applyShown)
+	doc      editor.DocumentSlot
+	drawn    editor.EditorView // the view the layout was last made for (applyShown)
 	render   Renderer
 	fontSize float32
 
 	caret    style.Color // the caret's colour (SetCursorColor); the default is the text's
 	caretSet bool
 
-	wrap      tuiwidget.WrapMode // WrapNone (the default) or WrapSoft: the Raw view's long lines
-	numbers   bool               // a gutter of line numbers at the left
-	numberCol style.Color        // the numbers' colour (SetLineNumberColor); muted otherwise
+	wrap      core.WrapMode // WrapNone (the default) or WrapSoft: the Raw view's long lines
+	numbers   bool          // a gutter of line numbers at the left
+	numberCol style.Color   // the numbers' colour (SetLineNumberColor); muted otherwise
 	numberSet bool
 	ruler     int         // a guide at this column, 1-based, in the Raw view; 0 for none
 	page      style.Style // the cells' look the view reads its colours from (SetPageStyle)
@@ -80,16 +81,16 @@ type Editor struct {
 type EditorOption func(*editorConfig)
 
 type editorConfig struct {
-	core     []tuiwidget.CoreOption
+	core     []editor.CoreOption
 	render   Renderer
 	doc      DocumentView
-	view     tuiwidget.EditorView
+	view     editor.EditorView
 	menu     bool
 	noCmd    bool // the ':' prompt is off (WithCommandLine(false))
-	rows     func(*tuiwidget.EditorCore) []tuiwidget.MenuItemModel
+	rows     func(*editor.EditorCore) []core.MenuItemModel
 	panel    []PanelOption
 	fontSize float32
-	wrap     tuiwidget.WrapMode
+	wrap     core.WrapMode
 	numbers  bool
 	ruler    int
 }
@@ -98,18 +99,18 @@ type editorConfig struct {
 func WithRenderer(r Renderer) EditorOption { return func(c *editorConfig) { c.render = r } }
 
 // WithCore configures the editor's behaviour, as the tui Editor's options do.
-func WithCore(opts ...tuiwidget.CoreOption) EditorOption {
+func WithCore(opts ...editor.CoreOption) EditorOption {
 	return func(c *editorConfig) { c.core = append(c.core, opts...) }
 }
 
 // WithContextMenu turns the right-click menu on, with build's rows; nil build: the stock rows
 // (Undo, Redo, Copy, Cut, Paste).
-func WithContextMenu(build func(c *tuiwidget.EditorCore) []tuiwidget.MenuItemModel) EditorOption {
+func WithContextMenu(build func(c *editor.EditorCore) []core.MenuItemModel) EditorOption {
 	return func(c *editorConfig) { c.menu, c.rows = true, build }
 }
 
 // WithView starts the Editor in v; Rendered without a renderer or a document view is drawn Raw.
-func WithView(v tuiwidget.EditorView) EditorOption { return func(c *editorConfig) { c.view = v } }
+func WithView(v editor.EditorView) EditorOption { return func(c *editorConfig) { c.view = v } }
 
 // WithPanel configures the Editor's Panel: its title, and whether it moves, resizes or closes.
 func WithPanel(opts ...PanelOption) EditorOption {
@@ -122,7 +123,7 @@ func WithFontSize(px float32) EditorOption { return func(c *editorConfig) { c.fo
 // WithWrap selects how the Raw view shows a line wider than the editor: tuiwidget.WrapNone (the
 // default, as the tui Editor's) keeps it on one row and scrolls sideways; tuiwidget.WrapSoft wraps
 // it at the editor's width. The Rendered view always wraps: it is prose, read, not columns.
-func WithWrap(m tuiwidget.WrapMode) EditorOption { return func(c *editorConfig) { c.wrap = m } }
+func WithWrap(m core.WrapMode) EditorOption { return func(c *editorConfig) { c.wrap = m } }
 
 // WithLineNumbers shows each line's number in a gutter at the left.
 func WithLineNumbers(v bool) EditorOption { return func(c *editorConfig) { c.numbers = v } }
@@ -138,26 +139,26 @@ func NewEditor(opts ...EditorOption) *Editor {
 			o(&cfg)
 		}
 	}
-	e := &Editor{core: tuiwidget.NewEditorCore(cfg.core...), render: cfg.render, fontSize: cfg.fontSize,
-		wrap: tuiwidget.WrapNone, numbers: cfg.numbers, ruler: cfg.ruler}
+	e := &Editor{core: editor.NewEditorCore(cfg.core...), render: cfg.render, fontSize: cfg.fontSize,
+		wrap: core.WrapNone, numbers: cfg.numbers, ruler: cfg.ruler}
 	e.doc.PutDocument(cfg.doc)
-	if cfg.wrap == tuiwidget.WrapSoft {
-		e.wrap = tuiwidget.WrapSoft
+	if cfg.wrap == core.WrapSoft {
+		e.wrap = core.WrapSoft
 	}
 	e.layout = newPixelLayout(e)
 	e.body = &editorBody{e: e}
 	e.sw = newModeSwitch(e)
-	e.menu = tuiwidget.NewEditorMenu(e.body, e.core)
-	e.pointer = tuiwidget.NewEditorPointer(e.core, e.menu, bodyPointer{e.body})
+	e.menu = editor.NewEditorMenu(e.body, e.core)
+	e.pointer = editor.NewEditorPointer(e.core, e.menu, bodyPointer{e.body})
 	if cfg.rows != nil {
 		build := cfg.rows
-		e.menu.SetRows(func() []tuiwidget.MenuItemModel { return build(e.core) })
+		e.menu.SetRows(func() []core.MenuItemModel { return build(e.core) })
 	}
 	e.menu.SetEnabled(cfg.menu)
-	e.cmdline = tuiwidget.NewCommandLine(e.body, e.core)
+	e.cmdline = editor.NewCommandLine(e.body, e.core)
 	e.cmdline.SetEnabled(!cfg.noCmd)
 	e.stack = newEditorStack(e)
-	e.tabs = tuiwidget.NewTabStrip()
+	e.tabs = core.NewTabStrip()
 	// the host's tabs at the bar's left, in all its room up to Raw | Rendered at its right
 	e.panel = NewPanel(e.stack, append([]PanelOption{WithTitleLeading(e.tabs), WithTitleTrailing(e.sw)}, cfg.panel...)...)
 	// the strip's bar is the title bar's own colour, the panel's as it painted it last. The callback
@@ -183,7 +184,7 @@ func NewEditor(opts ...EditorOption) *Editor {
 	// list and table editing are for the prose and its tables, as the cell editor's: one owner of
 	// which lines take them (tui/widget's MarkdownListWhere)
 	if md, ok := e.render.(StructureRenderer); ok {
-		e.core.SetListEditingWhere(tuiwidget.MarkdownListWhere(e.core, md))
+		e.core.SetListEditingWhere(editor.MarkdownListWhere(e.core, md))
 	}
 	e.SetView(cfg.view)
 	return e
@@ -228,36 +229,36 @@ func (e *Editor) ResolveCaptureEscape(ev tui.KeyEvent) (tui.Action, bool) {
 func (e *Editor) HandleAction(inv tui.ActionInvocation) bool { return e.panel.HandleAction(inv) }
 
 // WindowBehavior exposes window capabilities separately from the editing Core.
-func (e *Editor) WindowBehavior() *tuiwidget.WindowCore { return e.panel.WindowBehavior() }
-func (e *Editor) NativeView() (any, bool)               { return e.panel.NativeView() }
-func (e *Editor) NativeScope() tui.NativeScope          { return e.panel.NativeScope() }
-func (e *Editor) Visible() bool                         { return e.panel.Visible() }
+func (e *Editor) WindowBehavior() *core.WindowCore { return e.panel.WindowBehavior() }
+func (e *Editor) NativeView() (any, bool)          { return e.panel.NativeView() }
+func (e *Editor) NativeScope() tui.NativeScope     { return e.panel.NativeScope() }
+func (e *Editor) Visible() bool                    { return e.panel.Visible() }
 
 // Core is the editor's behaviour: its text, cursor, modes and keymap.
-func (e *Editor) Core() *tuiwidget.EditorCore { return e.core }
+func (e *Editor) Core() *editor.EditorCore { return e.core }
 
 // ContextMenu is the editor's right-click menu: off unless turned on (WithContextMenu, or
 // ContextMenu().SetEnabled), its rows the stock ones or a consumer's.
-func (e *Editor) ContextMenu() *tuiwidget.EditorMenu { return e.menu }
+func (e *Editor) ContextMenu() *editor.EditorMenu { return e.menu }
 
 // Tabs is the strip at the title bar's left, in all its room up to Raw | Rendered: the host's tabs
 // (its open buffers, say), which the host sets and hears chosen. With none set it takes no room;
 // SetLabelFit lets its tabs widen into the room it has.
-func (e *Editor) Tabs() *tuiwidget.TabStrip { return e.tabs }
+func (e *Editor) Tabs() *core.TabStrip { return e.tabs }
 
 // View is the view the user chose: Rendered stays the choice while a document that cannot render
 // is drawn Raw (ShownView), so the next one that can is drawn Rendered again.
-func (e *Editor) View() tuiwidget.EditorView { return e.doc.Chosen() }
+func (e *Editor) View() editor.EditorView { return e.doc.Chosen() }
 
 // ShownView is the view drawn now: Rendered only when it is chosen and the document can render.
-func (e *Editor) ShownView() tuiwidget.EditorView { return e.doc.Drawn(e.render != nil) }
+func (e *Editor) ShownView() editor.EditorView { return e.doc.Drawn(e.render != nil) }
 
 // SetView chooses Raw or Rendered (tuiwidget.ViewChooser). Rendered is drawn when the document can
 // render (a renderer or a document view, and the Rendered view not turned off, SetRenderedEnabled);
 // otherwise Raw is drawn and Rendered kept as the choice. Rendered Markdown edits lists as a
 // writer's editor does (EditorCore.SetListEditing): Enter continues an item, Tab nests it. Raw is
 // the source as typed.
-func (e *Editor) SetView(v tuiwidget.EditorView) {
+func (e *Editor) SetView(v editor.EditorView) {
 	e.doc.Choose(v)
 	e.applyShown()
 }
@@ -268,9 +269,9 @@ func (e *Editor) SetView(v tuiwidget.EditorView) {
 func (e *Editor) applyShown() {
 	shown := e.ShownView()
 	_, md := e.render.(StructureRenderer)
-	e.core.SetListEditing(shown == tuiwidget.ViewRendered && md && !e.doc.Active())
+	e.core.SetListEditing(shown == editor.ViewRendered && md && !e.doc.Active())
 	// before the early return: the view follows SetRenderedDocument even when the view drawn does not
-	e.showDocument(shown == tuiwidget.ViewRendered && e.doc.Active())
+	e.showDocument(shown == editor.ViewRendered && e.doc.Active())
 	if shown == e.drawn && e.layout.blocks != nil {
 		e.sw.MarkDirty() // the switch shows the choice, which may have changed
 		return
@@ -324,10 +325,10 @@ func (e *Editor) Relayout() {
 
 // toggleMode toggles the view chosen between Raw and Rendered.
 func (e *Editor) toggleMode() {
-	if e.View() == tuiwidget.ViewRaw {
-		e.SetView(tuiwidget.ViewRendered)
+	if e.View() == editor.ViewRaw {
+		e.SetView(editor.ViewRendered)
 	} else {
-		e.SetView(tuiwidget.ViewRaw)
+		e.SetView(editor.ViewRaw)
 	}
 }
 
@@ -343,17 +344,17 @@ func (e *Editor) OpenContextMenu() bool { return e.pointer.OpenMenu() }
 // it on: what WithContextMenu does, for an Editor something else constructed (a QML style). nil
 // build is the stock rows (Undo, Redo, Copy, Cut, Paste). A row's CoreMenuAction runs on the
 // editor's core when the row is chosen.
-func (e *Editor) SetContextMenuRows(build func(c *tuiwidget.EditorCore) []tuiwidget.MenuItemModel) {
+func (e *Editor) SetContextMenuRows(build func(c *editor.EditorCore) []core.MenuItemModel) {
 	if build == nil {
 		e.menu.SetRows(nil)
 	} else {
-		e.menu.SetRows(func() []tuiwidget.MenuItemModel { return build(e.core) })
+		e.menu.SetRows(func() []core.MenuItemModel { return build(e.core) })
 	}
 	e.menu.SetEnabled(true)
 }
 
 // SetKeyset changes the editing profile (Vim, Nano, Standard).
-func (e *Editor) SetKeyset(ks tuiwidget.Keyset) { e.core.SetKeyset(ks); e.body.MarkDirty() }
+func (e *Editor) SetKeyset(ks editor.Keyset) { e.core.SetKeyset(ks); e.body.MarkDirty() }
 
 // SetReadOnly makes the editor a viewer: motions and yank only. In Rendered mode a
 // viewer renders every block, the cursor's row included — nothing is edited, so no
@@ -398,9 +399,9 @@ func (e *Editor) SetCursorColor(c style.Color) {
 // SetWrap selects tuiwidget.WrapNone or tuiwidget.WrapSoft while the editor runs, as WithWrap
 // does at construction, and normalizes a mode it does not know to WrapNone as WithWrap does; the
 // cursor stays where it is.
-func (e *Editor) SetWrap(m tuiwidget.WrapMode) {
-	if m != tuiwidget.WrapSoft {
-		m = tuiwidget.WrapNone
+func (e *Editor) SetWrap(m core.WrapMode) {
+	if m != core.WrapSoft {
+		m = core.WrapNone
 	}
 	if e.wrap == m {
 		return
@@ -415,7 +416,7 @@ func (e *Editor) SetWrap(m tuiwidget.WrapMode) {
 }
 
 // Wrap is how the Raw view shows long lines.
-func (e *Editor) Wrap() tuiwidget.WrapMode { return e.wrap }
+func (e *Editor) Wrap() core.WrapMode { return e.wrap }
 
 // SetLineNumbers shows or hides the gutter of line numbers.
 func (e *Editor) SetLineNumbers(v bool) {
@@ -539,9 +540,9 @@ func (e *Editor) theme(fg, bg color.NRGBA, textPx float32, th *style.Theme, pal 
 		to *color.NRGBA
 	}{
 		// the roles both editors read their Rendered looks by (tui/widget's)
-		{tuiwidget.MarkdownHeadingStyle, &t.Heading}, {tuiwidget.MarkdownStrongStyle, &t.Strong}, {tuiwidget.MarkdownEmphStyle, &t.Emph},
-		{tuiwidget.MarkdownCodeStyle, &t.Code}, {tuiwidget.MarkdownLinkStyle, &t.Link}, {tuiwidget.MarkdownMarkerStyle, &t.Marker},
-		{tuiwidget.MarkdownQuietStyle, &t.Quiet}, {tuiwidget.MarkdownWikiStyle, &t.Wiki}, {tuiwidget.MarkdownTagStyle, &t.Tag},
+		{editor.MarkdownHeadingStyle, &t.Heading}, {editor.MarkdownStrongStyle, &t.Strong}, {editor.MarkdownEmphStyle, &t.Emph},
+		{editor.MarkdownCodeStyle, &t.Code}, {editor.MarkdownLinkStyle, &t.Link}, {editor.MarkdownMarkerStyle, &t.Marker},
+		{editor.MarkdownQuietStyle, &t.Quiet}, {editor.MarkdownWikiStyle, &t.Wiki}, {editor.MarkdownTagStyle, &t.Tag},
 	} {
 		if st, ok := e.core.SyntaxStyle(s.k); ok {
 			if fg, set := st.GetForeground(); set {
@@ -557,19 +558,19 @@ func (e *Editor) theme(fg, bg color.NRGBA, textPx float32, th *style.Theme, pal 
 // modeSwitch is the title bar's [ Raw | Rendered ] control: tui/widget's ModeSwitch (its cells, its
 // layout and its click, shared with the cell Editor's) drawn natively as a pill.
 type modeSwitch struct {
-	*tuiwidget.ModeSwitch
+	*editor.ModeSwitch
 	e *Editor
 }
 
 // newModeSwitch is e's switch.
 func newModeSwitch(e *Editor) *modeSwitch {
-	return &modeSwitch{ModeSwitch: tuiwidget.NewModeSwitch(e), e: e}
+	return &modeSwitch{ModeSwitch: editor.NewModeSwitch(e), e: e}
 }
 
 const (
-	switchRaw      = tuiwidget.ModeSwitchRaw
-	switchSep      = tuiwidget.ModeSwitchSep
-	switchRendered = tuiwidget.ModeSwitchRendered
+	switchRaw      = editor.ModeSwitchRaw
+	switchSep      = editor.ModeSwitchSep
+	switchRendered = editor.ModeSwitchRendered
 )
 
 // The native switch is a segmented control on the bar: a pill with a hairline border, split at
@@ -598,7 +599,7 @@ func (s *modeSwitch) paint(c gui.Canvas) {
 	split := (float32(len(switchRaw)) + 0.5) * cell.W
 	segs := [2]gui.Rect{{X: pill.X, Y: pill.Y, W: split - pill.X, H: h}, {X: split, Y: pill.Y, W: pill.X + pill.W - split, H: h}}
 	cur := 0
-	if s.e.View() == tuiwidget.ViewRendered {
+	if s.e.View() == editor.ViewRendered {
 		cur = 1
 	}
 	c.Sub(segs[cur]).FillRRect(gui.Rect{X: pill.X - segs[cur].X, Y: 0, W: pill.W, H: h}, h/2, gui.Solid(mix(accent, page, 0.30)))

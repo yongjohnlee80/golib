@@ -8,7 +8,8 @@ import (
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // The GUI Editor's menu key follows the key map, as the terminal Editor's does: rebound to F2,
@@ -21,14 +22,14 @@ func TestTheGUIEditorsMenuKeyFollowsTheKeymap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	km, err := keymap.Build(tuiwidget.KeyCommands(), scheme)
+	km, err := keymap.Build(editor.KeyCommands(), scheme)
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := NewEditor(WithCore(tuiwidget.CoreInitialText("hello")))
+	e := NewEditor(WithCore(editor.CoreInitialText("hello")))
 	e.SetContextMenuRows(nil)
 	tb := tui.NewTestBackend(60, 14, tui.WithTestCapabilities(tui.Capabilities{NativeViews: true}))
-	sh := &shell{child: tuiwidget.NewOverlayHost(e)}
+	sh := &shell{child: core.NewOverlayHost(e)}
 	app := tui.NewApp(sh, tui.WithBackend(&nativeTB{TestBackend: tb}), tui.WithKeymap(km))
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)

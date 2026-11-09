@@ -4,7 +4,7 @@ import (
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/gui/flow"
 	"github.com/yongjohnlee80/golib/tui/style"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // GFM Markdown Table Layout Architecture:
@@ -38,12 +38,12 @@ type cell struct{ from, to int }
 
 // gfmRow is line with the outer pipes GFM lets a row leave out put back, and the bytes put before
 // it: the line as the parser reads a row.
-func gfmRow(line string) (row string, shift int) { return tuiwidget.MarkdownGFMRow(line) }
+func gfmRow(line string) (row string, shift int) { return editor.MarkdownGFMRow(line) }
 
 // tableCells splits a row into its cells at its unescaped pipes, the outer ones optional.
 func tableCells(line string) []cell {
 	row, shift := gfmRow(line)
-	spans, ok := tuiwidget.MarkdownTableCells(row)
+	spans, ok := editor.MarkdownTableCells(row)
 	if !ok {
 		return nil
 	}
@@ -60,7 +60,7 @@ func tableCells(line string) []cell {
 // when it is one.
 func delimiterAligns(line string) ([]style.Align, bool) {
 	row, _ := gfmRow(line)
-	return tuiwidget.MarkdownDelimiterAligns(row)
+	return editor.MarkdownDelimiterAligns(row)
 }
 
 // layTable lays a table out: its source when the cursor is in it, else a grid.

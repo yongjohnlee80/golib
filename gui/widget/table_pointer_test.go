@@ -10,7 +10,8 @@ import (
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/table"
 )
 
 // tablePixels is a test backend whose cells are 8 by 16 pixels, as a native window's are: a
@@ -25,15 +26,15 @@ type tableApp struct {
 	t     *testing.T
 	app   *tui.App
 	tb    *tui.TestBackend
-	dt    *tuiwidget.DataTable
+	dt    *table.DataTable
 	l     *tableLayout
-	other *tuiwidget.Button
+	other *core.Button
 }
 
-func startTableApp(t *testing.T, src tuiwidget.TableSource, opts ...tuiwidget.TableOption) *tableApp {
+func startTableApp(t *testing.T, src table.TableSource, opts ...table.TableOption) *tableApp {
 	t.Helper()
 	dt, l := pixelTable(t, src, opts...)
-	other := tuiwidget.NewButton("other")
+	other := core.NewButton("other")
 	root := tui.NewStack()
 	root.AddAt(dt, 0, 0)
 	root.AddAt(other, 0, 19)
@@ -135,7 +136,7 @@ func (h *tableApp) state() string {
 // the gutter selects whole rows; a drag over cells selects them in reading order. The table holds
 // the pointer from the press to the release.
 func TestATableSelectsByThePointer(t *testing.T) {
-	h := startTableApp(t, cities(30), tuiwidget.TableRowNumbers(true))
+	h := startTableApp(t, cities(30), table.TableRowNumbers(true))
 	var cols []tableColumn
 	var g, rowH float32
 	h.onLoop(func() { cols, g, rowH = h.l.columns(600), h.l.gutter(), h.l.rowH })
@@ -145,20 +146,20 @@ func TestATableSelectsByThePointer(t *testing.T) {
 	h.drag([2]float32{mid(cols[2]), rowH / 2})
 	h.until("a press on field 2's title to select it", func() bool {
 		from, to, ok := h.dt.Core().Selection()
-		return ok && h.dt.Core().SelectionKind() == tuiwidget.TableSelectBlock &&
-			from == (tuiwidget.TablePos{Row: 0, Col: 2}) && to == (tuiwidget.TablePos{Row: 29, Col: 2}) &&
+		return ok && h.dt.Core().SelectionKind() == table.TableSelectBlock &&
+			from == (table.TablePos{Row: 0, Col: 2}) && to == (table.TablePos{Row: 29, Col: 2}) &&
 			h.dt.Context().HasPointerCapture()
 	}, h.state)
 	h.move(mid(cols[3]), rowH/2)
 	h.until("a drag across the titles to widen the field", func() bool {
 		from, to, _ := h.dt.Core().Selection()
-		return from == (tuiwidget.TablePos{Row: 0, Col: 2}) && to == (tuiwidget.TablePos{Row: 29, Col: 3})
+		return from == (table.TablePos{Row: 0, Col: 2}) && to == (table.TablePos{Row: 29, Col: 3})
 	}, h.state)
 	h.release(mid(cols[3]), rowH/2)
 
 	h.drag([2]float32{g / 2, band(1)}, [2]float32{g / 2, band(2)}, [2]float32{g / 2, band(3)})
 	h.until("a drag over the gutter to select rows 1-3", func() bool {
-		return h.dt.Core().SelectionKind() == tuiwidget.TableSelectRows && h.dt.Context().HasPointerCapture() &&
+		return h.dt.Core().SelectionKind() == table.TableSelectRows && h.dt.Context().HasPointerCapture() &&
 			h.dt.Core().CopyText() == "1\trow1\tSeoul\t10\n2\trow2\tSeoul\t20\n3\trow3\tSeoul\t30"
 	}, h.state)
 	h.release(g/2, band(3))
@@ -171,7 +172,7 @@ func TestATableSelectsByThePointer(t *testing.T) {
 
 	h.drag([2]float32{mid(cols[1]), band(1)}, [2]float32{mid(cols[2]), band(2)}, [2]float32{mid(cols[2]), band(3)})
 	h.until("a drag over cells to select row 1 field 1 to row 3 field 2", func() bool {
-		return h.dt.Core().SelectionKind() == tuiwidget.TableSelectCells &&
+		return h.dt.Core().SelectionKind() == table.TableSelectCells &&
 			h.dt.Core().CopyText() == "row1\tSeoul\t10\n2\trow2\tSeoul\t20\n3\trow3\tSeoul"
 	}, h.state)
 	h.release(mid(cols[2]), band(3))
@@ -239,7 +240,7 @@ func TestATableBlursItsCursorWithTheFocus(t *testing.T) {
 
 	red, blue := color.NRGBA{R: 200, A: 255}, color.NRGBA{B: 200, A: 255}
 	h.onLoop(func() {
-		h.dt.SetStyles(tuiwidget.DataTableStyles{
+		h.dt.SetStyles(table.DataTableStyles{
 			Cursor:        style.New().Background(style.RGB(200, 0, 0)).Foreground(style.RGB(255, 255, 255)),
 			CursorBlurred: style.New().Background(style.RGB(0, 0, 200)),
 		})

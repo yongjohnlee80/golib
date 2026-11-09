@@ -6,7 +6,7 @@ import (
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // Floating Window & Panel Architecture:
@@ -46,10 +46,10 @@ type Panel struct {
 	movable, resizable, maximizable bool
 	onClose                         func()
 
-	float         *tuiwidget.Float
+	float         *core.Float
 	rect          tui.Rect // where the Float places it, in the Float's area
-	behavior      *tuiwidget.WindowCore
-	windowOptions []tuiwidget.WindowModOption
+	behavior      *core.WindowCore
+	windowOptions []core.WindowModOption
 
 	w, h   int
 	titleX int // where the title starts: after the leading widgets, set by Layout
@@ -87,18 +87,18 @@ func NewPanel(content tui.Component, opts ...PanelOption) *Panel {
 			o(p)
 		}
 	}
-	var behavior []tuiwidget.WindowModOption
+	var behavior []core.WindowModOption
 	if p.movable {
-		behavior = append(behavior, tuiwidget.WithWindowMove())
+		behavior = append(behavior, core.WithWindowMove())
 	}
 	if p.resizable {
-		behavior = append(behavior, tuiwidget.WithWindowResize())
+		behavior = append(behavior, core.WithWindowResize())
 	}
 	if p.maximizable {
-		behavior = append(behavior, tuiwidget.WithWindowMaximize())
+		behavior = append(behavior, core.WithWindowMaximize())
 	}
 	if p.onClose != nil {
-		behavior = append(behavior, tuiwidget.WithWindowCloseHandler(func() bool {
+		behavior = append(behavior, core.WithWindowCloseHandler(func() bool {
 			// WithClosable's onClose does not report whether it accepted the dismissal, so the
 			// handler answers false and leaves the closing to onClose.
 			p.onClose()
@@ -112,12 +112,12 @@ func NewPanel(content tui.Component, opts ...PanelOption) *Panel {
 	if p.maximizable {
 		controls++
 	}
-	if tuiwidget.NewWindowCore(p.windowOptions...).State().Minimize { // the capability, read before the core is built
+	if core.NewWindowCore(p.windowOptions...).State().Minimize { // the capability, read before the core is built
 		controls++
 	}
-	behavior = append(behavior, tuiwidget.WithWindowMinSize(tui.Size{W: controlCells*controls + 6, H: 3}))
+	behavior = append(behavior, core.WithWindowMinSize(tui.Size{W: controlCells*controls + 6, H: 3}))
 	behavior = append(behavior, p.windowOptions...)
-	p.behavior = tuiwidget.NewWindowCore(behavior...)
+	p.behavior = core.NewWindowCore(behavior...)
 	p.Add(p.leading...)
 	p.Add(p.trailing...)
 	p.Add(content)
@@ -166,18 +166,18 @@ func WithBarStyle(st style.Style) PanelOption { return func(p *Panel) { p.barSt 
 // (WindowCore.BeginFrameDrag). Minimizing is one of them:
 // tuiwidget.WithWindowMinimize(collector) shows the minimize control, which hands
 // the panel to the collector (a taskbar or a dock) until it is restored.
-func WithWindowCapabilities(opts ...tuiwidget.WindowModOption) PanelOption {
+func WithWindowCapabilities(opts ...core.WindowModOption) PanelOption {
 	return func(p *Panel) { p.windowOptions = append(p.windowOptions, opts...) }
 }
 
 // WindowBehavior is the shared core a custom GUI presentation can invoke.
-func (p *Panel) WindowBehavior() *tuiwidget.WindowCore { return p.behavior }
+func (p *Panel) WindowBehavior() *core.WindowCore { return p.behavior }
 
 // InFloat places the panel in f at r, the rect it moves and resizes from. f's child must be the
 // panel. The panel sets f's anchor to AtRect(r).
-func (p *Panel) InFloat(f *tuiwidget.Float, r tui.Rect) {
+func (p *Panel) InFloat(f *core.Float, r tui.Rect) {
 	p.float, p.rect = f, r
-	f.SetAnchor(tuiwidget.AtRect(r))
+	f.SetAnchor(core.AtRect(r))
 }
 
 // Bounds is where the panel is in its Float's area, as placed: the whole area when maximized. The
@@ -201,7 +201,7 @@ func (p *Panel) Maximized() bool { return p.behavior.State().Maximized }
 func (p *Panel) Init(ctx *tui.Context) {
 	p.ctx = ctx
 	// a container that places windows (a Float, or any WindowTargetProvider) gives the panel its target
-	parent := ctx.Ancestor(func(c tui.Component) bool { _, ok := c.(tuiwidget.WindowTargetProvider); return ok })
+	parent := ctx.Ancestor(func(c tui.Component) bool { _, ok := c.(core.WindowTargetProvider); return ok })
 	if parent == nil && len(p.windowOptions) == 0 {
 		p.behavior.BindTarget(ctx, p.content, staticPanelTarget{})
 	} else {
@@ -376,11 +376,11 @@ func (p *Panel) HandleAction(inv tui.ActionInvocation) bool { return p.behavior.
 func (p *Panel) act(c control) {
 	switch c {
 	case closeControl:
-		p.behavior.InvokeInput(tuiwidget.WindowCloseAction{})
+		p.behavior.InvokeInput(core.WindowCloseAction{})
 	case minimizeControl:
-		p.behavior.InvokeInput(tuiwidget.WindowMinimizeAction{})
+		p.behavior.InvokeInput(core.WindowMinimizeAction{})
 	case maximizeControl:
-		p.behavior.InvokeInput(tuiwidget.WindowMaximizeAction{})
+		p.behavior.InvokeInput(core.WindowMaximizeAction{})
 		p.relayout()
 	}
 }
@@ -404,9 +404,9 @@ func (p *Panel) setHover(c control) {
 
 // The native title bar's control colours (gui.WindowControlColor).
 var (
-	closeRed      = gui.WindowControlColor(tuiwidget.WindowClose)
-	minimizeAmber = gui.WindowControlColor(tuiwidget.WindowMinimize)
-	maximizeGreen = gui.WindowControlColor(tuiwidget.WindowMaximize)
+	closeRed      = gui.WindowControlColor(core.WindowClose)
+	minimizeAmber = gui.WindowControlColor(core.WindowMinimize)
+	maximizeGreen = gui.WindowControlColor(core.WindowMaximize)
 )
 
 // NativeView is the title bar a gui backend draws over the panel's own cells: the bar in the

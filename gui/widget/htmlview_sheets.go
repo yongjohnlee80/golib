@@ -11,7 +11,8 @@ import (
 
 	phtml "github.com/yongjohnlee80/golib/parse/html"
 	"github.com/yongjohnlee80/golib/tui"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/htmlview"
 )
 
 // LINKED STYLESHEETS — a page's <link rel="stylesheet" href>, loaded through the view's resolver
@@ -103,7 +104,7 @@ func (m *htmlSheets) done(r tui.TaskResult) bool {
 	if stale {
 		return true // the old resolver's: dropped
 	}
-	if errors.Is(r.Err, tuiwidget.ErrImageRefused) {
+	if errors.Is(r.Err, htmlview.ErrImageRefused) {
 		m.v.Refused(href)
 		if e != nil {
 			e.refused = true
@@ -121,7 +122,7 @@ func (m *htmlSheets) done(r tui.TaskResult) bool {
 }
 
 // loadSheet reads a stylesheet off the loop, under the cap; text that is not UTF-8 is refused.
-func loadSheet(ctx context.Context, href string, resolve tuiwidget.ImageResolver) (any, error) {
+func loadSheet(ctx context.Context, href string, resolve core.ImageResolver) (any, error) {
 	rc, err := resolve(ctx, href)
 	if err != nil {
 		return nil, err

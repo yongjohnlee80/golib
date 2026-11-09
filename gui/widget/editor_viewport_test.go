@@ -5,7 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // lineTop is where line ln's top is painted: its caret at column 0, else its block's top.
@@ -50,7 +51,7 @@ func numbered(n int) string {
 // In the Raw view the visible lines are those whose tops are in the view: one scrolled partly off
 // the top is out, one cut off at the bottom is in.
 func TestPixelVisibleLinesRaw(t *testing.T) {
-	h := startEditor(t, 40, 10, WithCore(tuiwidget.CoreInitialText(numbered(40))))
+	h := startEditor(t, 40, 10, WithCore(editor.CoreInitialText(numbered(40))))
 	h.paint()
 	if first, last := checkVisible(t, h, "at the top"); first != 0 || last < 3 {
 		t.Fatalf("at the top: [%d %d]", first, last)
@@ -64,7 +65,7 @@ func TestPixelVisibleLinesRaw(t *testing.T) {
 
 // ScrollLines brings the line delta lines from the first visible one to the top, within the text.
 func TestPixelScrollLines(t *testing.T) {
-	h := startEditor(t, 40, 10, WithCore(tuiwidget.CoreInitialText(numbered(40))))
+	h := startEditor(t, 40, 10, WithCore(editor.CoreInitialText(numbered(40))))
 	h.paint()
 	var got, want float32
 	h.onLoop(func() {
@@ -118,8 +119,8 @@ func TestPixelScrollLines(t *testing.T) {
 // In the Rendered view blocks are not a line a row: the range still follows the painted tops.
 func TestPixelVisibleLinesRendered(t *testing.T) {
 	text := "# Title\n\npara one\n\n```go\nx := 1\ny := 2\nz := 3\n```\n\n## Next\n\n" + numbered(30)
-	h := startEditor(t, 40, 10, WithRenderer(NewMarkdownRenderer()), WithView(tuiwidget.ViewRendered),
-		WithCore(tuiwidget.CoreInitialText(text)))
+	h := startEditor(t, 40, 10, WithRenderer(NewMarkdownRenderer()), WithView(editor.ViewRendered),
+		WithCore(editor.CoreInitialText(text)))
 	h.paint()
 	checkVisible(t, h, "rendered, at the top")
 	for _, ln := range []int{5, 10, 14} {
@@ -132,7 +133,7 @@ func TestPixelVisibleLinesRendered(t *testing.T) {
 // A line taller than the view, scrolled into, is the range alone.
 func TestPixelVisibleLinesInsideATallLine(t *testing.T) {
 	text := "short\n" + strings.Repeat("word ", 400) + "\nshort"
-	h := startEditor(t, 30, 8, WithWrap(tuiwidget.WrapSoft), WithCore(tuiwidget.CoreInitialText(text)))
+	h := startEditor(t, 30, 8, WithWrap(core.WrapSoft), WithCore(editor.CoreInitialText(text)))
 	h.paint()
 	h.onLoop(func() {
 		l := h.e.layout
@@ -155,7 +156,7 @@ func TestPixelVisibleLinesInsideATallLine(t *testing.T) {
 }
 
 // pixelLayout is a tui EditorViewport: H M L and Ctrl-d Ctrl-u find it by its methods.
-var _ tuiwidget.EditorViewport = (*pixelLayout)(nil)
+var _ editor.EditorViewport = (*pixelLayout)(nil)
 
 // A ready diagram draws its source lines as a picture, with no caret: their top is the block's.
 // Scrolled just past it, they are out of the range though the picture still shows.

@@ -21,7 +21,7 @@ import (
 	"github.com/yongjohnlee80/golib/gui/svg"
 	phtml "github.com/yongjohnlee80/golib/parse/html"
 	"github.com/yongjohnlee80/golib/tui"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/htmlview"
 )
 
 // IMAGES — a page's <img>s, loaded only through the view's ImageResolver (data: URIs aside), and
@@ -134,7 +134,7 @@ func (m *htmlImages) done(r tui.TaskResult) bool {
 	if stale {
 		return true // the old resolver's: dropped
 	}
-	if errors.Is(r.Err, tuiwidget.ErrImageRefused) {
+	if errors.Is(r.Err, htmlview.ErrImageRefused) {
 		m.v.Refused(src)
 		if e != nil {
 			e.refused = true

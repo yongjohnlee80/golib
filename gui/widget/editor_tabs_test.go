@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // TestTheEditorsTitleBarHoldsTheHostsTabs: the title bar's left holds the host's tabs (Tabs), in all
@@ -22,7 +22,7 @@ func TestTheEditorsTitleBarHoldsTheHostsTabs(t *testing.T) {
 
 	var chosen []string
 	h.onLoop(func() {
-		h.e.Tabs().SetTabs([]tuiwidget.StripTab{{ID: "1", Label: "a.md"}, {ID: "2", Label: "b.md"}})
+		h.e.Tabs().SetTabs([]core.StripTab{{ID: "1", Label: "a.md"}, {ID: "2", Label: "b.md"}})
 		h.e.Tabs().SetActive("1")
 		h.e.Tabs().SetOnSelect(func(id string) { chosen = append(chosen, id) })
 	})
@@ -39,9 +39,9 @@ func TestTheEditorsTitleBarHoldsTheHostsTabs(t *testing.T) {
 	// more tabs than fit: they take the bar's room up to the switch (column 102 of 120), a blank
 	// cell before it, and the switch keeps its place (was: two thirds of the bar, to column 81)
 	h.onLoop(func() {
-		var tabs []tuiwidget.StripTab
+		var tabs []core.StripTab
 		for i := range 12 {
-			tabs = append(tabs, tuiwidget.StripTab{ID: fmt.Sprint(i), Label: fmt.Sprintf("a-long-file-name-%02d.md", i)})
+			tabs = append(tabs, core.StripTab{ID: fmt.Sprint(i), Label: fmt.Sprintf("a-long-file-name-%02d.md", i)})
 		}
 		h.e.Tabs().SetTabs(tabs)
 	})

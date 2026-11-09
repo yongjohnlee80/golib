@@ -5,7 +5,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/tui"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/terminal"
 )
 
 // TERMINAL VIEWS — a Terminal's text at a size of its own: a scale of the window's text size, so
@@ -55,7 +55,7 @@ func (v *TerminalViews) SetScale(f float32) {
 }
 
 // Make is a view bound to terminal t: SetTerminalViews' newView.
-func (v *TerminalViews) Make(t *tuiwidget.Terminal) tuiwidget.TerminalView {
+func (v *TerminalViews) Make(t *terminal.Terminal) terminal.TerminalView {
 	tv := &terminalView{views: v, owner: t, painter: gui.NewCellPainter()}
 	v.views = append(v.views, tv)
 	return tv
@@ -65,7 +65,7 @@ func (v *TerminalViews) Make(t *tuiwidget.Terminal) tuiwidget.TerminalView {
 // the native style paints it with.
 type terminalView struct {
 	views   *TerminalViews
-	owner   *tuiwidget.Terminal
+	owner   *terminal.Terminal
 	painter *gui.CellPainter
 
 	cell     gui.Size // measured at the last Paint; zero before the first, or after a scale change
@@ -78,9 +78,9 @@ type terminalView struct {
 }
 
 var (
-	_ tuiwidget.TerminalView = (*terminalView)(nil)
-	_ gui.CaretView          = (*terminalView)(nil)
-	_ gui.PointerShapeView   = (*terminalView)(nil)
+	_ terminal.TerminalView = (*terminalView)(nil)
+	_ gui.CaretView         = (*terminalView)(nil)
+	_ gui.PointerShapeView  = (*terminalView)(nil)
 )
 
 // PointerShape is the I-beam over the whole view: a terminal takes text, as an editor does. Its tab

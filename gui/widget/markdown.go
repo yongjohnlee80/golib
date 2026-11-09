@@ -10,7 +10,7 @@ import (
 	"github.com/yongjohnlee80/golib/parse/languages"
 	"github.com/yongjohnlee80/golib/parse/markdown"
 	"github.com/yongjohnlee80/golib/tui"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // Markdown Live-Preview Rendering Pipeline:
@@ -42,7 +42,7 @@ import (
 // and embedded vector diagrams. When the user positions the caret within a block, that block
 // seamlessly reveals its raw markdown syntax for editing.
 type MarkdownRenderer struct {
-	tuiwidget.MarkdownBlocks // Blocks, InCode, InTable, ReflowFrom: the split both editors share
+	editor.MarkdownBlocks // Blocks, InCode, InTable, ReflowFrom: the split both editors share
 
 	h1        float32
 	diagrams  Diagrammer
@@ -126,7 +126,7 @@ func (f fence) closes(line string) bool { return markdown.FenceCloses(line, f.ch
 // LayOut lays block b out.
 func (r *MarkdownRenderer) LayOut(b Block, lines []string, width float32, cursorInside bool, t *gui.TextShaper, th Theme, host DiagramHost) BlockLayout {
 	code := flow.Options{Width: width, WhiteSpace: flow.PreWrap, Color: th.Text, LineHeight: codeLineHeight}
-	if front, closed := tuiwidget.MarkdownFrontmatterEnd(lines); b.From == 0 && front > 0 {
+	if front, closed := editor.MarkdownFrontmatterEnd(lines); b.From == 0 && front > 0 {
 		if r.HideMetadata && closed && !cursorInside {
 			return BlockLayout{}
 		}
@@ -151,10 +151,10 @@ func (r *MarkdownRenderer) LayOut(b Block, lines []string, width float32, cursor
 	if f, ok := openFence(lines[b.From]); ok {
 		return r.layFence(b, f, lines, code, cursorInside, t, th, host)
 	}
-	if tuiwidget.MarkdownTableEnd(lines, b.From) > 0 {
+	if editor.MarkdownTableEnd(lines, b.From) > 0 {
 		return r.layTable(b, lines, width, cursorInside, t, th)
 	}
-	if tuiwidget.MarkdownStartsIndentedCode(lines, b.From) {
+	if editor.MarkdownStartsIndentedCode(lines, b.From) {
 		return r.layIndented(b, lines, code, t, th)
 	}
 	ln := b.From
@@ -216,7 +216,7 @@ func (r *MarkdownRenderer) layLine(lines []string, ln int, width float32, t *gui
 // bodySpans are a line's spans past any quote marks: a list item's, which hangs by hang, or any
 // line's, a heading at level.
 func (r *MarkdownRenderer) bodySpans(ln int, text string, t *gui.TextShaper, th Theme) (spans []flow.Span, level int, hang float32) {
-	if indent, marker, ok := tuiwidget.MarkdownListItem(text); ok {
+	if indent, marker, ok := editor.MarkdownListItem(text); ok {
 		spans = r.listSpans(ln, text, indent, marker, th)
 		for _, s := range spans {
 			if s.Col >= len(indent)+len(marker) {
@@ -257,7 +257,7 @@ func isRule(lines []string, ln int) bool {
 }
 
 // quoteDepth reads a line's blockquote marks (tui/widget's MarkdownQuoteDepth).
-func quoteDepth(line string) (depth, off int) { return tuiwidget.MarkdownQuoteDepth(line) }
+func quoteDepth(line string) (depth, off int) { return editor.MarkdownQuoteDepth(line) }
 
 // layFrontmatter lays frontmatter out as a quiet block: its keys and values small, monospace,
 // its "---" lines hidden off the cursor.
@@ -404,7 +404,7 @@ func fenceSpans(ln int, line string, font gui.Font, th Theme) []flow.Span {
 
 // isListItem reports whether the line begins with a valid Markdown list item marker.
 func isListItem(line string) bool {
-	_, _, ok := tuiwidget.MarkdownListItem(line)
+	_, _, ok := editor.MarkdownListItem(line)
 	return ok
 }
 
@@ -413,7 +413,7 @@ func isBlank(line string) bool { return strings.TrimSpace(line) == "" }
 
 // mdAttr is how one byte of a line is drawn: tui/widget's MarkdownAttr, which both editors read a
 // line's Markdown into.
-type mdAttr = tuiwidget.MarkdownAttr
+type mdAttr = editor.MarkdownAttr
 
 // lineSpans are a line's spans with its Markdown drawn: the marks hidden, the rest styled. level
 // is the line's heading level, 0 for none.
@@ -421,10 +421,10 @@ func (r *MarkdownRenderer) lineSpans(ln int, line string, th Theme) ([]flow.Span
 	if line == "" {
 		return []flow.Span{{Font: th.Prose, Line: ln}}, 0
 	}
-	if indent, marker, ok := tuiwidget.MarkdownListItem(line); ok {
+	if indent, marker, ok := editor.MarkdownListItem(line); ok {
 		return r.listSpans(ln, line, indent, marker, th), 0
 	}
-	attrs, level := tuiwidget.MarkdownLineAttrs(line)
+	attrs, level := editor.MarkdownLineAttrs(line)
 	return r.spansOf(ln, line, attrs, th), level
 }
 
@@ -442,7 +442,7 @@ func (r *MarkdownRenderer) listSpans(ln int, line, indent, marker string, th The
 	if strings.ContainsRune("-*+", rune(marker[0])) {
 		bf := th.Prose
 		bf.Size *= 1.15
-		spans = append(spans, flow.Span{Text: tuiwidget.MarkdownBullet(indent), Font: bf, Color: or(th.Marker, th.Muted), Line: ln, Col: col})
+		spans = append(spans, flow.Span{Text: editor.MarkdownBullet(indent), Font: bf, Color: or(th.Marker, th.Muted), Line: ln, Col: col})
 		bullet = bullet[1:]
 		col++
 	}

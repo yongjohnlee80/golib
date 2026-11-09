@@ -1,6 +1,8 @@
 package widget
 
-import tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+import (
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
+)
 
 // THE ':' PROMPT — the terminal Editor's own CommandLine module, opened over this editor's body:
 // the same verbs, Tab completion and replace questions, drawn by this backend.
@@ -33,4 +35,4 @@ import tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
 
 // CommandLine is the editor's ':' prompt, the terminal Editor's module: on unless turned off
 // (CommandLine().SetEnabled(false)).
-func (e *Editor) CommandLine() *tuiwidget.CommandLine { return e.cmdline }
+func (e *Editor) CommandLine() *editor.CommandLine { return e.cmdline }

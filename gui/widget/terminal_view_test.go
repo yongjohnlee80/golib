@@ -10,7 +10,7 @@ import (
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/pty"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/terminal"
 )
 
 // pxBackend is a test backend whose cell is 8×16 logical pixels, as a window's.
@@ -93,7 +93,7 @@ func runOn(t *testing.T, app *tui.App, fn func()) {
 // the frame; a measured cell (on its first Paint) lays the terminal out again in it; hidden and shown
 // again, the view works on the new mount; a closed tab's view is retired and paints nothing.
 func TestTerminalViewsSizeAndPaintTheirTerminals(t *testing.T) {
-	tabs := tuiwidget.NewTerminalTabs()
+	tabs := terminal.NewTerminalTabs()
 	h := &holder{child: tabs, shown: true}
 	tb := tui.NewTestBackend(40, 10)
 	app := tui.NewApp(h, tui.WithBackend(pxBackend{tb}), tui.WithMinFrameInterval(0))
@@ -104,12 +104,12 @@ func TestTerminalViewsSizeAndPaintTheirTerminals(t *testing.T) {
 
 	views := NewTerminalViews(0.5)
 	procs := []*sizedProc{newSizedProc(), newSizedProc()}
-	var ids []tuiwidget.TerminalTabID
+	var ids []terminal.TerminalTabID
 	runOn(t, app, func() {
 		tabs.SetTerminalViews(views.Make)
 		for i, name := range []string{"a", "b"} {
 			p := procs[i]
-			id, err := tabs.Add(name, tuiwidget.WithStarter(func(pty.Cmd) (tuiwidget.TerminalProcess, error) { return p, nil }))
+			id, err := tabs.Add(name, terminal.WithStarter(func(pty.Cmd) (terminal.TerminalProcess, error) { return p, nil }))
 			if err != nil {
 				t.Fatal(err)
 			}

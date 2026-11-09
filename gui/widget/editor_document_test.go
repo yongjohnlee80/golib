@@ -7,23 +7,26 @@ import (
 
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/tui"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
+	"github.com/yongjohnlee80/golib/tui/widget/htmlview"
+	"github.com/yongjohnlee80/golib/tui/widget/table"
 )
 
 // docEditor is an Editor with Markdown's renderer and an HTMLView document view, its pixel layout
 // bound, showing text.
-func docEditor(t *testing.T, text string, opts ...EditorOption) (*edHarness, *tuiwidget.HTMLView) {
+func docEditor(t *testing.T, text string, opts ...EditorOption) (*edHarness, *htmlview.HTMLView) {
 	t.Helper()
-	v := tuiwidget.NewHTMLView()
+	v := htmlview.NewHTMLView()
 	BindHTML(v)
 	h := startEditor(t, 60, 20, append([]EditorOption{WithRenderer(NewMarkdownRenderer()), WithDocumentView(v),
-		WithCore(tuiwidget.CoreInitialText(text))}, opts...)...)
+		WithCore(editor.CoreInitialText(text))}, opts...)...)
 	return h, v
 }
 
 // state is what the cells read on the loop: the mode, which child shows, and where the focus is.
 type docState struct {
-	mode, shown     tuiwidget.EditorView
+	mode, shown     editor.EditorView
 	docShown        bool
 	bodyVis, docVis bool
 	focusDoc, focus bool // focus in the view; focus in the body
@@ -31,7 +34,7 @@ type docState struct {
 	listEditing     bool
 }
 
-func (h *edHarness) docState(v *tuiwidget.HTMLView) (s docState) {
+func (h *edHarness) docState(v *htmlview.HTMLView) (s docState) {
 	h.onLoop(func() {
 		s = docState{mode: h.e.View(), shown: h.e.ShownView(), docShown: h.e.doc.Shown(), bodyVis: h.e.body.Visible(), docVis: v.Visible(),
 			focusDoc: h.app.FocusWithin(v), focus: h.app.FocusWithin(h.e.body), source: string(v.Source()),
@@ -49,14 +52,14 @@ func TestTheDocumentViewIsRenderedForADocumentItReads(t *testing.T) {
 	h.onLoop(func() { h.e.SetRenderedDocument(true) })
 	h.keys(ctrl('t'))
 	s := h.docState(v)
-	if s.mode != tuiwidget.ViewRendered || !s.docShown || s.bodyVis || !s.docVis || s.source != "<p>one</p>" || s.listEditing {
+	if s.mode != editor.ViewRendered || !s.docShown || s.bodyVis || !s.docVis || s.source != "<p>one</p>" || s.listEditing {
 		t.Fatalf("Rendered with the view on: %+v", s)
 	}
 	h.until("the focus in the view", func() bool { return h.docState(v).focusDoc })
 
 	h.keys(ctrl('t'), tui.KeyEvent{Code: 't', Mods: tui.ModCtrl, Kind: tui.KeyRelease})
 	s = h.docState(v)
-	if s.mode != tuiwidget.ViewRaw || s.docShown || !s.bodyVis || s.docVis {
+	if s.mode != editor.ViewRaw || s.docShown || !s.bodyVis || s.docVis {
 		t.Fatalf("Ctrl+T (pressed, then released) from the view: %+v, want Raw on the body", s)
 	}
 	h.until("the focus back in the body", func() bool { return h.docState(v).focus })
@@ -77,11 +80,11 @@ func TestTheDocumentViewIsRenderedForADocumentItReads(t *testing.T) {
 // though SetMode's mode is unchanged; with no renderer, Raw is drawn and Rendered stays the choice.
 func TestTheDocumentViewTurnedOffWhileRendered(t *testing.T) {
 	h, v := docEditor(t, "- item")
-	h.onLoop(func() { h.e.SetRenderedDocument(true); h.e.SetView(tuiwidget.ViewRendered) })
+	h.onLoop(func() { h.e.SetRenderedDocument(true); h.e.SetView(editor.ViewRendered) })
 	h.until("the focus in the view", func() bool { return h.docState(v).focusDoc })
 	h.onLoop(func() { h.e.SetRenderedDocument(false) })
 	s := h.docState(v)
-	if s.mode != tuiwidget.ViewRendered || s.docShown || !s.bodyVis || s.docVis || !s.listEditing {
+	if s.mode != editor.ViewRendered || s.docShown || !s.bodyVis || s.docVis || !s.listEditing {
 		t.Fatalf("turned off while Rendered: %+v, want Rendered Markdown on the body", s)
 	}
 	h.until("the focus back in the body", func() bool { return h.docState(v).focus })
@@ -89,15 +92,15 @@ func TestTheDocumentViewTurnedOffWhileRendered(t *testing.T) {
 	if c := NewEditor().DocumentComponent(); c != nil {
 		t.Errorf("an Editor without a document view has the component %v", c)
 	}
-	v2 := tuiwidget.NewHTMLView()
+	v2 := htmlview.NewHTMLView()
 	BindHTML(v2)
-	h2 := startEditor(t, 60, 20, WithDocumentView(v2), WithCore(tuiwidget.CoreInitialText("<p>x</p>")))
-	h2.onLoop(func() { h2.e.SetRenderedDocument(true); h2.e.SetView(tuiwidget.ViewRendered) })
-	if s := h2.docState(v2); s.mode != tuiwidget.ViewRendered || !s.docShown {
+	h2 := startEditor(t, 60, 20, WithDocumentView(v2), WithCore(editor.CoreInitialText("<p>x</p>")))
+	h2.onLoop(func() { h2.e.SetRenderedDocument(true); h2.e.SetView(editor.ViewRendered) })
+	if s := h2.docState(v2); s.mode != editor.ViewRendered || !s.docShown {
 		t.Fatalf("a document view alone gives Rendered: %+v", s)
 	}
 	h2.onLoop(func() { h2.e.SetRenderedDocument(false) })
-	if s := h2.docState(v2); s.mode != tuiwidget.ViewRendered || s.shown != tuiwidget.ViewRaw || s.docShown || !s.bodyVis {
+	if s := h2.docState(v2); s.mode != editor.ViewRendered || s.shown != editor.ViewRaw || s.docShown || !s.bodyVis {
 		t.Errorf("turned off with no renderer: %+v, want Raw drawn, Rendered chosen", s)
 	}
 }
@@ -106,7 +109,7 @@ func TestTheDocumentViewTurnedOffWhileRendered(t *testing.T) {
 // body's core, and a key the keymap leaves unbound bubbles.
 func TestTheDocumentViewLeavesOtherKeys(t *testing.T) {
 	h, v := docEditor(t, "<p>a</p>")
-	h.onLoop(func() { h.e.SetRenderedDocument(true); h.e.SetView(tuiwidget.ViewRendered) })
+	h.onLoop(func() { h.e.SetRenderedDocument(true); h.e.SetView(editor.ViewRendered) })
 	h.until("the focus in the view", func() bool { return h.docState(v).focusDoc })
 	var ln int
 	h.onLoop(func() { ln, _ = h.e.core.Line() })
@@ -128,7 +131,7 @@ func TestCtrlTPressAndReleaseFromRawTogglesOnce(t *testing.T) {
 	h.keys(ctrl('t'))
 	h.until("the focus in the view", func() bool { return h.docState(v).focusDoc })
 	h.keys(tui.KeyEvent{Code: 't', Mods: tui.ModCtrl, Kind: tui.KeyRelease})
-	if s := h.docState(v); s.mode != tuiwidget.ViewRendered || !s.docShown {
+	if s := h.docState(v); s.mode != editor.ViewRendered || !s.docShown {
 		t.Errorf("Ctrl+T's release in the view toggled again: %+v", s)
 	}
 }
@@ -137,11 +140,11 @@ func TestCtrlTPressAndReleaseFromRawTogglesOnce(t *testing.T) {
 // focus in the editor, on the child shown: the focus repair alone would hand it to the first
 // focusable in the window.
 func TestTheFocusMovesWithTheShownChild(t *testing.T) {
-	v := tuiwidget.NewHTMLView()
+	v := htmlview.NewHTMLView()
 	BindHTML(v)
-	e := NewEditor(WithRenderer(NewMarkdownRenderer()), WithDocumentView(v), WithCore(tuiwidget.CoreInitialText("<p>x</p>")))
+	e := NewEditor(WithRenderer(NewMarkdownRenderer()), WithDocumentView(v), WithCore(editor.CoreInitialText("<p>x</p>")))
 	col := tui.NewFlex(tui.Vertical)
-	before := tuiwidget.NewButton("before")
+	before := core.NewButton("before")
 	col.Add(before)
 	col.AddWeighted(e, 1)
 	tb := tui.NewTestBackend(60, 20, tui.WithTestCapabilities(tui.Capabilities{NativeViews: true}))
@@ -169,7 +172,7 @@ func TestTheFocusMovesWithTheShownChild(t *testing.T) {
 // plainDoc is a consumer's own document view, not an HTMLView: it keeps the text it is shown and
 // counts its layouts.
 type plainDoc struct {
-	tuiwidget.Base
+	core.Base
 	text    string
 	layouts int
 }
@@ -187,7 +190,7 @@ func (d *plainDoc) HandleEvent(tui.Event) bool { return false }
 // when shown, and Ctrl+T, which it leaves, returns to Raw; hidden, it is not laid out.
 func TestAConsumersDocumentView(t *testing.T) {
 	d := &plainDoc{}
-	h := startEditor(t, 60, 20, WithDocumentView(d), WithCore(tuiwidget.CoreInitialText("plain text")))
+	h := startEditor(t, 60, 20, WithDocumentView(d), WithCore(editor.CoreInitialText("plain text")))
 	h.onLoop(func() { h.e.SetRenderedDocument(true) })
 	h.keys(ctrl('t'))
 	h.until("the focus in the view", func() bool {
@@ -201,9 +204,9 @@ func TestAConsumersDocumentView(t *testing.T) {
 		t.Fatalf("the view was shown %q", text)
 	}
 	h.keys(ctrl('t'))
-	var mode tuiwidget.EditorView
+	var mode editor.EditorView
 	h.onLoop(func() { mode = h.e.View() })
-	if mode != tuiwidget.ViewRaw {
+	if mode != editor.ViewRaw {
 		t.Fatalf("Ctrl+T from the consumer's view: mode %v, want Raw", mode)
 	}
 	var before int
@@ -238,7 +241,7 @@ func (d *keyDoc) HandleEvent(ev tui.Event) bool {
 // another while shown, the new one is shown, focused and typed into, the old one unmounted; removed
 // while shown, the body is drawn again and focused, by the renderer.
 func TestADocumentViewSwappedInAtRunTime(t *testing.T) {
-	h := startEditor(t, 60, 20, WithRenderer(NewMarkdownRenderer()), WithCore(tuiwidget.CoreInitialText("a,b\n1,2\n")))
+	h := startEditor(t, 60, 20, WithRenderer(NewMarkdownRenderer()), WithCore(editor.CoreInitialText("a,b\n1,2\n")))
 	h.onLoop(func() { h.app.FocusInto(h.e) })
 	focused := func(c tui.Component) func() bool {
 		return func() bool {
@@ -253,7 +256,7 @@ func TestADocumentViewSwappedInAtRunTime(t *testing.T) {
 		return k
 	}
 	first := &keyDoc{}
-	h.onLoop(func() { h.e.SetDocumentView(first); h.e.SetRenderedDocument(true); h.e.SetView(tuiwidget.ViewRendered) })
+	h.onLoop(func() { h.e.SetDocumentView(first); h.e.SetRenderedDocument(true); h.e.SetView(editor.ViewRendered) })
 	h.until("the focus in the swapped-in view", focused(first))
 	h.keys(tui.KeyEvent{Code: 'x', Text: "x"}, tui.KeyEvent{Code: 'y', Text: "y"})
 	if got := typed(first); got != "xy" {
@@ -291,7 +294,7 @@ func TestADocumentViewSwappedInAtRunTime(t *testing.T) {
 	h.onLoop(func() {
 		s = docState{mode: h.e.View(), shown: h.e.ShownView(), docShown: h.e.doc.Shown(), bodyVis: h.e.body.Visible()}
 	})
-	if s.mode != tuiwidget.ViewRendered || s.shown != tuiwidget.ViewRendered || s.docShown || !s.bodyVis {
+	if s.mode != editor.ViewRendered || s.shown != editor.ViewRendered || s.docShown || !s.bodyVis {
 		t.Fatalf("the view removed while shown: %+v, want Rendered by the renderer on the body", s)
 	}
 }
@@ -303,22 +306,22 @@ func TestTheGuiTableUndoesAndRedoesItsKeptEditByKey(t *testing.T) {
 	const original, edited = "name,n\nann,1\nbob,2\n", "name,n\nann9,1\nbob,2\n"
 	for _, c := range []struct {
 		name       string
-		ks         tuiwidget.Keyset
+		ks         editor.Keyset
 		undo, redo tui.KeyEvent
 	}{
-		{"vim", tuiwidget.KeysetVim, tui.KeyEvent{Code: 'u', Text: "u"}, ctrl('r')},
-		{"standard", tuiwidget.KeysetStandard, ctrl('z'), ctrl('y')},
+		{"vim", editor.KeysetVim, tui.KeyEvent{Code: 'u', Text: "u"}, ctrl('r')},
+		{"standard", editor.KeysetStandard, ctrl('z'), ctrl('y')},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			h := startEditor(t, 60, 20, WithRenderer(NewMarkdownRenderer()), WithCore(tuiwidget.CoreInitialText(original)))
-			var doc *tuiwidget.TableDocument
+			h := startEditor(t, 60, 20, WithRenderer(NewMarkdownRenderer()), WithCore(editor.CoreInitialText(original)))
+			var doc *table.TableDocument
 			h.onLoop(func() {
 				h.e.SetKeyset(c.ks)
 				h.app.FocusInto(h.e)
 				doc = NewTableDocument(h.e.Core(), ',')
 				h.e.SetDocumentView(doc)
 				h.e.SetRenderedDocument(true)
-				h.e.SetView(tuiwidget.ViewRendered)
+				h.e.SetView(editor.ViewRendered)
 			})
 			h.until("the focus in the table", func() bool {
 				var ok bool
@@ -353,16 +356,16 @@ func TestTheGuiTableUndoesAndRedoesItsKeptEditByKey(t *testing.T) {
 
 // gui's Editor chooses its view as the terminal's does (tuiwidget.ViewChooser, EditorView).
 func TestTheEditorsViewIsTuisEditorView(t *testing.T) {
-	var _ tuiwidget.ViewChooser = (*Editor)(nil)
-	e := NewEditor(WithRenderer(NewMarkdownRenderer()), WithView(tuiwidget.ViewRendered))
-	if e.View() != tuiwidget.ViewRendered || e.ShownView() != tuiwidget.ViewRendered {
+	var _ editor.ViewChooser = (*Editor)(nil)
+	e := NewEditor(WithRenderer(NewMarkdownRenderer()), WithView(editor.ViewRendered))
+	if e.View() != editor.ViewRendered || e.ShownView() != editor.ViewRendered {
 		t.Fatalf("WithView(Rendered): view %v, shown %v; want both Rendered", e.View(), e.ShownView())
 	}
 	e.SetRenderedEnabled(false)
-	if e.View() != tuiwidget.ViewRendered || e.ShownView() != tuiwidget.ViewRaw {
+	if e.View() != editor.ViewRendered || e.ShownView() != editor.ViewRaw {
 		t.Errorf("Rendered withheld: view %v, shown %v; want Rendered kept, Raw drawn", e.View(), e.ShownView())
 	}
-	if NewEditor(WithView(tuiwidget.ViewRendered)).ShownView() != tuiwidget.ViewRaw {
+	if NewEditor(WithView(editor.ViewRendered)).ShownView() != editor.ViewRaw {
 		t.Error("Rendered with no renderer or document view is drawn, want Raw")
 	}
 }
