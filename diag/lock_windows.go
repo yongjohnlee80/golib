@@ -32,5 +32,10 @@ func lockDir(path string) (*dirLock, error) {
 	return &dirLock{f: f}, nil
 }
 
-// release gives the directory up; the lock file stays, unlocked, for the next monitor.
-func (l *dirLock) release() { l.f.Close() }
+// release gives the directory up; the lock file stays, unlocked, for the next monitor. The lock
+// is undone explicitly before the close: Windows may unlock a closed handle's lock only later, and
+// a Start right after Close must find the directory free.
+func (l *dirLock) release() {
+	_ = windows.UnlockFileEx(windows.Handle(l.f.Fd()), 0, 1, 0, new(windows.Overlapped))
+	l.f.Close()
+}

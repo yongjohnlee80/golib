@@ -2,7 +2,6 @@ package files
 
 import (
 	"context"
-	"io/fs"
 	"path"
 	"strings"
 
@@ -765,12 +764,7 @@ func (v *FileSaveView) named() (string, bool) {
 	if name == "" {
 		return "", false
 	}
-	src := v.listing.source()
-	if src.absolute(name) {
-		return src.fsPath(name)
-	}
-	p := path.Clean(path.Join(v.listing.listDir(), name))
-	return p, fs.ValidPath(p)
+	return v.listing.source().typedPath(v.listing.listDir(), name)
 }
 
 // Selected is the named file, rooted, or "" when no name is written.
