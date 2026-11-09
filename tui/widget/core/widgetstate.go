@@ -1,4 +1,4 @@
-package widget
+package core
 
 // SHARED INTERACTIVE STATE.
 //
