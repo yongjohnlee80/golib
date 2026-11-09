@@ -112,6 +112,6 @@ As new motions and operator-pending combinations are added, managing transitions
 | Item | Area | Priority | Impact |
 |---|---|---|---|
 | **Lane Interleaving** | `tui/app.go` | Medium | Eliminates input lag and drops during heavy `App.Update` batches. |
-| **Pre-mount Buffer** | `widget/bufferview.go` | High | Eliminates lost startup logs and the need for deferredWriter workarounds. |
-| **Auto-Focus Reseed** | `widget/float.go` | Medium | Prevents stranded focus in async modals. |
+| **Pre-mount Buffer** | `widget/core/bufferview.go` | High | Eliminates lost startup logs and the need for deferredWriter workarounds. |
+| **Auto-Focus Reseed** | `widget/core/float.go` | Medium | Prevents stranded focus in async modals. |
 | **Trie Key Router** | `tui/widget/editor.go` | Low / Design | Unifies multi-chord parsing across Editor and future modal widgets. |

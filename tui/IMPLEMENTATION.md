@@ -77,7 +77,7 @@ in the same change. Never add a second copy "for now".
 | A view delegate's Text template (decl) | `cellTemplate` in `decl/tableview_cells.go` (parse, check, present), shared by TableView and TreeView |
 | A picker dialog (decl) | `newChooserDialog` in `decl/filedialog.go`, over the `chooserSpec` FileDialog and FolderDialog read |
 | Press pairing (double/triple click on the same target); a positional view's row identity across owner callbacks | `kit.PressPairer` (`Press`, `Survives`) built on `kit.RowsEpoch` in `widget/internal/kit/presspair.go` (List, Tree, `TableCore.press`; FileList holds its own `RowsEpoch`) |
-| Drag state machine | `widget/internal/kit/drag.go`: `PointerDrag[S]` (Begin, Capture, End, Lost); `widget/drag.go`: `resizeGesture`, `stepCellsOf`; WindowCore's richer gesture (focus entry, gesture observers, checkpoint) is its own |
+| Drag state machine | `widget/internal/kit/drag.go`: `PointerDrag[S]` (Begin, Capture, End, Lost); `widget/core/drag.go`: `resizeGesture`, `stepCellsOf`; WindowCore's richer gesture (focus entry, gesture observers, checkpoint) is its own |
 | Borders and frames | `widget/internal/kit/frame.go`: `PaintFrame` (per edge), `DrawFrame` (whole), honouring the `style.BorderStyle` a style carries; no hard-coded glyphs |
 | Scrims and overlay layering | one scrim and one layer-tier capability on `OverlayHost` |
 | A popup: a panel over the host, closed by Esc or a press outside, trapping focus | `PopupLayer` (`popup.go`, opened with `OpenPopupAt`): EditorMenu's menu, the tab strip's menu, and Select's options (`selectPanel`) |
@@ -85,7 +85,7 @@ in the same change. Never add a second copy "for now".
 | Text viewport (scroll, reveal, caret placement, paint loop) | one text viewport shared by TextInput, TextArea, Editor, CommandLine |
 | Buffer edits | the line primitives in `widget/internal/text/buffer.go` (`SetLine`, `InsertLines`, `RemoveLines`, `ReplaceLines`, `SetValue`, `DeleteRegion`, `InsertText`); no other file writes `.Lines` (internal/audit) |
 | Pointer policy, focus state, publishing | `widget.Base` |
-| A widget's shown text, plain or a catalog message | `uiText` (`plainText`, `messageText`, `inLanguage`) in `widget/message.go`, read where it is measured and painted, never resolved into a field in Layout |
+| A widget's shown text, plain or a catalog message | `uiText` (`plainText`, `messageText`, `inLanguage`) in `widget/core/message.go`, read where it is measured and painted, never resolved into a field in Layout |
 | Fatal construction errors | `kit.FatalOf` → `errs.Fatal` |
 | Parsing (expressions, SQL-ish where/order) | golib `parse` first |
 
