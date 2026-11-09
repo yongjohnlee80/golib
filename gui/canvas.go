@@ -409,19 +409,32 @@ func (p paintPush) pop() {
 	p.cl.Pop()
 }
 
+// deviceTransform maps the canvas's coordinates (dp, after its Pushes) to device pixels.
+func (c *gioCanvas) deviceTransform() f32.Affine2D {
+	s := c.m.scale
+	return f32.Affine2D{}.Scale(f32.Point{}, f32.Pt(s, s)).Offset(c.origin).Mul(c.xform)
+}
+
 // begin pushes the clip, the opacity and the logical-to-device transform; end pops them.
 func (c *gioCanvas) begin() (end func()) {
 	p := pushPaint(c.ops, c.clip, c.alpha)
-	s := c.m.scale
-	base := f32.Affine2D{}.Scale(f32.Point{}, f32.Pt(s, s)).Offset(c.origin)
-	p.transform(c.ops, base.Mul(c.xform))
+	p.transform(c.ops, c.deviceTransform())
 	return p.pop
 }
 
-// fill paints the current clip with b.
-func (c *gioCanvas) fill(b Brush) {
+// fill paints the current clip with b, under the logical-to-device transform as pushed.
+func (c *gioCanvas) fill(b Brush) { c.fillUnder(b, f32.Affine2D{}) }
+
+// fillUnder paints the current clip with b, under the logical-to-device transform and then extra,
+// pushed after it. Gio places a gradient's stops in device pixels from the pushed transform's
+// translation alone, ignoring its scale and rotation, so the stops (dp, as every Canvas
+// coordinate) are mapped to the device here and given relative to that translation.
+func (c *gioCanvas) fillUnder(b Brush, extra f32.Affine2D) {
 	if g := b.Gradient; g != nil {
-		paint.LinearGradientOp{Stop1: fp(g.From), Color1: g.FromColor, Stop2: fp(g.To), Color2: g.ToColor}.Add(c.ops)
+		t := c.deviceTransform()
+		off := t.Mul(extra).Transform(f32.Point{})
+		s1, s2 := t.Transform(fp(g.From)).Sub(off), t.Transform(fp(g.To)).Sub(off)
+		paint.LinearGradientOp{Stop1: s1, Color1: g.FromColor, Stop2: s2, Color2: g.ToColor}.Add(c.ops)
 	} else {
 		paint.ColorOp{Color: b.Color}.Add(c.ops)
 	}
@@ -463,9 +476,8 @@ func (c *gioCanvas) FillRect(r Rect, b Brush) {
 		return
 	}
 	p := pushPaint(c.ops, dev.Intersect(c.clip), c.alpha)
-	if b.Gradient != nil { // its stops are in the canvas's coordinates
-		s := c.m.scale
-		p.transform(c.ops, f32.Affine2D{}.Scale(f32.Point{}, f32.Pt(s, s)).Offset(c.origin).Mul(c.xform))
+	if b.Gradient != nil { // fill maps its stops from under the logical-to-device transform
+		p.transform(c.ops, c.deviceTransform())
 	}
 	countFill()
 	c.fill(b)
@@ -478,8 +490,7 @@ func (c *gioCanvas) pixelRect(r Rect) (image.Rectangle, bool) {
 	if r.W <= 0 || r.H <= 0 {
 		return image.Rectangle{}, false
 	}
-	s := c.m.scale
-	m := f32.Affine2D{}.Scale(f32.Point{}, f32.Pt(s, s)).Offset(c.origin).Mul(c.xform)
+	m := c.deviceTransform()
 	if _, hx, _, hy, _, _ := m.Elems(); hx != 0 || hy != 0 {
 		return image.Rectangle{}, false
 	}
@@ -514,14 +525,16 @@ func (c *gioCanvas) DrawText(t *TextLayout, at Point, b Brush) {
 	end := c.begin()
 	// The glyphs are shaped in device pixels: undo the scale, from the first line's dot.
 	inv := 1 / t.scale
-	dot := op.Affine(f32.Affine2D{}.Scale(f32.Point{}, f32.Pt(inv, inv)).Offset(f32.Pt(at.X, at.Y+t.Ascent))).Push(c.ops)
+	dotM := f32.Affine2D{}.Scale(f32.Point{}, f32.Pt(inv, inv)).Offset(f32.Pt(at.X, at.Y+t.Ascent))
+	dot := op.Affine(dotM).Push(c.ops)
 	countTransform()
 	for _, ln := range t.lines {
 		countTransform()
 		countGlyphPath()
-		off := op.Affine(f32.Affine2D{}.Offset(f32.Pt(ln.x, ln.y))).Push(c.ops)
+		lineM := f32.Affine2D{}.Offset(f32.Pt(ln.x, ln.y))
+		off := op.Affine(lineM).Push(c.ops)
 		st := clip.Outline{Path: ln.path}.Op().Push(c.ops)
-		c.fill(b)
+		c.fillUnder(b, dotM.Mul(lineM))
 		st.Pop()
 		ln.bitmaps.Add(c.ops)
 		off.Pop()
@@ -542,8 +555,7 @@ func (c *gioCanvas) DrawImage(img *Image, dst, src Rect) {
 	// its path, under the canvas's transform
 	if dev, ok := c.pixelRect(dst); ok {
 		p := pushPaint(c.ops, dev.Intersect(c.clip), c.alpha)
-		s := c.m.scale
-		p.transform(c.ops, f32.Affine2D{}.Scale(f32.Point{}, f32.Pt(s, s)).Offset(c.origin).Mul(c.xform))
+		p.transform(c.ops, c.deviceTransform())
 		c.paintImage(img, src, dst)
 		p.pop()
 		return

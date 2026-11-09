@@ -83,6 +83,13 @@ var goldenScenes = []struct {
 // view placed over the grid), on hw, gio's headless GPU window of 96s x 64s pixels.
 func goldenShot(t *testing.T, hw *headless.Window, draw func(Canvas), s int) *image.RGBA {
 	t.Helper()
+	return goldenShotAt(t, hw, draw, s, 0)
+}
+
+// goldenShotAt is goldenShot with the view placed col cells in from the left (and that much
+// narrower), so its canvas's origin is off the window's.
+func goldenShotAt(t *testing.T, hw *headless.Window, draw func(Canvas), s, col int) *image.RGBA {
+	t.Helper()
 	w, h := 96*s, 64*s
 	m := metrics{window: image.Pt(w, h), cell: image.Pt(8*s, 16*s), ppem: float32(14 * s), baseline: 12 * s, scale: float32(s), grid: tui.Size{W: 12, H: 4}}
 	b := NewBackend()
@@ -94,7 +101,7 @@ func goldenShot(t *testing.T, hw *headless.Window, draw func(Canvas), s int) *im
 	g := &grid{}
 	g.resize(12, 4)
 	b.render.m = m
-	call := b.render.frame(g, m, cursorState{}, []tui.NativePlacement{{View: view, Cols: 12, Rows: 4}}, nil, true)
+	call := b.render.frame(g, m, cursorState{}, []tui.NativePlacement{{View: view, X: col, Cols: 12 - col, Rows: 4}}, nil, true)
 	ops := new(op.Ops)
 	call.Add(ops)
 	if err := hw.Frame(ops); err != nil {
