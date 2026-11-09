@@ -103,3 +103,4 @@
 ./view
 ./tui/widget
 ./tui/examples/editor-qml
+./tui
