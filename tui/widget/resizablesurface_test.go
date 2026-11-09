@@ -18,18 +18,18 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // TestResizableStyleIsNilSafeAndImmutable.
 func TestResizableStyleIsNilSafeAndImmutable(t *testing.T) {
-	var nilStyle *widget.ResizableStyle
+	var nilStyle *core.ResizableStyle
 	// Every accessor answers on a nil receiver, because a widget with no style
 	// set holds exactly that and must still paint.
-	if nilStyle.Handle() != widget.DefaultResizableStyle().Handle() {
+	if nilStyle.Handle() != core.DefaultResizableStyle().Handle() {
 		t.Error("Handle() on a nil style did not fall back to the default")
 	}
-	if nilStyle.Active() != widget.DefaultResizableStyle().Active() {
+	if nilStyle.Active() != core.DefaultResizableStyle().Active() {
 		t.Error("Active() on a nil style did not fall back to the default")
 	}
 	// A With* on nil yields a COMPLETE value, not one with empty looks beside
@@ -38,14 +38,14 @@ func TestResizableStyleIsNilSafeAndImmutable(t *testing.T) {
 	if fromNil.Handle() != styleOf(7) {
 		t.Error("WithHandle on a nil style did not set the handle look")
 	}
-	if fromNil.Active() != widget.DefaultResizableStyle().Active() {
+	if fromNil.Active() != core.DefaultResizableStyle().Active() {
 		t.Error("WithHandle on a nil style left the OTHER look empty; a clone of " +
 			"nothing must be a clone of the defaults")
 	}
 
 	// Immutability: these values are shared between wrappers by design, so a
 	// With* must copy rather than write through.
-	base := widget.NewResizableStyle(styleOf(1))
+	base := core.NewResizableStyle(styleOf(1))
 	derived := base.WithActive(styleOf(2))
 	if base.Active() == derived.Active() {
 		t.Error("WithActive mutated the receiver; one style value dresses many wrappers")
@@ -63,67 +63,67 @@ func TestResizableStyleIsNilSafeAndImmutable(t *testing.T) {
 // failure messages, so a value that renders as a number is a message nobody can
 // read, and an out-of-range one that renders as a number twice is worse.
 func TestTheResizableEnumsNameEveryValue(t *testing.T) {
-	for m, want := range map[widget.SizeMode]string{
-		widget.SizeAuto:     "auto",
-		widget.SizeExplicit: "explicit",
+	for m, want := range map[core.SizeMode]string{
+		core.SizeAuto:     "auto",
+		core.SizeExplicit: "explicit",
 	} {
 		if got := m.String(); got != want {
 			t.Errorf("SizeMode(%d).String() = %q, want %q", m, got, want)
 		}
 	}
-	if got := (widget.SizeExplicit + 1).String(); got != "unknown" {
+	if got := (core.SizeExplicit + 1).String(); got != "unknown" {
 		t.Errorf("an undeclared SizeMode rendered as %q", got)
 	}
 
-	for h, want := range map[widget.Handle]string{
-		widget.HandleLeft:              "left",
-		widget.HandleRight:             "right",
-		widget.HandleTop:               "top",
-		widget.HandleBottom:            "bottom",
-		widget.HandleTopLeft:           "top-left",
-		widget.HandleTopRight:          "top-right",
-		widget.HandleBottomLeft:        "bottom-left",
-		widget.HandleBottomRight:       "bottom-right",
-		widget.HandleVerticalDivider:   "vertical-divider",
-		widget.HandleHorizontalDivider: "horizontal-divider",
+	for h, want := range map[core.Handle]string{
+		core.HandleLeft:              "left",
+		core.HandleRight:             "right",
+		core.HandleTop:               "top",
+		core.HandleBottom:            "bottom",
+		core.HandleTopLeft:           "top-left",
+		core.HandleTopRight:          "top-right",
+		core.HandleBottomLeft:        "bottom-left",
+		core.HandleBottomRight:       "bottom-right",
+		core.HandleVerticalDivider:   "vertical-divider",
+		core.HandleHorizontalDivider: "horizontal-divider",
 	} {
 		if got := h.String(); got != want {
 			t.Errorf("Handle(%d).String() = %q, want %q", h, got, want)
 		}
 	}
-	if got := (widget.HandleHorizontalDivider + 1).String(); got != "unknown" {
+	if got := (core.HandleHorizontalDivider + 1).String(); got != "unknown" {
 		t.Errorf("an undeclared Handle rendered as %q", got)
 	}
 
-	for p, want := range map[widget.PlacementMode]string{
-		widget.PlacementOverlay: "overlay",
-		widget.PlacementReserve: "reserve",
+	for p, want := range map[core.PlacementMode]string{
+		core.PlacementOverlay: "overlay",
+		core.PlacementReserve: "reserve",
 	} {
 		if got := p.String(); got != want {
 			t.Errorf("PlacementMode(%d).String() = %q, want %q", p, got, want)
 		}
 	}
-	if got := (widget.PlacementReserve + 1).String(); got != "unknown" {
+	if got := (core.PlacementReserve + 1).String(); got != "unknown" {
 		t.Errorf("an undeclared PlacementMode rendered as %q", got)
 	}
 	// The FIRST invalid value, not a far one: an off-by-one bound rejects 200
 	// as readily as a correct bound does.
-	if !widget.PlacementReserve.Valid() || (widget.PlacementReserve + 1).Valid() {
+	if !core.PlacementReserve.Valid() || (core.PlacementReserve + 1).Valid() {
 		t.Error("PlacementMode.Valid does not bound the declared set at its edge")
 	}
 
-	for u, want := range map[widget.StepUnit]string{
-		widget.StepCells:   "cells",
-		widget.StepPercent: "percent",
+	for u, want := range map[core.StepUnit]string{
+		core.StepCells:   "cells",
+		core.StepPercent: "percent",
 	} {
 		if got := u.String(); got != want {
 			t.Errorf("StepUnit(%d).String() = %q, want %q", u, got, want)
 		}
 	}
-	if got := (widget.StepPercent + 1).String(); got != "unknown" {
+	if got := (core.StepPercent + 1).String(); got != "unknown" {
 		t.Errorf("an undeclared StepUnit rendered as %q", got)
 	}
-	if !widget.StepPercent.Valid() || (widget.StepPercent + 1).Valid() {
+	if !core.StepPercent.Valid() || (core.StepPercent + 1).Valid() {
 		t.Error("StepUnit.Valid does not bound the declared set at its edge")
 	}
 }
@@ -135,13 +135,13 @@ func TestTheResizableEnumsNameEveryValue(t *testing.T) {
 // changes. A setter that stored the value without repainting would pass any
 // test that only read it back.
 func TestTheStyleReachesTheGripBothWays(t *testing.T) {
-	loud := widget.NewResizableStyle(style.New().Foreground(style.TokenError))
+	loud := core.NewResizableStyle(style.New().Foreground(style.TokenError))
 	child := &sizedChild{pref: tui.Size{W: 6, H: 3}}
 
 	// At construction.
-	r := widget.NewResizable(child, widget.WithResizableStyle(loud),
-		widget.WithHandleGlyph("@"))
-	host := widget.NewOverlayHost(r)
+	r := core.NewResizable(child, core.WithResizableStyle(loud),
+		core.WithHandleGlyph("@"))
+	host := core.NewOverlayHost(r)
 	h := startApp(t, host, 20, 10)
 	defer h.stop()
 	h.settle()
@@ -153,7 +153,7 @@ func TestTheStyleReachesTheGripBothWays(t *testing.T) {
 	atRest := cellAttrs(h, sz.W-1, sz.H-1)
 
 	// And at runtime, on the SAME wrapper: the association is replaceable.
-	quiet := widget.NewResizableStyle(style.New().Foreground(style.TokenTextMuted))
+	quiet := core.NewResizableStyle(style.New().Foreground(style.TokenTextMuted))
 	h.onLoop(func() { r.WithStyle(quiet) })
 	h.settle()
 	if got := cellAttrs(h, sz.W-1, sz.H-1); got == atRest {
@@ -178,25 +178,25 @@ func TestTheStyleReachesTheGripBothWays(t *testing.T) {
 // would spend a frame per call for the rest of the application's life.
 func TestSetSizeAndSetAutoAreIdempotentAndSwitchModes(t *testing.T) {
 	child := &sizedChild{pref: tui.Size{W: 6, H: 3}}
-	r := widget.NewResizable(child, widget.WithMaxSize(tui.Size{W: 30, H: 15}))
-	host := widget.NewOverlayHost(r)
+	r := core.NewResizable(child, core.WithMaxSize(tui.Size{W: 30, H: 15}))
+	host := core.NewOverlayHost(r)
 	h := startApp(t, host, 40, 20)
 	defer h.stop()
 	h.settle()
 
-	if mode := modeOn(t, h, r); mode != widget.SizeAuto {
+	if mode := modeOn(t, h, r); mode != core.SizeAuto {
 		t.Fatalf("SizeMode() = %v at construction, want auto", mode)
 	}
 	// SetAuto while already auto changes nothing and is not an error.
 	h.onLoop(func() { r.SetAuto() })
 	h.settle()
-	if mode := modeOn(t, h, r); mode != widget.SizeAuto {
+	if mode := modeOn(t, h, r); mode != core.SizeAuto {
 		t.Errorf("SizeMode() = %v after a redundant SetAuto", mode)
 	}
 
 	h.onLoop(func() { r.SetSize(tui.Size{W: 12, H: 6}) })
 	h.settle()
-	if mode := modeOn(t, h, r); mode != widget.SizeExplicit {
+	if mode := modeOn(t, h, r); mode != core.SizeExplicit {
 		t.Errorf("SizeMode() = %v after SetSize, want explicit", mode)
 	}
 	want, ok := requestedOn(t, h, r)
@@ -220,7 +220,7 @@ func TestSetSizeAndSetAutoAreIdempotentAndSwitchModes(t *testing.T) {
 	}
 	// And through the ACTION, which routes to the same request path.
 	h.onLoop(func() {
-		r.Context().DoAction(widget.ResizeSetAction{Size: tui.Size{W: 12, H: 6}})
+		r.Context().DoAction(core.ResizeSetAction{Size: tui.Size{W: 12, H: 6}})
 	})
 	h.settle()
 	h.settle()
@@ -267,7 +267,7 @@ func TestSetSizeAndSetAutoAreIdempotentAndSwitchModes(t *testing.T) {
 // "resizing works" ever reaches.
 func TestEveryHandleSitsOnItsOwnEdgeAndDragsItsOwnWay(t *testing.T) {
 	for _, tc := range []struct {
-		handle   widget.Handle
+		handle   core.Handle
 		name     string
 		atRight  bool // the grip's column is the wrapper's last, not its first
 		atBottom bool // ... and likewise for its row
@@ -276,24 +276,24 @@ func TestEveryHandleSitsOnItsOwnEdgeAndDragsItsOwnWay(t *testing.T) {
 		// coordinates, so its sign is inverted.
 		dx, dy int
 	}{
-		{widget.HandleBottomRight, "bottom-right", true, true, 1, 1},
-		{widget.HandleBottomLeft, "bottom-left", false, true, -1, 1},
-		{widget.HandleTopRight, "top-right", true, false, 1, -1},
-		{widget.HandleTopLeft, "top-left", false, false, -1, -1},
-		{widget.HandleRight, "right", true, false, 1, 0},
-		{widget.HandleBottom, "bottom", false, true, 0, 1},
+		{core.HandleBottomRight, "bottom-right", true, true, 1, 1},
+		{core.HandleBottomLeft, "bottom-left", false, true, -1, 1},
+		{core.HandleTopRight, "top-right", true, false, 1, -1},
+		{core.HandleTopLeft, "top-left", false, false, -1, -1},
+		{core.HandleRight, "right", true, false, 1, 0},
+		{core.HandleBottom, "bottom", false, true, 0, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			child := &sizedChild{pref: tui.Size{W: 8, H: 4}}
-			r := widget.NewResizable(child,
-				widget.WithHandles(tc.handle),
-				widget.WithHandleGlyph("#"),
-				widget.WithMaxSize(tui.Size{W: 30, H: 15}))
+			r := core.NewResizable(child,
+				core.WithHandles(tc.handle),
+				core.WithHandleGlyph("#"),
+				core.WithMaxSize(tui.Size{W: 30, H: 15}))
 			// A loose container at the ORIGIN, so the wrapper's own coordinates
 			// are the grid's. Handing it straight to the host places it
 			// wherever the host likes, and then every column in this test is
 			// measuring the host's placement policy instead of the grip's.
-			host := widget.NewOverlayHost(&looseCeiling{child: r, w: 30, hh: 15})
+			host := core.NewOverlayHost(&looseCeiling{child: r, w: 30, hh: 15})
 			h := startApp(t, host, 40, 20)
 			defer h.stop()
 			h.settle()
@@ -357,8 +357,8 @@ func TestEveryArrowStepsItsOwnAxisAndOnlyWithShift(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			child := &sizedChild{pref: tui.Size{W: 8, H: 4}}
-			r := widget.NewResizable(child, widget.WithMaxSize(tui.Size{W: 30, H: 15}))
-			host := widget.NewOverlayHost(r)
+			r := core.NewResizable(child, core.WithMaxSize(tui.Size{W: 30, H: 15}))
+			host := core.NewOverlayHost(r)
 			h := startApp(t, host, 40, 20)
 			defer h.stop()
 			h.onLoop(func() { child.Context().RequestFocus() })

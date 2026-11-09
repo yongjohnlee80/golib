@@ -9,7 +9,8 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/files"
 )
 
 // layoutHook is a shell that runs a one-shot hook at the start of its Layout,
@@ -38,15 +39,15 @@ func (l *layoutHook) arm(fn func()) {
 	l.mu.Unlock()
 }
 
-func threeKids() (*widget.TreeNode, []*widget.TreeNode) {
-	return widget.NewTreeNode("r", "root"), []*widget.TreeNode{
-		widget.NewTreeNode("k1", "kid-one", widget.WithLeaf()),
-		widget.NewTreeNode("k2", "kid-two", widget.WithLeaf()),
-		widget.NewTreeNode("k3", "kid-three", widget.WithLeaf()),
+func threeKids() (*files.TreeNode, []*files.TreeNode) {
+	return files.NewTreeNode("r", "root"), []*files.TreeNode{
+		files.NewTreeNode("k1", "kid-one", files.WithLeaf()),
+		files.NewTreeNode("k2", "kid-two", files.WithLeaf()),
+		files.NewTreeNode("k3", "kid-three", files.WithLeaf()),
 	}
 }
 
-func lastLabel(r *recorder[widget.SelectionChangedEvent]) string {
+func lastLabel(r *recorder[core.SelectionChangedEvent]) string {
 	evs := r.events()
 	if len(evs) == 0 {
 		return ""
@@ -58,9 +59,9 @@ func lastLabel(r *recorder[widget.SelectionChangedEvent]) string {
 // naming it; a key that leaves the same node there raises none.
 func TestTreeSelectionEventFollowsTheNode(t *testing.T) {
 	root, kids := threeKids()
-	h, _, sh := focusedTree(t, 40, 10, widget.WithRoots(root))
-	reqs := record[widget.ExpandRequestEvent](h)
-	sel := record[widget.SelectionChangedEvent](h)
+	h, _, sh := focusedTree(t, 40, 10, files.WithRoots(root))
+	reqs := record[files.ExpandRequestEvent](h)
+	sel := record[core.SelectionChangedEvent](h)
 	h.inject(key('l'))
 	h.barrier(sh)
 	h.onLoop(func() { root.SetChildren(reqs.events()[0].Gen, kids) })
@@ -91,8 +92,8 @@ func TestTreeSelectionEventFollowsTheNode(t *testing.T) {
 // the tree under it) is reported once, after the frame commits.
 func TestTreeStructuralChangeReportsTheNewSelectionOnce(t *testing.T) {
 	root, kids := threeKids()
-	h, _, sh := focusedTree(t, 40, 10, widget.WithRoots(root))
-	reqs := record[widget.ExpandRequestEvent](h)
+	h, _, sh := focusedTree(t, 40, 10, files.WithRoots(root))
+	reqs := record[files.ExpandRequestEvent](h)
 	h.inject(key('l'))
 	h.barrier(sh)
 	h.onLoop(func() { root.SetChildren(reqs.events()[0].Gen, kids) })
@@ -100,7 +101,7 @@ func TestTreeStructuralChangeReportsTheNewSelectionOnce(t *testing.T) {
 	h.inject(key(tui.KeyEnd))
 	h.barrier(sh)
 
-	sel := record[widget.SelectionChangedEvent](h)
+	sel := record[core.SelectionChangedEvent](h)
 	h.onLoop(func() { root.Reset() })
 	h.waitFor("the reconciled row reported", func() bool { return lastLabel(sel) == "root" })
 	h.barrier(sh)
@@ -114,12 +115,12 @@ func TestTreeStructuralChangeReportsTheNewSelectionOnce(t *testing.T) {
 // (AfterLayout may only be called from the registering node's own Layout).
 func TestTreeStructuralChangeDuringLayoutPublishesFromCommit(t *testing.T) {
 	root, kids := threeKids()
-	tr := widget.NewTree(widget.WithRoots(root))
+	tr := files.NewTree(files.WithRoots(root))
 	lh := &layoutHook{shell: newShell(tr)}
 	h := startApp(t, lh, 40, 10)
 	h.inject(tab())
 	h.barrier(lh.shell)
-	reqs := record[widget.ExpandRequestEvent](h)
+	reqs := record[files.ExpandRequestEvent](h)
 	h.inject(key('l'))
 	h.barrier(lh.shell)
 	h.onLoop(func() { root.SetChildren(reqs.events()[0].Gen, kids) })
@@ -127,7 +128,7 @@ func TestTreeStructuralChangeDuringLayoutPublishesFromCommit(t *testing.T) {
 	h.inject(key(tui.KeyEnd))
 	h.barrier(lh.shell)
 
-	sel := record[widget.SelectionChangedEvent](h)
+	sel := record[core.SelectionChangedEvent](h)
 	h.onLoop(func() {
 		lh.arm(func() { root.Reset() })
 		lh.shell.ctx.RequestLayout()

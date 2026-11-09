@@ -6,21 +6,21 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 func TestFloatModal(t *testing.T) {
 	// Base UI: an input in a box; a modal float with its own input.
-	baseInput := widget.NewTextInput(widget.WithPlaceholder("base"))
-	dlgInput := widget.NewTextInput(widget.WithPlaceholder("dialog"))
-	dialog := widget.NewFloat(
-		widget.NewBox(dlgInput, widget.WithTitle("Commit message")),
-		widget.WithModal(true), widget.WithDimBackground(true))
-	host := widget.NewOverlayHost(widget.NewBox(baseInput, widget.WithTitle("Base")))
+	baseInput := core.NewTextInput(core.WithPlaceholder("base"))
+	dlgInput := core.NewTextInput(core.WithPlaceholder("dialog"))
+	dialog := core.NewFloat(
+		core.NewBox(dlgInput, core.WithTitle("Commit message")),
+		core.WithModal(true), core.WithDimBackground(true))
+	host := core.NewOverlayHost(core.NewBox(baseInput, core.WithTitle("Base")))
 	host.Attach(dialog)
 	sh := newShell(host)
 	h := startApp(t, sh, 30, 9)
-	dismissed := record[widget.OverlayDismissedEvent](h)
+	dismissed := record[core.OverlayDismissedEvent](h)
 	h.inject(tab()) // focus the base input
 	h.barrier(sh)
 	h.wantNotContains("Commit message")
@@ -73,15 +73,15 @@ func TestFloatModal(t *testing.T) {
 // that is not mounted yet, and treating that as "no focus stop" left
 // the modal trapping every key but Esc.
 type lateContent struct {
-	widget.Base
+	core.Base
 	ctx  *tui.Context
-	list *widget.List[string]
+	list *core.List[string]
 }
 
 func (c *lateContent) Init(ctx *tui.Context) {
 	c.Base.Init(ctx)
 	c.ctx = ctx
-	c.list = widget.NewList(widget.WithItems([]string{"one", "two"},
+	c.list = core.NewList(core.WithItems([]string{"one", "two"},
 		func(s string) string { return s }))
 	ctx.Mount(c.list)
 }
@@ -105,8 +105,8 @@ func (c *lateContent) Children() iter.Seq[tui.Component] {
 
 func TestModalFloatSeedsFocusIntoLateMountedContent(t *testing.T) {
 	body := &lateContent{}
-	f := widget.NewFloat(body, widget.WithModal(true))
-	host := widget.NewOverlayHost(widget.NewText("背景"))
+	f := core.NewFloat(body, core.WithModal(true))
+	host := core.NewOverlayHost(core.NewText("背景"))
 	sh := newShell(host)
 	h := startApp(t, sh, 40, 10)
 	h.onLoop(func() {
@@ -131,9 +131,9 @@ func TestModalFloatSeedsFocusIntoLateMountedContent(t *testing.T) {
 // surface (history browser, log viewer) actually wants, and what a fixed
 // column count cannot express across terminal sizes.
 func TestFloatSizeFraction(t *testing.T) {
-	body := widget.NewBox(widget.NewText("content"))
-	f := widget.NewFloat(body, widget.WithModal(true), widget.WithSizeFraction(90, 50))
-	host := widget.NewOverlayHost(widget.NewText("背景"))
+	body := core.NewBox(core.NewText("content"))
+	f := core.NewFloat(body, core.WithModal(true), core.WithSizeFraction(90, 50))
+	host := core.NewOverlayHost(core.NewText("背景"))
 	sh := newShell(host)
 	h := startApp(t, sh, 40, 20)
 	h.onLoop(func() {

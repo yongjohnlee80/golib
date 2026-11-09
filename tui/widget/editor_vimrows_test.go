@@ -4,18 +4,19 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // wrappedEditor is a soft-wrapped terminal Editor laid out w cells wide.
-func wrappedEditor(t *testing.T, text string, w int) *widget.Editor {
+func wrappedEditor(t *testing.T, text string, w int) *editor.Editor {
 	t.Helper()
-	ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText(text)), widget.WithEditorWrap(widget.WrapSoft))
+	ed := editor.NewEditor(editor.WithCore(editor.CoreInitialText(text)), editor.WithEditorWrap(core.WrapSoft))
 	ed.Layout(tui.Constraints{MaxW: w, MaxH: 10})
 	return ed
 }
 
-func atCol(t *testing.T, ed *widget.Editor, what string, ln, col int) {
+func atCol(t *testing.T, ed *editor.Editor, what string, ln, col int) {
 	t.Helper()
 	if l, c := ed.Core().Line(); l != ln || c != col {
 		t.Errorf("%s: cursor (%d,%d), want (%d,%d)", what, l, c, ln, col)

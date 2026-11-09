@@ -6,13 +6,14 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/table"
 )
 
 // resultFields are a result's fields: one whose title needs quoting, one spelled like a keyword,
 // two sharing a prefix, and two differing only in case.
-func resultFields() []widget.TableField {
-	return []widget.TableField{
+func resultFields() []core.TableField {
+	return []core.TableField{
 		{Title: "id"}, {Title: "Name"}, {Title: "total sum"}, {Title: "and"},
 		{Title: "created_at"}, {Title: "created_by"}, {Title: "city"}, {Title: "City"},
 	}
@@ -20,9 +21,9 @@ func resultFields() []widget.TableField {
 
 // completingInput is a focused TextInput, 50 cells wide, completing resultFields' names as a
 // WHERE bar takes them.
-func completingInput(t *testing.T) (*harness, *widget.TextInput, *shell) {
+func completingInput(t *testing.T) (*harness, *core.TextInput, *shell) {
 	t.Helper()
-	in := widget.NewTextInput(widget.WithCompleter(widget.TableFieldCompleter(widget.TableWhereBar, resultFields)))
+	in := core.NewTextInput(core.WithCompleter(table.TableFieldCompleter(table.TableWhereBar, resultFields)))
 	sh := newShell(in)
 	h := startApp(t, sh, 50, 1)
 	h.inject(tab())
@@ -30,7 +31,7 @@ func completingInput(t *testing.T) (*harness, *widget.TextInput, *shell) {
 	return h, in, sh
 }
 
-func valueOf(h *harness, in *widget.TextInput) (v string) {
+func valueOf(h *harness, in *core.TextInput) (v string) {
 	h.onLoop(func() { v = in.Value() })
 	return v
 }
@@ -112,22 +113,22 @@ func TestTextInput_TabWalksSeveralChoices(t *testing.T) {
 // TableFieldName writes a title so both bars read it back as that field.
 func TestTableFieldName_ReadsBack(t *testing.T) {
 	titles := []string{"id", "Name", "total sum", "and", "asc", "1", "12x", "#tag", "-x", `say "hi"`, "a,b", "it's", "x=y", "Null"}
-	var fields []widget.TableField
+	var fields []core.TableField
 	for _, ti := range titles {
-		fields = append(fields, widget.TableField{Title: ti})
+		fields = append(fields, core.TableField{Title: ti})
 	}
 	for i, ti := range titles {
-		name := widget.TableFieldName(ti)
-		keys, err := widget.ParseTableOrder(name, fields)
+		name := table.TableFieldName(ti)
+		keys, err := table.ParseTableOrder(name, fields)
 		if err != nil || len(keys) != 1 || keys[0].Col != i {
 			t.Errorf("%q as %s: ORDER BY read %+v %v", ti, name, keys, err)
 		}
-		if _, err := widget.ParseTableWhere(name+" IS NULL", fields); err != nil {
+		if _, err := table.ParseTableWhere(name+" IS NULL", fields); err != nil {
 			t.Errorf("%q as %s: WHERE: %v", ti, name, err)
 		}
 	}
 	for ti, want := range map[string]string{"id": "id", "total sum": `"total sum"`, "and": `"and"`, `say "hi"`: `"say ""hi"""`} {
-		if got := widget.TableFieldName(ti); got != want {
+		if got := table.TableFieldName(ti); got != want {
 			t.Errorf("%q written %s, want %s", ti, got, want)
 		}
 	}
@@ -136,7 +137,7 @@ func TestTableFieldName_ReadsBack(t *testing.T) {
 // The completer: case-insensitive, a word opened with a quote matching past it, nothing inside a
 // string, after an operator or LIKE, or for an empty word.
 func TestTableFieldCompleter_Offers(t *testing.T) {
-	complete := widget.TableFieldCompleter(widget.TableWhereBar, resultFields)
+	complete := table.TableFieldCompleter(table.TableWhereBar, resultFields)
 	for text, want := range map[string][]string{
 		"na":            {"Name"},
 		"NA":            {"Name"},
@@ -173,25 +174,25 @@ func TestTableFieldCompleter_Offers(t *testing.T) {
 // number — and a word matches the field's title or what its bar writes for it; everything the
 // completer offers parses in the bar it was offered for.
 func TestTableFieldCompleter_SharedTitlesCompleteAsPositions(t *testing.T) {
-	fields := func() []widget.TableField {
-		return []widget.TableField{{Title: "id"}, {Title: "name"}, {Title: "id"}, {Title: "note"}}
+	fields := func() []core.TableField {
+		return []core.TableField{{Title: "id"}, {Title: "name"}, {Title: "id"}, {Title: "note"}}
 	}
 	for _, c := range []struct {
-		bar  widget.TableBar
+		bar  table.TableBar
 		word string
 		want []string
 	}{
-		{widget.TableWhereBar, "id", []string{"#1", "#3"}},
-		{widget.TableWhereBar, "ID", []string{"#1", "#3"}},
-		{widget.TableWhereBar, "#", []string{"#1", "#3"}},
-		{widget.TableWhereBar, "#3", []string{"#3"}},
-		{widget.TableWhereBar, "na", []string{"name"}},
-		{widget.TableOrderBar, "id", []string{"1", "3"}},
-		{widget.TableOrderBar, "1", []string{"1"}},
-		{widget.TableOrderBar, "no", []string{"note"}},
-		{widget.TableOrderBar, "id DESC, na", []string{"name"}},
+		{table.TableWhereBar, "id", []string{"#1", "#3"}},
+		{table.TableWhereBar, "ID", []string{"#1", "#3"}},
+		{table.TableWhereBar, "#", []string{"#1", "#3"}},
+		{table.TableWhereBar, "#3", []string{"#3"}},
+		{table.TableWhereBar, "na", []string{"name"}},
+		{table.TableOrderBar, "id", []string{"1", "3"}},
+		{table.TableOrderBar, "1", []string{"1"}},
+		{table.TableOrderBar, "no", []string{"note"}},
+		{table.TableOrderBar, "id DESC, na", []string{"name"}},
 	} {
-		complete := widget.TableFieldCompleter(c.bar, fields)
+		complete := table.TableFieldCompleter(c.bar, fields)
 		start, got := complete(c.word, len(c.word))
 		if start < 0 || start > len(c.word) || !slices.Equal(got, c.want) {
 			t.Errorf("bar %d word %q: %d %v, want %v", c.bar, c.word, start, got, c.want)
@@ -199,10 +200,10 @@ func TestTableFieldCompleter_SharedTitlesCompleteAsPositions(t *testing.T) {
 		}
 		for _, it := range c.want {
 			var err error
-			if c.bar == widget.TableWhereBar {
-				_, err = widget.ParseTableWhere(it+" IS NULL", fields())
+			if c.bar == table.TableWhereBar {
+				_, err = table.ParseTableWhere(it+" IS NULL", fields())
 			} else {
-				_, err = widget.ParseTableOrder(it, fields())
+				_, err = table.ParseTableOrder(it, fields())
 			}
 			if err != nil {
 				t.Errorf("bar %d word %q: %q does not parse: %v", c.bar, c.word, it, err)
@@ -214,19 +215,19 @@ func TestTableFieldCompleter_SharedTitlesCompleteAsPositions(t *testing.T) {
 // Tab puts the position in for a shared name, in each bar's syntax, and the result parses in
 // that bar.
 func TestTextInput_TabInsertsThePositionItsBarParses(t *testing.T) {
-	fields := func() []widget.TableField {
-		return []widget.TableField{{Title: "id"}, {Title: "name"}, {Title: "id"}}
+	fields := func() []core.TableField {
+		return []core.TableField{{Title: "id"}, {Title: "name"}, {Title: "id"}}
 	}
 	for _, c := range []struct {
-		bar  widget.TableBar
+		bar  table.TableBar
 		name string
 		want string
 	}{
-		{widget.TableWhereBar, "WHERE", "#1"},
-		{widget.TableOrderBar, "ORDER BY", "1"},
+		{table.TableWhereBar, "WHERE", "#1"},
+		{table.TableOrderBar, "ORDER BY", "1"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			in := widget.NewTextInput(widget.WithCompleter(widget.TableFieldCompleter(c.bar, fields)))
+			in := core.NewTextInput(core.WithCompleter(table.TableFieldCompleter(c.bar, fields)))
 			sh := newShell(in)
 			h := startApp(t, sh, 50, 1)
 			h.inject(tab())
@@ -239,10 +240,10 @@ func TestTextInput_TabInsertsThePositionItsBarParses(t *testing.T) {
 				t.Fatalf("Tab put in %q, want %q", got, c.want)
 			}
 			var err error
-			if c.bar == widget.TableWhereBar {
-				_, err = widget.ParseTableWhere(got+" IS NULL", fields())
+			if c.bar == table.TableWhereBar {
+				_, err = table.ParseTableWhere(got+" IS NULL", fields())
 			} else {
-				_, err = widget.ParseTableOrder(got, fields())
+				_, err = table.ParseTableOrder(got, fields())
 			}
 			if err != nil {
 				t.Errorf("%s does not read the token Tab put in: %v", c.name, err)

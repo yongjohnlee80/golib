@@ -5,14 +5,14 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // The Editor's own methods reach its core, and say what the core says: undo and redo, read-only,
 // named registers, the bindings of a mode, the jump list's place, and the escape chord's timeout
 // arriving as a tick. Its cursor colour is kept as given.
 func TestTheEditorsMethodsReachItsCore(t *testing.T) {
-	ed := widget.NewEditor()
+	ed := editor.NewEditor()
 	c := ed.Core()
 	typeKeys := func(s string) {
 		for _, r := range s {
@@ -56,7 +56,7 @@ func TestTheEditorsMethodsReachItsCore(t *testing.T) {
 		t.Fatalf("register a: %q %v %v", text, linewise, ok)
 	}
 
-	if got, want := len(ed.Core().BindingsForMode(widget.ModeInsert)), len(c.BindingsForMode(widget.ModeInsert)); got == 0 || got != want {
+	if got, want := len(ed.Core().BindingsForMode(editor.ModeInsert)), len(c.BindingsForMode(editor.ModeInsert)); got == 0 || got != want {
 		t.Fatalf("BindingsForMode(Insert): %d bindings, the core has %d", got, want)
 	}
 	if len(ed.Core().Bindings()) != len(c.Bindings()) {
@@ -65,7 +65,7 @@ func TestTheEditorsMethodsReachItsCore(t *testing.T) {
 
 	ed.Core().SetJumpDoc("notes.md")
 	ed.Core().SetJumpView(func() string { return "raw" })
-	ed.Core().SetJumps(widget.NewJumpList(100), nil)
+	ed.Core().SetJumps(editor.NewJumpList(100), nil)
 	if p := ed.Core().JumpHere(); p.Doc != "notes.md" || p.View != "raw" || p != c.JumpHere() {
 		t.Fatalf("JumpHere = %+v", p)
 	}

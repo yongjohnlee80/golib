@@ -5,7 +5,8 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // A SUBMENU OPENED INSIDE A FOCUS TRAP.
@@ -49,16 +50,16 @@ func leftClick(h *harness, x, y int) {
 
 // zoomRows is the editor's stock rows and a Zoom submenu, AutoDoc's right-click menu in
 // miniature: each step records its percent in chose.
-func zoomRows(chose *atomic.Int64) func(e *widget.Editor) []widget.MenuItemModel {
-	return func(e *widget.Editor) []widget.MenuItemModel {
-		step := func(id widget.ItemID, label string, key rune, pct int64) widget.MenuItemModel {
-			r := widget.NewCommand(id, label, widget.EditorMenuAction{ID: tui.ActionID(id),
-				Run: func(*widget.Editor) { chose.Store(pct) }})
+func zoomRows(chose *atomic.Int64) func(e *editor.Editor) []core.MenuItemModel {
+	return func(e *editor.Editor) []core.MenuItemModel {
+		step := func(id core.ItemID, label string, key rune, pct int64) core.MenuItemModel {
+			r := core.NewCommand(id, label, editor.EditorMenuAction{ID: tui.ActionID(id),
+				Run: func(*editor.Editor) { chose.Store(pct) }})
 			r.Hotkey, r.HotkeyIdx = key, 0
 			return r
 		}
-		return append(widget.EditorContextItems(e), widget.NewSeparator("sep.zoom"),
-			widget.NewSubmenu("zoom", "Zoom", []widget.MenuItemModel{
+		return append(editor.EditorContextItems(e), core.NewSeparator("sep.zoom"),
+			core.NewSubmenu("zoom", "Zoom", []core.MenuItemModel{
 				step("z100", "1. 100%", '1', 100),
 				step("z125", "2. 125%", '2', 125),
 				step("z150", "3. 150%", '3', 150),
@@ -67,7 +68,7 @@ func zoomRows(chose *atomic.Int64) func(e *widget.Editor) []widget.MenuItemModel
 }
 
 // openZoom right-clicks the editor and clicks Zoom, leaving its level on screen.
-func openZoom(t *testing.T, h *harness, ed *widget.Editor) {
+func openZoom(t *testing.T, h *harness, ed *editor.Editor) {
 	t.Helper()
 	h.inject(rightClick(1, 0))
 	h.waitFor("the menu opened", func() bool { return menuOpen(h, ed) })
@@ -84,7 +85,7 @@ func openZoom(t *testing.T, h *harness, ed *widget.Editor) {
 // row, runs it and closes the menu.
 func TestAContextMenuSubmenuRowRunsOnAClick(t *testing.T) {
 	var chose atomic.Int64
-	h, ed, _ := ctxFixture(t, 60, 16, widget.WithContextMenu(zoomRows(&chose)))
+	h, ed, _ := ctxFixture(t, 60, 16, editor.WithContextMenu(zoomRows(&chose)))
 	defer h.stop()
 	openZoom(t, h, ed)
 
@@ -100,7 +101,7 @@ func TestAContextMenuSubmenuRowRunsOnAClick(t *testing.T) {
 // trap never blocked — the menu keeps the focus while its level is open.
 func TestAContextMenuSubmenuRowRunsFromItsMnemonic(t *testing.T) {
 	var chose atomic.Int64
-	h, ed, _ := ctxFixture(t, 60, 16, widget.WithContextMenu(zoomRows(&chose)))
+	h, ed, _ := ctxFixture(t, 60, 16, editor.WithContextMenu(zoomRows(&chose)))
 	defer h.stop()
 	openZoom(t, h, ed)
 
@@ -116,7 +117,7 @@ func TestAContextMenuSubmenuRowRunsFromItsMnemonic(t *testing.T) {
 // and close everything.
 func TestAContextMenuLevelFramePressKeepsTheMenu(t *testing.T) {
 	var chose atomic.Int64
-	h, ed, _ := ctxFixture(t, 60, 16, widget.WithContextMenu(zoomRows(&chose)))
+	h, ed, _ := ctxFixture(t, 60, 16, editor.WithContextMenu(zoomRows(&chose)))
 	defer h.stop()
 	openZoom(t, h, ed)
 
@@ -136,25 +137,25 @@ func TestAContextMenuLevelFramePressKeepsTheMenu(t *testing.T) {
 // pointer as the dialog's own controls do.
 func TestAMenuInAModalDialogOpensAClickableLevel(t *testing.T) {
 	var ran atomic.Int64
-	m := widget.NewMenu(widget.WithActionExecutor(func(inv tui.ActionInvocation) bool {
+	m := core.NewMenu(core.WithActionExecutor(func(inv tui.ActionInvocation) bool {
 		if inv.Action.ActionID() == "open" {
 			ran.Add(1)
 		}
 		return true
 	}))
-	if err := m.SetModel([]widget.MenuItemModel{
-		widget.NewSubmenu("file", "File", []widget.MenuItemModel{
-			widget.NewCommand("new", "New", saveAction{}),
-			widget.NewCommand("open", "Open", testAction{id: "open"}),
+	if err := m.SetModel([]core.MenuItemModel{
+		core.NewSubmenu("file", "File", []core.MenuItemModel{
+			core.NewCommand("new", "New", saveAction{}),
+			core.NewCommand("open", "Open", testAction{id: "open"}),
 		}),
-		widget.NewCommand("quit", "Quit", saveAction{}),
+		core.NewCommand("quit", "Quit", saveAction{}),
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
-	base := widget.NewButton("base")
-	host := widget.NewOverlayHost(base)
-	dialog := widget.NewFloat(widget.NewBox(m), widget.WithModal(true),
-		widget.WithAnchor(widget.AtRect(tui.Rect{X: 2, Y: 1, W: 20, H: 6})))
+	base := core.NewButton("base")
+	host := core.NewOverlayHost(base)
+	dialog := core.NewFloat(core.NewBox(m), core.WithModal(true),
+		core.WithAnchor(core.AtRect(tui.Rect{X: 2, Y: 1, W: 20, H: 6})))
 	host.Attach(dialog)
 	h := startApp(t, host, 60, 16)
 	defer h.stop()

@@ -5,14 +5,14 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // A TextArea reports its selection at the cells it draws it on, one rect per row: selected across a
 // line break, the cells SelectionCells names are exactly the cells drawn reversed. Unfocused, or
 // with no selection, it reports none; its placeholder's cells are reported while it shows.
 func TestATextAreaReportsItsSelectionWhereItDrawsIt(t *testing.T) {
-	area := widget.NewTextArea(widget.WithTextAreaPlaceholder("say it"))
+	area := core.NewTextArea(core.WithTextAreaPlaceholder("say it"))
 	sh := newShell(area)
 	h := startApp(t, sh, 10, 3)
 	defer h.stop()

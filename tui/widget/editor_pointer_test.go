@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // sidewaysView is a one-row PointerView w cells wide that scrolls sideways, as gui's pixel view
@@ -38,9 +38,9 @@ func (v *sidewaysView) CaretCell() (int, int, bool) { return 0, 0, true }
 // another and extends the selection; back inside, or released, the ticks are the chord timer's
 // again. With no menu, the right button and the menu key are not the pointer's.
 func TestAnEditorPointerAutoScrollsAnyView(t *testing.T) {
-	core := widget.NewEditorCore(widget.CoreInitialText("abcdefghijklmnop"))
+	core := editor.NewEditorCore(editor.CoreInitialText("abcdefghijklmnop"))
 	v := &sidewaysView{w: 5}
-	p := widget.NewEditorPointer(core, nil, v)
+	p := editor.NewEditorPointer(core, nil, v)
 	at := func(kind tui.MouseKind, x int) tui.MouseEvent {
 		return tui.MouseEvent{Kind: kind, Button: tui.MouseLeft, X: x}
 	}

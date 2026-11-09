@@ -5,7 +5,9 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
+	"github.com/yongjohnlee80/golib/tui/widget/terminal"
 )
 
 // A MENU ROW THAT ACTS ON THE WINDOW AROUND ITS OWNER.
@@ -18,10 +20,10 @@ import (
 
 // windowed puts content in a maximizable window in a Float over a base, as a panel sits in a
 // Drawer.
-func windowed(content tui.Component) (*widget.WindowMod, *widget.Float, *widget.OverlayHost) {
-	w := widget.NewWindowMod(content, widget.WithWindowMaximize())
-	f := widget.NewFloat(w, widget.WithAnchor(widget.AtRect(tui.Rect{X: 2, Y: 2, W: 30, H: 8})))
-	host := widget.NewOverlayHost(widget.NewButton("base"))
+func windowed(content tui.Component) (*core.WindowMod, *core.Float, *core.OverlayHost) {
+	w := core.NewWindowMod(content, core.WithWindowMaximize())
+	f := core.NewFloat(w, core.WithAnchor(core.AtRect(tui.Rect{X: 2, Y: 2, W: 30, H: 8})))
+	host := core.NewOverlayHost(core.NewButton("base"))
 	host.Attach(f)
 	return w, f, host
 }
@@ -29,12 +31,12 @@ func windowed(content tui.Component) (*widget.WindowMod, *widget.Float, *widget.
 // maximizeRow is a row whose action maximizes w by input, as a Drawer's toggleMaximize does,
 // counting what the window answered.
 type maximizeRow struct {
-	w             *widget.WindowMod
+	w             *core.WindowMod
 	took, refused atomic.Int64
 }
 
 func (m *maximizeRow) run() {
-	if m.w.InvokeInput(widget.WindowMaximizeAction{}) {
+	if m.w.InvokeInput(core.WindowMaximizeAction{}) {
 		m.took.Add(1)
 	} else {
 		m.refused.Add(1)
@@ -47,9 +49,9 @@ func (m *maximizeRow) answered() bool { return m.took.Load()+m.refused.Load() > 
 // it once the menu has closed, and the window around the editor maximizes.
 func TestAnEditorMenuRowMaximizesTheWindowAroundIt(t *testing.T) {
 	row := &maximizeRow{}
-	ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText("hello")), widget.WithContextMenu(func(*widget.Editor) []widget.MenuItemModel {
-		return []widget.MenuItemModel{widget.NewCommand("max", "Maximize", widget.EditorMenuAction{ID: "max",
-			Run: func(*widget.Editor) { row.run() }})}
+	ed := editor.NewEditor(editor.WithCore(editor.CoreInitialText("hello")), editor.WithContextMenu(func(*editor.Editor) []core.MenuItemModel {
+		return []core.MenuItemModel{core.NewCommand("max", "Maximize", editor.EditorMenuAction{ID: "max",
+			Run: func(*editor.Editor) { row.run() }})}
 	}))
 	w, f, host := windowed(ed)
 	row.w = w
@@ -82,10 +84,10 @@ func TestAnEditorMenuRowMaximizesTheWindowAroundIt(t *testing.T) {
 // window around the strip maximizes.
 func TestATerminalTabsMenuRowMaximizesTheWindowAroundIt(t *testing.T) {
 	row := &maximizeRow{}
-	tabs := widget.NewTerminalTabs()
-	tabs.SetMenu(func(widget.TerminalTabID) []widget.MenuItemModel {
-		return []widget.MenuItemModel{widget.NewCommand("max", "Maximize", widget.TerminalTabsMenuAction{ID: "max",
-			Run: func(widget.TerminalTabID) { row.run() }})}
+	tabs := terminal.NewTerminalTabs()
+	tabs.SetMenu(func(terminal.TerminalTabID) []core.MenuItemModel {
+		return []core.MenuItemModel{core.NewCommand("max", "Maximize", terminal.TerminalTabsMenuAction{ID: "max",
+			Run: func(terminal.TerminalTabID) { row.run() }})}
 	})
 	w, f, host := windowed(tabs)
 	row.w = w

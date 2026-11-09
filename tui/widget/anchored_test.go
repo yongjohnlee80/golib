@@ -14,7 +14,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // ─── the placement policy ────────────────────────────────────────────────────
@@ -27,11 +27,11 @@ import (
 // neither side.
 func TestFlipClipPolicyPrefersTheAskedSideThenFlipsThenClips(t *testing.T) {
 	viewport := tui.Rect{X: 0, Y: 0, W: 40, H: 20}
-	var pol widget.FlipClipPolicy
+	var pol core.FlipClipPolicy
 
 	t.Run("the preferred side is used when it fits", func(t *testing.T) {
 		anchor := tui.Rect{X: 5, Y: 4, W: 10, H: 1}
-		got := pol.Place(anchor, viewport, tui.Size{W: 8, H: 6}, widget.Placement{})
+		got := pol.Place(anchor, viewport, tui.Size{W: 8, H: 6}, core.Placement{})
 		want := tui.Rect{X: 5, Y: 5, W: 8, H: 6} // directly below, start-aligned
 		if got != want {
 			t.Errorf("placed at %+v, want %+v", got, want)
@@ -40,7 +40,7 @@ func TestFlipClipPolicyPrefersTheAskedSideThenFlipsThenClips(t *testing.T) {
 
 	t.Run("it flips when the preferred side does not fit", func(t *testing.T) {
 		anchor := tui.Rect{X: 5, Y: 17, W: 10, H: 1} // near the bottom edge
-		got := pol.Place(anchor, viewport, tui.Size{W: 8, H: 6}, widget.Placement{})
+		got := pol.Place(anchor, viewport, tui.Size{W: 8, H: 6}, core.Placement{})
 		want := tui.Rect{X: 5, Y: 11, W: 8, H: 6} // above, whole popup visible
 		if got != want {
 			t.Errorf("placed at %+v, want %+v; a popup that fits above must flip "+
@@ -50,7 +50,7 @@ func TestFlipClipPolicyPrefersTheAskedSideThenFlipsThenClips(t *testing.T) {
 
 	t.Run("it clips only when neither side fits", func(t *testing.T) {
 		anchor := tui.Rect{X: 5, Y: 9, W: 10, H: 1}
-		got := pol.Place(anchor, viewport, tui.Size{W: 8, H: 30}, widget.Placement{})
+		got := pol.Place(anchor, viewport, tui.Size{W: 8, H: 30}, core.Placement{})
 		if got.H != viewport.H || got.Y != 0 {
 			t.Errorf("placed at %+v, want the full viewport height at the top edge", got)
 		}
@@ -59,7 +59,7 @@ func TestFlipClipPolicyPrefersTheAskedSideThenFlipsThenClips(t *testing.T) {
 	t.Run("a horizontal preference flips on the horizontal axis", func(t *testing.T) {
 		anchor := tui.Rect{X: 34, Y: 4, W: 6, H: 1} // hard against the right edge
 		got := pol.Place(anchor, viewport, tui.Size{W: 12, H: 4},
-			widget.Placement{Side: widget.PlacementRight})
+			core.Placement{Side: core.PlacementRight})
 		want := tui.Rect{X: 22, Y: 4, W: 12, H: 4} // flipped to the left of the anchor
 		if got != want {
 			t.Errorf("placed at %+v, want %+v", got, want)
@@ -76,18 +76,18 @@ func TestPlacementAlignmentShiftsAlongTheOtherAxis(t *testing.T) {
 	viewport := tui.Rect{X: 0, Y: 0, W: 40, H: 20}
 	anchor := tui.Rect{X: 10, Y: 4, W: 12, H: 1}
 	want := tui.Size{W: 6, H: 3}
-	var pol widget.FlipClipPolicy
+	var pol core.FlipClipPolicy
 
 	for _, tc := range []struct {
-		align widget.PlacementAlign
+		align core.PlacementAlign
 		wantX int
 	}{
-		{widget.PlacementAlignStart, 10},  // the anchor's left edge
-		{widget.PlacementAlignCenter, 13}, // 10 + (12-6)/2
-		{widget.PlacementAlignEnd, 16},    // 10 + 12 - 6
+		{core.PlacementAlignStart, 10},  // the anchor's left edge
+		{core.PlacementAlignCenter, 13}, // 10 + (12-6)/2
+		{core.PlacementAlignEnd, 16},    // 10 + 12 - 6
 	} {
 		t.Run(tc.align.String(), func(t *testing.T) {
-			got := pol.Place(anchor, viewport, want, widget.Placement{Align: tc.align})
+			got := pol.Place(anchor, viewport, want, core.Placement{Align: tc.align})
 			if got.X != tc.wantX {
 				t.Errorf("x = %d, want %d", got.X, tc.wantX)
 			}
@@ -106,16 +106,16 @@ func TestPlacementAlignmentShiftsAlongTheOtherAxis(t *testing.T) {
 func TestTheOffsetNudgesAndTheViewportStillWins(t *testing.T) {
 	viewport := tui.Rect{X: 0, Y: 0, W: 40, H: 20}
 	anchor := tui.Rect{X: 5, Y: 4, W: 10, H: 1}
-	var pol widget.FlipClipPolicy
+	var pol core.FlipClipPolicy
 
 	nudged := pol.Place(anchor, viewport, tui.Size{W: 8, H: 4},
-		widget.Placement{Offset: tui.Point{X: 2, Y: 1}})
+		core.Placement{Offset: tui.Point{X: 2, Y: 1}})
 	if nudged.X != 7 || nudged.Y != 6 {
 		t.Errorf("nudged to %+v, want x=7 y=6", nudged)
 	}
 
 	shoved := pol.Place(anchor, viewport, tui.Size{W: 8, H: 4},
-		widget.Placement{Offset: tui.Point{X: 500, Y: 500}})
+		core.Placement{Offset: tui.Point{X: 500, Y: 500}})
 	if shoved.X+shoved.W > viewport.W || shoved.Y+shoved.H > viewport.H {
 		t.Errorf("an absurd offset escaped the viewport: %+v", shoved)
 	}
@@ -126,7 +126,7 @@ func TestTheOffsetNudgesAndTheViewportStillWins(t *testing.T) {
 // anchorOwner declares one region per layout pass, so a test can make the
 // region appear and disappear the way a menu's rows do.
 type anchorOwner struct {
-	widget.Base
+	core.Base
 	declare bool
 	region  tui.RegionID
 	local   tui.Rect
@@ -147,16 +147,16 @@ func (o *anchorOwner) Render(s tui.Surface) {
 // TestAnAnchoredLayerIsPlacedAgainstItsRegion.
 func TestAnAnchoredLayerIsPlacedAgainstItsRegion(t *testing.T) {
 	owner := &anchorOwner{declare: true, region: "row-1", local: tui.Rect{X: 2, Y: 1, W: 6, H: 1}}
-	host := widget.NewOverlayHost(owner)
+	host := core.NewOverlayHost(owner)
 	h := startApp(t, host, 30, 12)
 	defer h.stop()
 	h.settle()
 
-	popup := widget.NewText("POPUP")
+	popup := core.NewText("POPUP")
 	var err error
 	h.onLoop(func() {
 		err = host.OpenAnchored("p", popup,
-			widget.AnchorSpec{Ref: owner.ref}, nil)
+			core.AnchorSpec{Ref: owner.ref}, nil)
 	})
 	if err != nil {
 		t.Fatalf("OpenAnchored: %v", err)
@@ -170,7 +170,7 @@ func TestAnAnchoredLayerIsPlacedAgainstItsRegion(t *testing.T) {
 		t.Errorf("popup painted at (%d,%d), want (2,2) — directly below its region:\n%s",
 			x, y, h.grid())
 	}
-	var ids []widget.LayerID
+	var ids []core.LayerID
 	h.onLoop(func() {
 		for id := range host.AnchoredLayers() {
 			ids = append(ids, id)
@@ -189,14 +189,14 @@ func TestAnAnchoredLayerIsPlacedAgainstItsRegion(t *testing.T) {
 // whatever happens to occupy those cells.
 func TestALayerWhoseAnchorVanishesIsDismissed(t *testing.T) {
 	owner := &anchorOwner{declare: true, region: "row-1", local: tui.Rect{X: 2, Y: 1, W: 6, H: 1}}
-	host := widget.NewOverlayHost(owner)
+	host := core.NewOverlayHost(owner)
 	h := startApp(t, host, 30, 12)
 	defer h.stop()
 	h.settle()
 
-	popup := widget.NewText("POPUP")
+	popup := core.NewText("POPUP")
 	h.onLoop(func() {
-		if err := host.OpenAnchored("p", popup, widget.AnchorSpec{Ref: owner.ref}, nil); err != nil {
+		if err := host.OpenAnchored("p", popup, core.AnchorSpec{Ref: owner.ref}, nil); err != nil {
 			t.Errorf("OpenAnchored: %v", err)
 		}
 	})
@@ -205,8 +205,8 @@ func TestALayerWhoseAnchorVanishesIsDismissed(t *testing.T) {
 		t.Fatalf("precondition failed: the popup never appeared:\n%s", h.grid())
 	}
 
-	var reasons []widget.DismissReason
-	unsub := tui.Subscribe(h.app.Bus(), func(ev widget.OverlayDismissedEvent) {
+	var reasons []core.DismissReason
+	unsub := tui.Subscribe(h.app.Bus(), func(ev core.OverlayDismissedEvent) {
 		reasons = append(reasons, ev.Reason)
 	})
 	defer unsub()
@@ -222,7 +222,7 @@ func TestALayerWhoseAnchorVanishesIsDismissed(t *testing.T) {
 	})
 	h.settle()
 
-	var ids []widget.LayerID
+	var ids []core.LayerID
 	h.onLoop(func() {
 		for id := range host.AnchoredLayers() {
 			ids = append(ids, id)
@@ -231,7 +231,7 @@ func TestALayerWhoseAnchorVanishesIsDismissed(t *testing.T) {
 	if len(ids) != 0 {
 		t.Errorf("the host still holds %v after the anchor went", ids)
 	}
-	if len(reasons) != 1 || reasons[0] != widget.DismissAnchorLost {
+	if len(reasons) != 1 || reasons[0] != core.DismissAnchorLost {
 		t.Errorf("dismissal reasons = %v, want exactly one anchor-lost", reasons)
 	}
 }
@@ -243,21 +243,21 @@ func TestALayerWhoseAnchorVanishesIsDismissed(t *testing.T) {
 // layer mounted under that id — not two, and not none.
 func TestReopeningAnIdReplacesTheLayerAtomically(t *testing.T) {
 	owner := &anchorOwner{declare: true, region: "r", local: tui.Rect{X: 0, Y: 1, W: 6, H: 1}}
-	host := widget.NewOverlayHost(owner)
+	host := core.NewOverlayHost(owner)
 	h := startApp(t, host, 30, 12)
 	defer h.stop()
 	h.settle()
 
-	first := widget.NewText("FIRST")
-	second := widget.NewText("SECOND")
+	first := core.NewText("FIRST")
+	second := core.NewText("SECOND")
 	h.onLoop(func() {
-		if err := host.OpenAnchored("p", first, widget.AnchorSpec{Ref: owner.ref}, nil); err != nil {
+		if err := host.OpenAnchored("p", first, core.AnchorSpec{Ref: owner.ref}, nil); err != nil {
 			t.Errorf("first open: %v", err)
 		}
 	})
 	h.settle()
 	h.onLoop(func() {
-		if err := host.OpenAnchored("p", second, widget.AnchorSpec{Ref: owner.ref}, nil); err != nil {
+		if err := host.OpenAnchored("p", second, core.AnchorSpec{Ref: owner.ref}, nil); err != nil {
 			t.Errorf("replacement: %v", err)
 		}
 	})
@@ -287,7 +287,7 @@ func TestReopeningAnIdReplacesTheLayerAtomically(t *testing.T) {
 // without first working out how far the previous attempt got.
 func TestOpenAnchoredRejectsWhatItCannotPlace(t *testing.T) {
 	owner := &anchorOwner{declare: true, region: "r", local: tui.Rect{X: 0, Y: 1, W: 6, H: 1}}
-	host := widget.NewOverlayHost(owner)
+	host := core.NewOverlayHost(owner)
 	h := startApp(t, host, 30, 12)
 	defer h.stop()
 	h.settle()
@@ -297,20 +297,20 @@ func TestOpenAnchoredRejectsWhatItCannotPlace(t *testing.T) {
 		want error
 		call func() error
 	}{
-		{"an empty id", widget.ErrEmptyLayerID, func() error {
-			return host.OpenAnchored("", widget.NewText("x"), widget.AnchorSpec{Ref: owner.ref}, nil)
+		{"an empty id", core.ErrEmptyLayerID, func() error {
+			return host.OpenAnchored("", core.NewText("x"), core.AnchorSpec{Ref: owner.ref}, nil)
 		}},
-		{"the zero anchor", widget.ErrAnchorUnusable, func() error {
-			return host.OpenAnchored("p", widget.NewText("x"), widget.AnchorSpec{}, nil)
+		{"the zero anchor", core.ErrAnchorUnusable, func() error {
+			return host.OpenAnchored("p", core.NewText("x"), core.AnchorSpec{}, nil)
 		}},
-		{"an out-of-range placement", widget.ErrAnchorUnusable, func() error {
-			return host.OpenAnchored("p", widget.NewText("x"), widget.AnchorSpec{
+		{"an out-of-range placement", core.ErrAnchorUnusable, func() error {
+			return host.OpenAnchored("p", core.NewText("x"), core.AnchorSpec{
 				Ref:  owner.ref,
-				Pref: widget.Placement{Side: widget.PlacementLeft + 1},
+				Pref: core.Placement{Side: core.PlacementLeft + 1},
 			}, nil)
 		}},
-		{"a nil layer", widget.ErrAnchorUnusable, func() error {
-			return host.OpenAnchored("p", nil, widget.AnchorSpec{Ref: owner.ref}, nil)
+		{"a nil layer", core.ErrAnchorUnusable, func() error {
+			return host.OpenAnchored("p", nil, core.AnchorSpec{Ref: owner.ref}, nil)
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -340,23 +340,23 @@ func TestOpenAnchoredRejectsWhatItCannotPlace(t *testing.T) {
 // independently of the first.
 func TestTheSameLayerCannotBeOpenUnderTwoIds(t *testing.T) {
 	owner := &anchorOwner{declare: true, region: "r", local: tui.Rect{X: 0, Y: 1, W: 6, H: 1}}
-	host := widget.NewOverlayHost(owner)
+	host := core.NewOverlayHost(owner)
 	h := startApp(t, host, 30, 12)
 	defer h.stop()
 	h.settle()
 
-	shared := widget.NewText("SHARED")
+	shared := core.NewText("SHARED")
 	var first, second error
 	h.onLoop(func() {
-		first = host.OpenAnchored("a", shared, widget.AnchorSpec{Ref: owner.ref}, nil)
-		second = host.OpenAnchored("b", shared, widget.AnchorSpec{Ref: owner.ref}, nil)
+		first = host.OpenAnchored("a", shared, core.AnchorSpec{Ref: owner.ref}, nil)
+		second = host.OpenAnchored("b", shared, core.AnchorSpec{Ref: owner.ref}, nil)
 	})
 	h.settle()
 
 	if first != nil {
 		t.Fatalf("the first registration failed: %v", first)
 	}
-	if !errors.Is(second, widget.ErrLayerAlreadyRegistered) {
+	if !errors.Is(second, core.ErrLayerAlreadyRegistered) {
 		t.Errorf("the second registration returned %v, want ErrLayerAlreadyRegistered", second)
 	}
 }
@@ -364,29 +364,29 @@ func TestTheSameLayerCannotBeOpenUnderTwoIds(t *testing.T) {
 // TestCloseAnchoredIsIdempotentAndReportsTheReason.
 func TestCloseAnchoredIsIdempotentAndReportsTheReason(t *testing.T) {
 	owner := &anchorOwner{declare: true, region: "r", local: tui.Rect{X: 0, Y: 1, W: 6, H: 1}}
-	host := widget.NewOverlayHost(owner)
+	host := core.NewOverlayHost(owner)
 	h := startApp(t, host, 30, 12)
 	defer h.stop()
 	h.settle()
 
 	h.onLoop(func() {
-		if err := host.OpenAnchored("p", widget.NewText("POPUP"),
-			widget.AnchorSpec{Ref: owner.ref}, nil); err != nil {
+		if err := host.OpenAnchored("p", core.NewText("POPUP"),
+			core.AnchorSpec{Ref: owner.ref}, nil); err != nil {
 			t.Errorf("OpenAnchored: %v", err)
 		}
 	})
 	h.settle()
 
-	var reasons []widget.DismissReason
-	unsub := tui.Subscribe(h.app.Bus(), func(ev widget.OverlayDismissedEvent) {
+	var reasons []core.DismissReason
+	unsub := tui.Subscribe(h.app.Bus(), func(ev core.OverlayDismissedEvent) {
 		reasons = append(reasons, ev.Reason)
 	})
 	defer unsub()
 
 	h.onLoop(func() {
-		host.CloseAnchored("p", widget.DismissProgrammatic)
-		host.CloseAnchored("p", widget.DismissProgrammatic) // already closed
-		host.CloseAnchored("never-opened", widget.DismissProgrammatic)
+		host.CloseAnchored("p", core.DismissProgrammatic)
+		host.CloseAnchored("p", core.DismissProgrammatic) // already closed
+		host.CloseAnchored("never-opened", core.DismissProgrammatic)
 	})
 	h.settle()
 	h.settle()
@@ -409,7 +409,7 @@ func TestCloseAnchoredIsIdempotentAndReportsTheReason(t *testing.T) {
 // A caller holding a stale ref got success and a popup that immediately vanished.
 func TestAnAlreadyStaleAnchorIsRefusedBeforeAnythingIsMounted(t *testing.T) {
 	owner := &anchorOwner{declare: true, region: "r", local: tui.Rect{X: 0, Y: 1, W: 6, H: 1}}
-	host := widget.NewOverlayHost(owner)
+	host := core.NewOverlayHost(owner)
 	h := startApp(t, host, 30, 12)
 	defer h.stop()
 	h.settle()
@@ -417,12 +417,12 @@ func TestAnAlreadyStaleAnchorIsRefusedBeforeAnythingIsMounted(t *testing.T) {
 	stale := owner.ref
 	// A positive control first: this exact ref works before it is invalidated.
 	var ok error
-	h.onLoop(func() { ok = host.OpenAnchored("live", widget.NewText("L"), widget.AnchorSpec{Ref: stale}, nil) })
+	h.onLoop(func() { ok = host.OpenAnchored("live", core.NewText("L"), core.AnchorSpec{Ref: stale}, nil) })
 	h.settle()
 	if ok != nil {
 		t.Fatalf("the control open failed, so the refusal below would prove nothing: %v", ok)
 	}
-	h.onLoop(func() { host.CloseAnchored("live", widget.DismissProgrammatic) })
+	h.onLoop(func() { host.CloseAnchored("live", core.DismissProgrammatic) })
 	h.settle()
 
 	// Now invalidate it. The ref's generation no longer matches the owner's.
@@ -430,9 +430,9 @@ func TestAnAlreadyStaleAnchorIsRefusedBeforeAnythingIsMounted(t *testing.T) {
 	h.settle()
 
 	var err error
-	h.onLoop(func() { err = host.OpenAnchored("p", widget.NewText("POPUP"), widget.AnchorSpec{Ref: stale}, nil) })
+	h.onLoop(func() { err = host.OpenAnchored("p", core.NewText("POPUP"), core.AnchorSpec{Ref: stale}, nil) })
 	h.settle()
-	if !errors.Is(err, widget.ErrAnchorUnusable) {
+	if !errors.Is(err, core.ErrAnchorUnusable) {
 		t.Errorf("OpenAnchored returned %v for an already-stale ref, want ErrAnchorUnusable", err)
 	}
 	n := 0
@@ -456,16 +456,16 @@ func TestAnAlreadyStaleAnchorIsRefusedBeforeAnythingIsMounted(t *testing.T) {
 // pass far from the call that supplied it.
 func TestATypedNilPolicyIsTheDefaultPolicy(t *testing.T) {
 	owner := &anchorOwner{declare: true, region: "r", local: tui.Rect{X: 0, Y: 1, W: 6, H: 1}}
-	host := widget.NewOverlayHost(owner)
+	host := core.NewOverlayHost(owner)
 	h := startApp(t, host, 30, 12)
 	defer h.stop()
 	h.settle()
 
-	var nilPolicy widget.AnchorPolicyFunc // typed nil: non-nil interface, nil func
+	var nilPolicy core.AnchorPolicyFunc // typed nil: non-nil interface, nil func
 	var err error
 	h.onLoop(func() {
-		err = host.OpenAnchored("p", widget.NewText("POPUP"),
-			widget.AnchorSpec{Ref: owner.ref}, nilPolicy)
+		err = host.OpenAnchored("p", core.NewText("POPUP"),
+			core.AnchorSpec{Ref: owner.ref}, nilPolicy)
 	})
 	if err != nil {
 		t.Fatalf("OpenAnchored: %v", err)
@@ -484,7 +484,7 @@ func TestATypedNilPolicyIsTheDefaultPolicy(t *testing.T) {
 // a trial size does — and what a commit that dirties layout produces. Only the
 // LAST measurement describes the geometry that will be painted.
 type remeasure struct {
-	widget.Base
+	core.Base
 	child       tui.Component
 	first, last tui.Size
 	double      bool // off until the test has opened its popup
@@ -533,7 +533,7 @@ func TestTheLASTMeasurementDecidesWhetherAnAnchorWasLost(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			owner := &anchorOwner{declare: true, region: "r", local: tui.Rect{X: 0, Y: 1, W: 6, H: 1}}
-			host := widget.NewOverlayHost(owner)
+			host := core.NewOverlayHost(owner)
 			outer := &remeasure{child: host, last: big}
 			h := startApp(t, outer, 40, 20)
 			defer h.stop()
@@ -542,8 +542,8 @@ func TestTheLASTMeasurementDecidesWhetherAnAnchorWasLost(t *testing.T) {
 			// Opened while the geometry is valid and measured ONCE, so the
 			// popup is genuinely on screen before the double measurement runs.
 			h.onLoop(func() {
-				if err := host.OpenAnchored("p", widget.NewText("POPUP"),
-					widget.AnchorSpec{Ref: owner.ref}, nil); err != nil {
+				if err := host.OpenAnchored("p", core.NewText("POPUP"),
+					core.AnchorSpec{Ref: owner.ref}, nil); err != nil {
 					t.Fatalf("OpenAnchored: %v", err)
 				}
 			})

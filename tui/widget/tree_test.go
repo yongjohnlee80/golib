@@ -9,12 +9,13 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/files"
 )
 
-func focusedTree(t *testing.T, w, h int, opts ...widget.TreeOption) (*harness, *widget.Tree, *shell) {
+func focusedTree(t *testing.T, w, h int, opts ...files.TreeOption) (*harness, *files.Tree, *shell) {
 	t.Helper()
-	tr := widget.NewTree(opts...)
+	tr := files.NewTree(opts...)
 	sh := newShell(tr)
 	hh := startApp(t, sh, w, h)
 	hh.inject(tab())
@@ -22,7 +23,7 @@ func focusedTree(t *testing.T, w, h int, opts ...widget.TreeOption) (*harness, *
 	return hh, tr, sh
 }
 
-func selectedID(h *harness, tr *widget.Tree) string {
+func selectedID(h *harness, tr *files.Tree) string {
 	var id string
 	h.onLoop(func() {
 		if n, ok := tr.Selected(); ok {
@@ -33,9 +34,9 @@ func selectedID(h *harness, tr *widget.Tree) string {
 }
 
 func TestTreeExpandLifecycle(t *testing.T) {
-	root := widget.NewTreeNode("conns", "connections")
-	h, tr, sh := focusedTree(t, 40, 10, widget.WithRoots(root))
-	reqs := record[widget.ExpandRequestEvent](h)
+	root := files.NewTreeNode("conns", "connections")
+	h, tr, sh := focusedTree(t, 40, 10, files.WithRoots(root))
+	reqs := record[files.ExpandRequestEvent](h)
 
 	// First expand fires exactly one request; a second expand while loading
 	// fires nothing.
@@ -52,9 +53,9 @@ func TestTreeExpandLifecycle(t *testing.T) {
 
 	// Settling with the CURRENT generation loads the children.
 	h.onLoop(func() {
-		root.SetChildren(gen, []*widget.TreeNode{
-			widget.NewTreeNode("a", "alpha", widget.WithLeaf()),
-			widget.NewTreeNode("b", "beta", widget.WithLeaf()),
+		root.SetChildren(gen, []*files.TreeNode{
+			files.NewTreeNode("a", "alpha", files.WithLeaf()),
+			files.NewTreeNode("b", "beta", files.WithLeaf()),
 		})
 	})
 	h.barrier(sh)
@@ -74,7 +75,7 @@ func TestTreeExpandLifecycle(t *testing.T) {
 	if id := selectedID(h, tr); id != "conns" {
 		t.Fatalf("selected = %q, want conns", id)
 	}
-	collapses := record[widget.CollapseEvent](h)
+	collapses := record[files.CollapseEvent](h)
 	h.inject(key('h'))
 	h.barrier(sh)
 	if collapses.count() != 1 {
@@ -90,9 +91,9 @@ func TestTreeExpandLifecycle(t *testing.T) {
 }
 
 func TestTreeStaleGenerationsAreInert(t *testing.T) {
-	root := widget.NewTreeNode("r", "root")
-	h, _, sh := focusedTree(t, 40, 10, widget.WithRoots(root))
-	reqs := record[widget.ExpandRequestEvent](h)
+	root := files.NewTreeNode("r", "root")
+	h, _, sh := focusedTree(t, 40, 10, files.WithRoots(root))
+	reqs := record[files.ExpandRequestEvent](h)
 
 	h.inject(key('l')) // expand → gen 1 in flight
 	h.barrier(sh)
@@ -109,23 +110,23 @@ func TestTreeStaleGenerationsAreInert(t *testing.T) {
 
 	// The stale gen1 result must be ignored entirely.
 	h.onLoop(func() {
-		root.SetChildren(gen1, []*widget.TreeNode{widget.NewTreeNode("stale", "STALE", widget.WithLeaf())})
+		root.SetChildren(gen1, []*files.TreeNode{files.NewTreeNode("stale", "STALE", files.WithLeaf())})
 	})
 	h.barrier(sh)
 	h.wantNotContains("STALE")
 
 	// The current gen2 result lands.
 	h.onLoop(func() {
-		root.SetChildren(gen2, []*widget.TreeNode{widget.NewTreeNode("fresh", "FRESH", widget.WithLeaf())})
+		root.SetChildren(gen2, []*files.TreeNode{files.NewTreeNode("fresh", "FRESH", files.WithLeaf())})
 	})
 	h.barrier(sh)
 	h.wantContains("FRESH")
 }
 
 func TestTreeLoadErrorAndRetry(t *testing.T) {
-	root := widget.NewTreeNode("r", "root")
-	h, _, sh := focusedTree(t, 44, 10, widget.WithRoots(root))
-	reqs := record[widget.ExpandRequestEvent](h)
+	root := files.NewTreeNode("r", "root")
+	h, _, sh := focusedTree(t, 44, 10, files.WithRoots(root))
+	reqs := record[files.ExpandRequestEvent](h)
 
 	h.inject(key('l'))
 	h.barrier(sh)
@@ -148,15 +149,15 @@ func TestTreeLoadErrorAndRetry(t *testing.T) {
 
 func TestTreeOwnershipPanics(t *testing.T) {
 	// Attaching an owned node to a second tree panics.
-	shared := widget.NewTreeNode("x", "x")
-	widget.NewTree(widget.WithRoots(shared))
+	shared := files.NewTreeNode("x", "x")
+	files.NewTree(files.WithRoots(shared))
 	func() {
 		defer func() {
 			if recover() == nil {
 				t.Fatal("cross-tree reuse did not panic")
 			}
 		}()
-		widget.NewTree(widget.WithRoots(shared))
+		files.NewTree(files.WithRoots(shared))
 	}()
 
 	// Duplicate sibling IDs panic.
@@ -166,42 +167,42 @@ func TestTreeOwnershipPanics(t *testing.T) {
 				t.Fatal("duplicate sibling ids did not panic")
 			}
 		}()
-		widget.NewTree(widget.WithRoots(
-			widget.NewTreeNode("dup", "a"), widget.NewTreeNode("dup", "b")))
+		files.NewTree(files.WithRoots(
+			files.NewTreeNode("dup", "a"), files.NewTreeNode("dup", "b")))
 	}()
 
 	// Static pre-assembly (gen 0 on an unowned node) is allowed; attaching
 	// the assembled subtree stamps every node, so re-attaching a descendant
 	// panics.
-	parent := widget.NewTreeNode("p", "parent")
-	child := widget.NewTreeNode("c", "child", widget.WithLeaf())
-	parent.SetChildren(0, []*widget.TreeNode{child})
-	widget.NewTree(widget.WithRoots(parent))
+	parent := files.NewTreeNode("p", "parent")
+	child := files.NewTreeNode("c", "child", files.WithLeaf())
+	parent.SetChildren(0, []*files.TreeNode{child})
+	files.NewTree(files.WithRoots(parent))
 	func() {
 		defer func() {
 			if recover() == nil {
 				t.Fatal("descendant re-attachment did not panic")
 			}
 		}()
-		widget.NewTree(widget.WithRoots(child))
+		files.NewTree(files.WithRoots(child))
 	}()
 }
 
 func TestTreeSetRootsReleasesAndLateResultsAreInert(t *testing.T) {
-	rootA := widget.NewTreeNode("a", "rootA")
-	h, tr, sh := focusedTree(t, 40, 10, widget.WithRoots(rootA))
-	reqs := record[widget.ExpandRequestEvent](h)
+	rootA := files.NewTreeNode("a", "rootA")
+	h, tr, sh := focusedTree(t, 40, 10, files.WithRoots(rootA))
+	reqs := record[files.ExpandRequestEvent](h)
 
 	h.inject(key('l')) // gen in flight on rootA
 	h.barrier(sh)
 	gen := reqs.events()[0].Gen
 
 	// Replace the roots: rootA is released; its late result must be inert.
-	rootB := widget.NewTreeNode("b", "rootB", widget.WithLeaf())
+	rootB := files.NewTreeNode("b", "rootB", files.WithLeaf())
 	h.onLoop(func() { tr.SetRoots(rootB) })
 	h.barrier(sh)
 	h.onLoop(func() {
-		rootA.SetChildren(gen, []*widget.TreeNode{widget.NewTreeNode("ghost", "GHOST", widget.WithLeaf())})
+		rootA.SetChildren(gen, []*files.TreeNode{files.NewTreeNode("ghost", "GHOST", files.WithLeaf())})
 	})
 	h.barrier(sh)
 	h.wantNotContains("GHOST")
@@ -213,14 +214,14 @@ func TestTreeSetRootsReleasesAndLateResultsAreInert(t *testing.T) {
 }
 
 func TestTreeExpandPathAndActivate(t *testing.T) {
-	ws := widget.NewTreeNode("ws", "workspace")
-	conns := widget.NewTreeNode("conns", "connections")
-	db := widget.NewTreeNode("db1", "maindb", widget.WithLeaf())
-	conns.SetChildren(0, []*widget.TreeNode{db})
-	ws.SetChildren(0, []*widget.TreeNode{conns})
+	ws := files.NewTreeNode("ws", "workspace")
+	conns := files.NewTreeNode("conns", "connections")
+	db := files.NewTreeNode("db1", "maindb", files.WithLeaf())
+	conns.SetChildren(0, []*files.TreeNode{db})
+	ws.SetChildren(0, []*files.TreeNode{conns})
 
-	h, tr, sh := focusedTree(t, 40, 10, widget.WithRoots(ws))
-	acts := record[widget.ActivateEvent](h)
+	h, tr, sh := focusedTree(t, 40, 10, files.WithRoots(ws))
+	acts := record[core.ActivateEvent](h)
 
 	h.onLoop(func() { tr.ExpandPath("ws", "conns", "db1") })
 	h.barrier(sh)
@@ -239,13 +240,13 @@ func TestTreeExpandPathAndActivate(t *testing.T) {
 // Attachment validates the WHOLE incoming forest before any mutation —
 // a bad forest leaves the existing tree fully intact.
 func TestTreePreflightBeforeMutation(t *testing.T) {
-	good := widget.NewTreeNode("good", "good", widget.WithLeaf())
-	h, tr, sh := focusedTree(t, 40, 10, widget.WithRoots(good))
+	good := files.NewTreeNode("good", "good", files.WithLeaf())
+	h, tr, sh := focusedTree(t, 40, 10, files.WithRoots(good))
 
-	shared := widget.NewTreeNode("shared", "shared", widget.WithLeaf())
-	a := widget.NewTreeNode("a", "a")
-	b := widget.NewTreeNode("b", "b")
-	a.SetChildren(0, []*widget.TreeNode{shared})
+	shared := files.NewTreeNode("shared", "shared", files.WithLeaf())
+	a := files.NewTreeNode("a", "a")
+	b := files.NewTreeNode("b", "b")
+	a.SetChildren(0, []*files.TreeNode{shared})
 
 	h.onLoop(func() {
 		defer func() {
@@ -255,10 +256,10 @@ func TestTreePreflightBeforeMutation(t *testing.T) {
 		}()
 		// b would share a's descendant: rejected BEFORE the old roots are
 		// released.
-		b2 := widget.NewTreeNode("b2", "b2")
+		b2 := files.NewTreeNode("b2", "b2")
 		_ = b2
-		tr.SetRoots(a, func() *widget.TreeNode {
-			b.SetChildren(0, []*widget.TreeNode{shared}) // duplicate pointer
+		tr.SetRoots(a, func() *files.TreeNode {
+			b.SetChildren(0, []*files.TreeNode{shared}) // duplicate pointer
 			return b
 		}())
 	})
@@ -273,16 +274,16 @@ func TestTreePreflightBeforeMutation(t *testing.T) {
 // A released multi-level subtree keeps its internal ancestry and
 // navigates correctly after re-attachment.
 func TestTreeReattachedSubtreeKeepsAncestry(t *testing.T) {
-	parent := widget.NewTreeNode("p", "parent")
-	child := widget.NewTreeNode("c", "child")
-	leaf := widget.NewTreeNode("l", "leaf", widget.WithLeaf())
-	child.SetChildren(0, []*widget.TreeNode{leaf})
-	parent.SetChildren(0, []*widget.TreeNode{child})
+	parent := files.NewTreeNode("p", "parent")
+	child := files.NewTreeNode("c", "child")
+	leaf := files.NewTreeNode("l", "leaf", files.WithLeaf())
+	child.SetChildren(0, []*files.TreeNode{leaf})
+	parent.SetChildren(0, []*files.TreeNode{child})
 
-	h, tr, sh := focusedTree(t, 40, 10, widget.WithRoots(parent))
+	h, tr, sh := focusedTree(t, 40, 10, files.WithRoots(parent))
 
 	// Detach the whole assembly, then re-attach it.
-	other := widget.NewTreeNode("o", "other", widget.WithLeaf())
+	other := files.NewTreeNode("o", "other", files.WithLeaf())
 	h.onLoop(func() { tr.SetRoots(other) })
 	h.barrier(sh)
 	h.onLoop(func() { tr.SetRoots(parent) })
@@ -309,14 +310,14 @@ func TestTreeReattachedSubtreeKeepsAncestry(t *testing.T) {
 // Shrinking mutations reconcile the cursor synchronously — the next
 // key operates on a real row, never a stale modulo-wrapped index.
 func TestTreeCursorReconcileOnShrink(t *testing.T) {
-	root := widget.NewTreeNode("r", "root")
-	kids := []*widget.TreeNode{
-		widget.NewTreeNode("k1", "kid-one", widget.WithLeaf()),
-		widget.NewTreeNode("k2", "kid-two", widget.WithLeaf()),
-		widget.NewTreeNode("k3", "kid-three", widget.WithLeaf()),
+	root := files.NewTreeNode("r", "root")
+	kids := []*files.TreeNode{
+		files.NewTreeNode("k1", "kid-one", files.WithLeaf()),
+		files.NewTreeNode("k2", "kid-two", files.WithLeaf()),
+		files.NewTreeNode("k3", "kid-three", files.WithLeaf()),
 	}
-	h, tr, sh := focusedTree(t, 40, 10, widget.WithRoots(root))
-	reqs := record[widget.ExpandRequestEvent](h)
+	h, tr, sh := focusedTree(t, 40, 10, files.WithRoots(root))
+	reqs := record[files.ExpandRequestEvent](h)
 	h.inject(key('l'))
 	h.barrier(sh)
 	h.onLoop(func() { root.SetChildren(reqs.events()[0].Gen, kids) })
@@ -345,38 +346,38 @@ func TestTreeCursorReconcileOnShrink(t *testing.T) {
 // the incoming forest — n.SetChildren(0, n) and longer receiver cycles
 // fail BEFORE commit.
 func TestTreeReceiverCycleRejected(t *testing.T) {
-	n := widget.NewTreeNode("n", "n")
+	n := files.NewTreeNode("n", "n")
 	func() {
 		defer func() {
 			if recover() == nil {
 				t.Fatal("self-adoption did not panic")
 			}
 		}()
-		n.SetChildren(0, []*widget.TreeNode{n})
+		n.SetChildren(0, []*files.TreeNode{n})
 	}()
 
-	root := widget.NewTreeNode("root", "root")
-	child := widget.NewTreeNode("child", "child")
-	root.SetChildren(0, []*widget.TreeNode{child})
+	root := files.NewTreeNode("root", "root")
+	child := files.NewTreeNode("child", "child")
+	root.SetChildren(0, []*files.TreeNode{child})
 	func() {
 		defer func() {
 			if recover() == nil {
 				t.Fatal("receiver-ancestor cycle did not panic")
 			}
 		}()
-		child.SetChildren(0, []*widget.TreeNode{root})
+		child.SetChildren(0, []*files.TreeNode{root})
 	}()
 	// The graph is untouched: root still parents child, no cycle.
-	tr := widget.NewTree(widget.WithRoots(root))
+	tr := files.NewTree(files.WithRoots(root))
 	_ = tr
 }
 
 // Ctrl-l/Ctrl-h are pane motion in vim-keyed hosts; the tree must not
 // read them as its own expand/collapse letters.
 func TestTreeIgnoresApplicationChords(t *testing.T) {
-	root := widget.NewTreeNode("conns", "connections")
-	h, _, sh := focusedTree(t, 40, 10, widget.WithRoots(root))
-	reqs := record[widget.ExpandRequestEvent](h)
+	root := files.NewTreeNode("conns", "connections")
+	h, _, sh := focusedTree(t, 40, 10, files.WithRoots(root))
+	reqs := record[files.ExpandRequestEvent](h)
 
 	h.inject(keyMod('l', tui.ModCtrl))
 	h.barrier(sh)
@@ -392,19 +393,19 @@ func TestTreeIgnoresApplicationChords(t *testing.T) {
 }
 
 func TestTreeHostControls(t *testing.T) {
-	root := widget.NewTreeNode("ws", "workspace")
-	root.SetChildren(0, []*widget.TreeNode{
-		widget.NewTreeNode("a", "alpha", widget.WithLeaf()),
-		widget.NewTreeNode("b", "beta", widget.WithLeaf()),
+	root := files.NewTreeNode("ws", "workspace")
+	root.SetChildren(0, []*files.TreeNode{
+		files.NewTreeNode("a", "alpha", files.WithLeaf()),
+		files.NewTreeNode("b", "beta", files.WithLeaf()),
 	})
-	th, tr, tsh := focusedTree(t, 40, 10, widget.WithRoots(root))
+	th, tr, tsh := focusedTree(t, 40, 10, files.WithRoots(root))
 	th.inject(key('l')) // expand the pre-assembled root
 	th.barrier(tsh)
 
 	var labels []string
 	var cur int
 	th.onLoop(func() {
-		tr.SetStyles(widget.ListStyles{CursorRow: style.New().Background(style.ANSI(8))})
+		tr.SetStyles(core.ListStyles{CursorRow: style.New().Background(style.ANSI(8))})
 		for _, n := range tr.VisibleRows() {
 			labels = append(labels, n.Label())
 		}
@@ -427,11 +428,11 @@ func TestTreeHostControls(t *testing.T) {
 // its children under a new generation, the cursor stays put, and a
 // collapsed node simply drops what it cached.
 func TestTreeReloadSubtree(t *testing.T) {
-	root := widget.NewTreeNode("ws", "workspace")
-	notes := widget.NewTreeNode("notes", "notes")
-	root.SetChildren(0, []*widget.TreeNode{notes})
-	h, tr, sh := focusedTree(t, 40, 10, widget.WithRoots(root))
-	reqs := record[widget.ExpandRequestEvent](h)
+	root := files.NewTreeNode("ws", "workspace")
+	notes := files.NewTreeNode("notes", "notes")
+	root.SetChildren(0, []*files.TreeNode{notes})
+	h, tr, sh := focusedTree(t, 40, 10, files.WithRoots(root))
+	reqs := record[files.ExpandRequestEvent](h)
 
 	h.inject(key('l'), key('j'), key('l')) // expand ws, onto notes, expand it
 	h.barrier(sh)
@@ -440,8 +441,8 @@ func TestTreeReloadSubtree(t *testing.T) {
 	}
 	ev, _ := reqs.last()
 	h.onLoop(func() {
-		ev.Node.SetChildren(ev.Gen, []*widget.TreeNode{
-			widget.NewTreeNode("a", "a.sql", widget.WithLeaf()),
+		ev.Node.SetChildren(ev.Gen, []*files.TreeNode{
+			files.NewTreeNode("a", "a.sql", files.WithLeaf()),
 		})
 	})
 	h.barrier(sh)
@@ -466,8 +467,8 @@ func TestTreeReloadSubtree(t *testing.T) {
 		t.Fatalf("Reload reused generation %d", ev.Gen)
 	}
 	h.onLoop(func() {
-		ev.Node.SetChildren(ev.Gen, []*widget.TreeNode{
-			widget.NewTreeNode("stale", "stale.sql", widget.WithLeaf()),
+		ev.Node.SetChildren(ev.Gen, []*files.TreeNode{
+			files.NewTreeNode("stale", "stale.sql", files.WithLeaf()),
 		})
 	})
 	h.barrier(sh)
@@ -485,14 +486,14 @@ func singlePress(y int) tui.MouseEvent {
 // A double-click on a BRANCH activates it and leaves its expanded
 // state alone.
 func TestTreeDoubleClickActivatesABranchWithoutExpanding(t *testing.T) {
-	ws := widget.NewTreeNode("ws", "workspace")
-	tbl := widget.NewTreeNode("tbl", "a_table") // a BRANCH: children are columns
-	col := widget.NewTreeNode("col", "id", widget.WithLeaf())
-	tbl.SetChildren(0, []*widget.TreeNode{col})
-	ws.SetChildren(0, []*widget.TreeNode{tbl})
+	ws := files.NewTreeNode("ws", "workspace")
+	tbl := files.NewTreeNode("tbl", "a_table") // a BRANCH: children are columns
+	col := files.NewTreeNode("col", "id", files.WithLeaf())
+	tbl.SetChildren(0, []*files.TreeNode{col})
+	ws.SetChildren(0, []*files.TreeNode{tbl})
 
-	h, tr, sh := focusedTree(t, 40, 10, widget.WithRoots(ws))
-	acts := record[widget.ActivateEvent](h)
+	h, tr, sh := focusedTree(t, 40, 10, files.WithRoots(ws))
+	acts := record[core.ActivateEvent](h)
 
 	h.onLoop(func() { tr.ExpandPath("ws") })
 	h.barrier(sh)
@@ -522,12 +523,12 @@ func TestTreeDoubleClickActivatesABranchWithoutExpanding(t *testing.T) {
 
 // A SINGLE click selects and publishes nothing.
 func TestTreeSingleClickDoesNotActivate(t *testing.T) {
-	ws := widget.NewTreeNode("ws", "workspace")
-	tbl := widget.NewTreeNode("tbl", "a_table")
-	ws.SetChildren(0, []*widget.TreeNode{tbl})
+	ws := files.NewTreeNode("ws", "workspace")
+	tbl := files.NewTreeNode("tbl", "a_table")
+	ws.SetChildren(0, []*files.TreeNode{tbl})
 
-	h, tr, sh := focusedTree(t, 40, 10, widget.WithRoots(ws))
-	acts := record[widget.ActivateEvent](h)
+	h, tr, sh := focusedTree(t, 40, 10, files.WithRoots(ws))
+	acts := record[core.ActivateEvent](h)
 
 	h.onLoop(func() { tr.ExpandPath("ws") })
 	h.barrier(sh)
@@ -546,12 +547,12 @@ func TestTreeSingleClickDoesNotActivate(t *testing.T) {
 // A leaf double-click activates too, on the same channel as ENTER — so a host
 // that already handles leaf activation needs no new code.
 func TestTreeDoubleClickActivatesALeaf(t *testing.T) {
-	ws := widget.NewTreeNode("ws", "workspace")
-	leaf := widget.NewTreeNode("note", "query.sql", widget.WithLeaf())
-	ws.SetChildren(0, []*widget.TreeNode{leaf})
+	ws := files.NewTreeNode("ws", "workspace")
+	leaf := files.NewTreeNode("note", "query.sql", files.WithLeaf())
+	ws.SetChildren(0, []*files.TreeNode{leaf})
 
-	h, tr, sh := focusedTree(t, 40, 10, widget.WithRoots(ws))
-	acts := record[widget.ActivateEvent](h)
+	h, tr, sh := focusedTree(t, 40, 10, files.WithRoots(ws))
+	acts := record[core.ActivateEvent](h)
 	h.onLoop(func() { tr.ExpandPath("ws") })
 	h.barrier(sh)
 
@@ -564,12 +565,12 @@ func TestTreeDoubleClickActivatesALeaf(t *testing.T) {
 }
 
 func TestTreeTripleClickActivatesOnce(t *testing.T) {
-	ws := widget.NewTreeNode("ws", "workspace")
-	tbl := widget.NewTreeNode("tbl", "a_table")
-	ws.SetChildren(0, []*widget.TreeNode{tbl})
+	ws := files.NewTreeNode("ws", "workspace")
+	tbl := files.NewTreeNode("tbl", "a_table")
+	ws.SetChildren(0, []*files.TreeNode{tbl})
 
-	h, tr, sh := focusedTree(t, 40, 10, widget.WithRoots(ws))
-	acts := record[widget.ActivateEvent](h)
+	h, tr, sh := focusedTree(t, 40, 10, files.WithRoots(ws))
+	acts := record[core.ActivateEvent](h)
 	h.onLoop(func() { tr.ExpandPath("ws") })
 	h.barrier(sh)
 
@@ -586,12 +587,12 @@ func TestTreeTripleClickActivatesOnce(t *testing.T) {
 // and activate. A double-click on the expander toggles twice: no activation, and
 // the node ends as it started.
 func TestTreeDoubleClickOnTheExpanderTogglesTwiceAndDoesNotActivate(t *testing.T) {
-	ws := widget.NewTreeNode("ws", "workspace")
-	child := widget.NewTreeNode("child", "a_child", widget.WithLeaf())
-	ws.SetChildren(0, []*widget.TreeNode{child})
+	ws := files.NewTreeNode("ws", "workspace")
+	child := files.NewTreeNode("child", "a_child", files.WithLeaf())
+	ws.SetChildren(0, []*files.TreeNode{child})
 
-	h, tr, sh := focusedTree(t, 40, 10, widget.WithRoots(ws))
-	acts := record[widget.ActivateEvent](h)
+	h, tr, sh := focusedTree(t, 40, 10, files.WithRoots(ws))
+	acts := record[core.ActivateEvent](h)
 
 	var rowsBefore int
 	h.onLoop(func() { rowsBefore = len(tr.VisibleRows()) })
@@ -618,12 +619,12 @@ func TestTreeDoubleClickOnTheExpanderTogglesTwiceAndDoesNotActivate(t *testing.T
 // then panicked had already mutated pairing state — a failed operation with a
 // side effect.
 func TestTreeRejectedSetRootsLeavesPairingIntact(t *testing.T) {
-	a := widget.NewTreeNode("a", "a")
-	child := widget.NewTreeNode("child", "child", widget.WithLeaf())
-	a.SetChildren(0, []*widget.TreeNode{child})
+	a := files.NewTreeNode("a", "a")
+	child := files.NewTreeNode("child", "child", files.WithLeaf())
+	a.SetChildren(0, []*files.TreeNode{child})
 
-	h, tr, sh := focusedTree(t, 40, 10, widget.WithRoots(a))
-	acts := record[widget.ActivateEvent](h)
+	h, tr, sh := focusedTree(t, 40, 10, files.WithRoots(a))
+	acts := record[core.ActivateEvent](h)
 	h.onLoop(func() { tr.ExpandPath("a") })
 	h.barrier(sh)
 
@@ -632,7 +633,7 @@ func TestTreeRejectedSetRootsLeavesPairingIntact(t *testing.T) {
 	h.barrier(sh)
 
 	// A forest naming the same node twice is rejected.
-	dup := widget.NewTreeNode("dup", "dup")
+	dup := files.NewTreeNode("dup", "dup")
 	h.onLoop(func() {
 		defer func() { _ = recover() }()
 		tr.SetRoots(dup, dup)
@@ -653,13 +654,13 @@ func TestTreeRejectedSetRootsLeavesPairingIntact(t *testing.T) {
 // activated on Enter for any row — and leaves its expansion alone: the host
 // decides whether the row is a folder to open or a thing to use.
 func TestTreeEnterActivatesABranchWithoutExpanding(t *testing.T) {
-	ws := widget.NewTreeNode("ws", "workspace")
-	tbl := widget.NewTreeNode("tbl", "a_table") // a BRANCH: children are columns
-	tbl.SetChildren(0, []*widget.TreeNode{widget.NewTreeNode("col", "id", widget.WithLeaf())})
-	ws.SetChildren(0, []*widget.TreeNode{tbl})
+	ws := files.NewTreeNode("ws", "workspace")
+	tbl := files.NewTreeNode("tbl", "a_table") // a BRANCH: children are columns
+	tbl.SetChildren(0, []*files.TreeNode{files.NewTreeNode("col", "id", files.WithLeaf())})
+	ws.SetChildren(0, []*files.TreeNode{tbl})
 
-	h, tr, sh := focusedTree(t, 40, 10, widget.WithRoots(ws))
-	acts := record[widget.ActivateEvent](h)
+	h, tr, sh := focusedTree(t, 40, 10, files.WithRoots(ws))
+	acts := record[core.ActivateEvent](h)
 	h.onLoop(func() { tr.ExpandPath("ws", "tbl") }) // the cursor on the table, closed
 	h.barrier(sh)
 	var before int
@@ -680,10 +681,10 @@ func TestTreeEnterActivatesABranchWithoutExpanding(t *testing.T) {
 // ToggleExpanded opens a closed branch and closes an open one, and leaves a
 // leaf alone.
 func TestTreeToggleExpandedOpensAndClosesABranch(t *testing.T) {
-	ws := widget.NewTreeNode("ws", "workspace")
-	leaf := widget.NewTreeNode("col", "id", widget.WithLeaf())
-	ws.SetChildren(0, []*widget.TreeNode{leaf})
-	h, tr, sh := focusedTree(t, 40, 10, widget.WithRoots(ws))
+	ws := files.NewTreeNode("ws", "workspace")
+	leaf := files.NewTreeNode("col", "id", files.WithLeaf())
+	ws.SetChildren(0, []*files.TreeNode{leaf})
+	h, tr, sh := focusedTree(t, 40, 10, files.WithRoots(ws))
 
 	rows := func() int {
 		var n int
@@ -709,11 +710,11 @@ func TestTreeToggleExpandedOpensAndClosesABranch(t *testing.T) {
 
 // ToggleExpanded on a node of another tree, or on nil, changes nothing here.
 func TestTreeToggleExpandedIgnoresANodeItDoesNotHold(t *testing.T) {
-	ws := widget.NewTreeNode("ws", "workspace")
-	ws.SetChildren(0, []*widget.TreeNode{widget.NewTreeNode("col", "id", widget.WithLeaf())})
-	other := widget.NewTreeNode("other", "elsewhere")
-	other.SetChildren(0, []*widget.TreeNode{widget.NewTreeNode("x", "x", widget.WithLeaf())})
-	h, tr, sh := focusedTree(t, 40, 10, widget.WithRoots(ws))
+	ws := files.NewTreeNode("ws", "workspace")
+	ws.SetChildren(0, []*files.TreeNode{files.NewTreeNode("col", "id", files.WithLeaf())})
+	other := files.NewTreeNode("other", "elsewhere")
+	other.SetChildren(0, []*files.TreeNode{files.NewTreeNode("x", "x", files.WithLeaf())})
+	h, tr, sh := focusedTree(t, 40, 10, files.WithRoots(ws))
 	h.onLoop(func() {
 		tr.ToggleExpanded(other)
 		tr.ToggleExpanded(nil)
@@ -731,10 +732,10 @@ func TestTreeToggleExpandedIgnoresANodeItDoesNotHold(t *testing.T) {
 // as its parent's fresh children arrive — and puts the cursor back on its
 // node; a node gone from the fresh children is not asked for.
 func TestTreeReloadReopensWhatWasOpen(t *testing.T) {
-	ws := widget.NewTreeNode("ws", "workspace")
-	h, tr, sh := focusedTree(t, 40, 12, widget.WithRoots(ws))
-	reqs := record[widget.ExpandRequestEvent](h)
-	answer := func(want string, kids ...*widget.TreeNode) {
+	ws := files.NewTreeNode("ws", "workspace")
+	h, tr, sh := focusedTree(t, 40, 12, files.WithRoots(ws))
+	reqs := record[files.ExpandRequestEvent](h)
+	answer := func(want string, kids ...*files.TreeNode) {
 		t.Helper()
 		ev, ok := reqs.last()
 		if !ok || ev.Node.ID() != want {
@@ -743,10 +744,10 @@ func TestTreeReloadReopensWhatWasOpen(t *testing.T) {
 		h.onLoop(func() { ev.Node.SetChildren(ev.Gen, kids) })
 		h.barrier(sh)
 	}
-	leaf := func(id string) *widget.TreeNode { return widget.NewTreeNode(id, id, widget.WithLeaf()) }
+	leaf := func(id string) *files.TreeNode { return files.NewTreeNode(id, id, files.WithLeaf()) }
 	h.inject(key('l')) // ws
 	h.barrier(sh)
-	answer("ws", widget.NewTreeNode("dir", "dir"), widget.NewTreeNode("old", "old"), leaf("a"))
+	answer("ws", files.NewTreeNode("dir", "dir"), files.NewTreeNode("old", "old"), leaf("a"))
 	h.inject(key('j'), key('l')) // dir
 	h.barrier(sh)
 	answer("dir", leaf("b"), leaf("c"))
@@ -763,8 +764,8 @@ func TestTreeReloadReopensWhatWasOpen(t *testing.T) {
 	n := reqs.count()
 	h.onLoop(func() { tr.Reload("ws") })
 	h.barrier(sh)
-	answer("ws", widget.NewTreeNode("dir", "dir"), leaf("new"), leaf("a")) // old is gone
-	answer("dir", leaf("b"), leaf("c"))                                    // asked for, as it was open
+	answer("ws", files.NewTreeNode("dir", "dir"), leaf("new"), leaf("a")) // old is gone
+	answer("dir", leaf("b"), leaf("c"))                                   // asked for, as it was open
 	if got := reqs.count() - n; got != 2 {
 		t.Fatalf("%d requests after the reload, want 2 (ws, then dir; not the vanished old)", got)
 	}
@@ -780,20 +781,20 @@ func TestTreeReloadReopensWhatWasOpen(t *testing.T) {
 // before anything published is, finds them: l then j land on the first child, with no request
 // sent. A node the host cannot answer for at once still sends its request.
 func TestTreeKnownChildrenShowInTheExpandingKeysHandling(t *testing.T) {
-	db := widget.NewTreeNode("db", "database")
-	lazy := widget.NewTreeNode("lazy", "remote")
-	known := func(n *widget.TreeNode, gen uint64) bool {
+	db := files.NewTreeNode("db", "database")
+	lazy := files.NewTreeNode("lazy", "remote")
+	known := func(n *files.TreeNode, gen uint64) bool {
 		if n != db {
 			return false
 		}
-		n.SetChildren(gen, []*widget.TreeNode{
-			widget.NewTreeNode("a", "alpha", widget.WithLeaf()),
-			widget.NewTreeNode("b", "beta", widget.WithLeaf()),
+		n.SetChildren(gen, []*files.TreeNode{
+			files.NewTreeNode("a", "alpha", files.WithLeaf()),
+			files.NewTreeNode("b", "beta", files.WithLeaf()),
 		})
 		return true
 	}
-	h, tr, sh := focusedTree(t, 40, 10, widget.WithRoots(db, lazy), widget.WithKnownChildren(known))
-	reqs := record[widget.ExpandRequestEvent](h)
+	h, tr, sh := focusedTree(t, 40, 10, files.WithRoots(db, lazy), files.WithKnownChildren(known))
+	reqs := record[files.ExpandRequestEvent](h)
 	h.onLoop(func() { // one turn: nothing published is handled between the two keys
 		tr.HandleEvent(key('l'))
 		tr.HandleEvent(key('j'))
@@ -816,14 +817,14 @@ func TestTreeKnownChildrenShowInTheExpandingKeysHandling(t *testing.T) {
 // request for a branch's children, and an activation, each once, with the node, as the key is
 // handled (data-I4, as List's).
 func TestATreeTellsItsOwnerAtOnce(t *testing.T) {
-	branch := widget.NewTreeNode("b", "branch")
-	leaf := widget.NewTreeNode("l", "leaf", widget.WithLeaf())
+	branch := files.NewTreeNode("b", "branch")
+	leaf := files.NewTreeNode("l", "leaf", files.WithLeaf())
 	var cursor, expanded, requested, activated []string
-	h, _, sh := focusedTree(t, 40, 6, widget.WithRoots(branch, leaf),
-		widget.WithTreeOnCursor(func(n *widget.TreeNode) { cursor = append(cursor, n.ID()) }),
-		widget.WithTreeOnExpand(func(n *widget.TreeNode) { expanded = append(expanded, n.ID()) }),
-		widget.WithTreeOnExpandRequest(func(n *widget.TreeNode, _ uint64) { requested = append(requested, n.ID()) }),
-		widget.WithTreeOnActivate(func(n *widget.TreeNode) { activated = append(activated, n.ID()) }))
+	h, _, sh := focusedTree(t, 40, 6, files.WithRoots(branch, leaf),
+		files.WithTreeOnCursor(func(n *files.TreeNode) { cursor = append(cursor, n.ID()) }),
+		files.WithTreeOnExpand(func(n *files.TreeNode) { expanded = append(expanded, n.ID()) }),
+		files.WithTreeOnExpandRequest(func(n *files.TreeNode, _ uint64) { requested = append(requested, n.ID()) }),
+		files.WithTreeOnActivate(func(n *files.TreeNode) { activated = append(activated, n.ID()) }))
 	h.inject(key('l')) // open the branch: its children are asked for
 	h.barrier(sh)
 	h.inject(key(tui.KeyDown), key(tui.KeyEnter))

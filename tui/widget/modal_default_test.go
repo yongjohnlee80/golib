@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // yesNo is a Yes/No dialog over body: No the default when noDefault, and disabled when noOff.
@@ -13,13 +13,13 @@ func yesNo(t *testing.T, body tui.Component, noDefault, noOff bool) (*harness, f
 	t.Helper()
 	var log []string
 	note := func(s string) func() { return func() { log = append(log, s) } }
-	no := widget.NewButton("No", widget.WithRole(widget.ButtonRoleReject), widget.WithDefault(noDefault), widget.WithOnActivate(note("no")))
+	no := core.NewButton("No", core.WithRole(core.ButtonRoleReject), core.WithDefault(noDefault), core.WithOnActivate(note("no")))
 	if noOff {
 		no.SetEnabled(false)
 	}
-	md := widget.NewModal(body, widget.WithButtons(
-		widget.NewButton("Yes", widget.WithRole(widget.ButtonRoleAccept), widget.WithOnActivate(note("yes"))), no))
-	host := widget.NewOverlayHost(widget.NewText(""))
+	md := core.NewModal(body, core.WithButtons(
+		core.NewButton("Yes", core.WithRole(core.ButtonRoleAccept), core.WithOnActivate(note("yes"))), no))
+	host := core.NewOverlayHost(core.NewText(""))
 	h := startApp(t, host, 60, 12)
 	h.onLoop(func() {
 		if err := md.Open(host); err != nil {
@@ -49,7 +49,7 @@ func TestATextDialogStartsOnItsDefaultButton(t *testing.T) {
 		{"No the default, disabled", true, true, "yes"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			h, read := yesNo(t, widget.NewText("Delete the file?"), c.noDefault, c.noOff)
+			h, read := yesNo(t, core.NewText("Delete the file?"), c.noDefault, c.noOff)
 			defer h.stop()
 			h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter})
 			h.waitFor("the answer", func() bool { return read() != "" })
@@ -62,7 +62,7 @@ func TestATextDialogStartsOnItsDefaultButton(t *testing.T) {
 
 // A body with a field still starts in the field, its Enter answering the default.
 func TestADialogWithAFieldStillStartsInIt(t *testing.T) {
-	field := widget.NewTextInput()
+	field := core.NewTextInput()
 	h, read := yesNo(t, field, true, false)
 	defer h.stop()
 	h.inject(keyText("q"), tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter})

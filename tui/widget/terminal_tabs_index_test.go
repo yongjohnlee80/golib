@@ -4,13 +4,13 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/terminal"
 )
 
 // A TerminalTabs is a page tab list to assistive tools, and ActiveTabIndex is the active tab's place on
 // its strip: the first tab added, until another is chosen.
 func TestTerminalTabsRoleAndActiveIndex(t *testing.T) {
-	tabs := widget.NewTerminalTabs()
+	tabs := terminal.NewTerminalTabs()
 	if tabs.AccessibleRole() != tui.RolePageTabList {
 		t.Errorf("role %v", tabs.AccessibleRole())
 	}

@@ -7,21 +7,21 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // framedrag_shapes_test.go: a window's frame shows the resize arrows its plain drags resize from
 // (WindowCore.FrameShapes), asked after its content paints the frame (tui.SubtreePointerShaper).
 
 // frameWindow is a movable, resizable window of a bordered Box saying text, floating at r.
-func frameWindow(text string, r tui.Rect, opts ...widget.WindowModOption) (*widget.WindowMod, *widget.Float) {
-	w := widget.NewWindowMod(widget.NewBox(widget.NewText(text), widget.WithBorder(style.BorderNormal)),
-		append([]widget.WindowModOption{widget.WithWindowMove(), widget.WithWindowResize()}, opts...)...)
-	return w, widget.NewFloat(w, widget.WithAnchor(widget.AtRect(r)))
+func frameWindow(text string, r tui.Rect, opts ...core.WindowModOption) (*core.WindowMod, *core.Float) {
+	w := core.NewWindowMod(core.NewBox(core.NewText(text), core.WithBorder(style.BorderNormal)),
+		append([]core.WindowModOption{core.WithWindowMove(), core.WithWindowResize()}, opts...)...)
+	return w, core.NewFloat(w, core.WithAnchor(core.AtRect(r)))
 }
 
 // showShaped runs host on a 40 by 14 shape host reporting caps, shows floats, and waits for text.
-func showShaped(t *testing.T, host *widget.OverlayHost, caps tui.Capabilities, text string, floats ...*widget.Float) *shapeHost {
+func showShaped(t *testing.T, host *core.OverlayHost, caps tui.Capabilities, text string, floats ...*core.Float) *shapeHost {
 	t.Helper()
 	for _, f := range floats {
 		host.Attach(f)
@@ -61,14 +61,14 @@ var (
 // frame its content's Box paints; its title row and its content keep the arrow.
 func TestAWindowsFrameShowsItsResizeArrows(t *testing.T) {
 	_, f := frameWindow("win", winAt)
-	sh := showShaped(t, widget.NewOverlayHost(widget.NewText("base")), tui.Capabilities{FrameDrag: true}, "win", f)
+	sh := showShaped(t, core.NewOverlayHost(core.NewText("base")), tui.Capabilities{FrameDrag: true}, "win", f)
 	expect(t, sh, frameCells)
 }
 
 // On a terminal the frame shows no arrows: it takes no plain drag.
 func TestATerminalsWindowFrameShowsNoArrows(t *testing.T) {
 	_, f := frameWindow("win", winAt)
-	sh := showShaped(t, widget.NewOverlayHost(widget.NewText("base")), tui.Capabilities{}, "win", f)
+	sh := showShaped(t, core.NewOverlayHost(core.NewText("base")), tui.Capabilities{}, "win", f)
 	none := map[[2]int]tui.PointerShape{}
 	for c := range frameCells {
 		none[c] = tui.PointerDefault
@@ -80,7 +80,7 @@ func TestATerminalsWindowFrameShowsNoArrows(t *testing.T) {
 func TestAWindowAboveCoversTheFramesArrows(t *testing.T) {
 	_, under := frameWindow("win", winAt)
 	_, over := frameWindow("top", tui.Rect{X: 3, Y: 3, W: 5, H: 3}) // columns 3-7, rows 3-5: over the left side
-	sh := showShaped(t, widget.NewOverlayHost(widget.NewText("base")), tui.Capabilities{FrameDrag: true}, "top", under, over)
+	sh := showShaped(t, core.NewOverlayHost(core.NewText("base")), tui.Capabilities{FrameDrag: true}, "top", under, over)
 	expect(t, sh, map[[2]int]tui.PointerShape{
 		{5, 4}:  tui.PointerDefault,  // the lower window's left side, under the content of the one above
 		{5, 6}:  tui.PointerResizeEW, // the same side, below the one above
@@ -92,8 +92,8 @@ func TestAWindowAboveCoversTheFramesArrows(t *testing.T) {
 
 // A maximized window shows no arrows: it takes no drag.
 func TestAMaximizedWindowsFrameShowsNoArrows(t *testing.T) {
-	w, f := frameWindow("win", winAt, widget.WithWindowMaximize())
-	sh := showShaped(t, widget.NewOverlayHost(widget.NewText("base")), tui.Capabilities{FrameDrag: true}, "win", f)
+	w, f := frameWindow("win", winAt, core.WithWindowMaximize())
+	sh := showShaped(t, core.NewOverlayHost(core.NewText("base")), tui.Capabilities{FrameDrag: true}, "win", f)
 	expect(t, sh, frameCells)
 	done := make(chan bool)
 	sh.app.Update(func() { done <- w.ToggleMaximize() })

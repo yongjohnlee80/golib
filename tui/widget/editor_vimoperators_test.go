@@ -5,11 +5,11 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // vimType types s into the core, <esc> as Escape.
-func vimType(c *widget.EditorCore, s string) {
+func vimType(c *editor.EditorCore, s string) {
 	for i, part := range strings.Split(s, "<esc>") {
 		if i > 0 {
 			c.HandleKey(tui.KeyEvent{Code: tui.KeyEscape})
@@ -149,7 +149,7 @@ func TestVimOperatorPending(t *testing.T) {
 		t.Fatalf("d Esc x: %q", c.Value())
 	}
 	vimType(c, "dv")
-	if c.Value() != "bc" || c.Mode() != widget.ModeVisual {
+	if c.Value() != "bc" || c.Mode() != editor.ModeVisual {
 		t.Fatalf("d v: %q in %v; want the operator cancelled and v to enter Visual", c.Value(), c.Mode())
 	}
 	vimType(c, "<esc>")
@@ -162,13 +162,13 @@ func TestVimOperatorPending(t *testing.T) {
 
 	m, _ := coreWith(t, "foo bar baz")
 	vimType(m, "d")
-	m.Select(widget.TextRange{From: widget.TextPos{Line: 0, Col: 0}, To: widget.TextPos{Line: 0, Col: 2}})
+	m.Select(editor.TextRange{From: editor.TextPos{Line: 0, Col: 0}, To: editor.TextPos{Line: 0, Col: 2}})
 	vimType(m, "w") // a mode change (into Visual) dropped d: w extends the selection
-	if m.Value() != "foo bar baz" || m.Mode() != widget.ModeVisual {
+	if m.Value() != "foo bar baz" || m.Mode() != editor.ModeVisual {
 		t.Fatalf("d, a mode change, w: %q in %v; want the operator dropped", m.Value(), m.Mode())
 	}
 
-	ro := widget.NewEditorCore(widget.CoreInitialText("foo bar"), widget.CoreReadOnly(true))
+	ro := editor.NewEditorCore(editor.CoreInitialText("foo bar"), editor.CoreReadOnly(true))
 	ro.Bind(nil, &fakeLayout{per: 1, page: 5})
 	vimType(ro, "dwcwX<esc>CSs")
 	if ro.Value() != "foo bar" {
@@ -200,8 +200,8 @@ func TestVimOperatorPending(t *testing.T) {
 		t.Fatalf("d Backspace: %q, want ac", bs.Value())
 	}
 
-	ov, _ := coreWith(t, "foo bar baz", widget.CoreKeymap(widget.Keymap{
-		{Mode: widget.ModeNormal, Code: 'z'}: widget.ActWordForward,
+	ov, _ := coreWith(t, "foo bar baz", editor.CoreKeymap(editor.Keymap{
+		{Mode: editor.ModeNormal, Code: 'z'}: editor.ActWordForward,
 	}))
 	vimType(ov, "dz")
 	if ov.Value() != "bar baz" {
@@ -268,7 +268,7 @@ func TestVimVisualTextObjects(t *testing.T) {
 	}
 	p, _ := coreWith(t, "a\nb\n\nc")
 	vimType(p, "vip")
-	if p.Mode() != widget.ModeVisualLine {
+	if p.Mode() != editor.ModeVisualLine {
 		t.Fatalf("vip: mode %v, want Visual line", p.Mode())
 	}
 	vimType(p, "d")

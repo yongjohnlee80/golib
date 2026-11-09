@@ -15,7 +15,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // saveAction is a distinguishable action for a row.
@@ -25,9 +25,9 @@ func (saveAction) ActionID() tui.ActionID { return "test.save" }
 
 // menuFixture mounts a Menu inside an OverlayHost — the arrangement a cascading
 // menu actually needs, since its levels are anchored overlay layers.
-func menuFixture(t *testing.T, m *widget.Menu, w, h int) (*harness, *widget.OverlayHost) {
+func menuFixture(t *testing.T, m *core.Menu, w, h int) (*harness, *core.OverlayHost) {
 	t.Helper()
-	host := widget.NewOverlayHost(m)
+	host := core.NewOverlayHost(m)
 	hh := startApp(t, host, w, h)
 	hh.onLoop(func() { m.Context().RequestFocus() })
 	hh.settle()
@@ -39,23 +39,23 @@ func menuFixture(t *testing.T, m *widget.Menu, w, h int) (*harness, *widget.Over
 // Component state belongs to the event loop, and that ownership is exactly what
 // lets widget authors write mutex-free Go. A test that reads it directly is the
 // one thing wrong in that arrangement, and -race says so.
-func openLevelsOn(t *testing.T, h *harness, m *widget.Menu) int {
+func openLevelsOn(t *testing.T, h *harness, m *core.Menu) int {
 	t.Helper()
 	var n int
 	h.onLoop(func() { n = m.OpenLevels() })
 	return n
 }
 
-func selectedOn(t *testing.T, h *harness, m *widget.Menu) widget.ItemID {
+func selectedOn(t *testing.T, h *harness, m *core.Menu) core.ItemID {
 	t.Helper()
-	var id widget.ItemID
+	var id core.ItemID
 	h.onLoop(func() { id, _ = m.Selected() })
 	return id
 }
 
-func modelOn(t *testing.T, h *harness, m *widget.Menu) []widget.MenuItemModel {
+func modelOn(t *testing.T, h *harness, m *core.Menu) []core.MenuItemModel {
 	t.Helper()
-	var items []widget.MenuItemModel
+	var items []core.MenuItemModel
 	h.onLoop(func() { items = m.Model() })
 	return items
 }
@@ -68,18 +68,18 @@ func modelOn(t *testing.T, h *harness, m *widget.Menu) []widget.MenuItemModel {
 // is the failure mode of a permissive zero value. It shows nothing and does
 // nothing instead — and the constructors are what opt a row in.
 func TestTheZeroRowIsInertRatherThanAnEnabledNoOp(t *testing.T) {
-	var zero widget.MenuItemModel
-	if zero.Kind != widget.ItemKindCommand {
+	var zero core.MenuItemModel
+	if zero.Kind != core.ItemKindCommand {
 		t.Errorf("zero Kind = %v, want command", zero.Kind)
 	}
 	if zero.Enabled || zero.Visible {
 		t.Error("the zero row is enabled or visible; it must be inert until a constructor opts it in")
 	}
-	built := widget.NewCommand("c", "Copy", nil)
+	built := core.NewCommand("c", "Copy", nil)
 	if !built.Enabled || !built.Visible {
 		t.Error("NewCommand did not produce an enabled, visible row")
 	}
-	if sep := widget.NewSeparator("s"); sep.Enabled {
+	if sep := core.NewSeparator("s"); sep.Enabled {
 		t.Error("a separator is enabled; it can never be selected, and marking it " +
 			"enabled invites code to treat Enabled as the only selectability test")
 	}
@@ -94,28 +94,28 @@ func TestSetModelRejectsWhatCannotBeAddressed(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
 		leaf  error
-		items []widget.MenuItemModel
+		items []core.MenuItemModel
 	}{
-		{"an empty ID", widget.ErrEmptyItemID, []widget.MenuItemModel{
-			widget.NewCommand("", "Nameless", nil),
+		{"an empty ID", core.ErrEmptyItemID, []core.MenuItemModel{
+			core.NewCommand("", "Nameless", nil),
 		}},
-		{"a duplicate at one level", widget.ErrDuplicateItemID, []widget.MenuItemModel{
-			widget.NewCommand("a", "One", nil),
-			widget.NewCommand("a", "Two", nil),
+		{"a duplicate at one level", core.ErrDuplicateItemID, []core.MenuItemModel{
+			core.NewCommand("a", "One", nil),
+			core.NewCommand("a", "Two", nil),
 		}},
-		{"a duplicate across levels", widget.ErrDuplicateItemID, []widget.MenuItemModel{
-			widget.NewCommand("a", "One", nil),
-			widget.NewSubmenu("s", "More", []widget.MenuItemModel{
-				widget.NewCommand("a", "Deep", nil),
+		{"a duplicate across levels", core.ErrDuplicateItemID, []core.MenuItemModel{
+			core.NewCommand("a", "One", nil),
+			core.NewSubmenu("s", "More", []core.MenuItemModel{
+				core.NewCommand("a", "Deep", nil),
 			}),
 		}},
-		{"an undeclared kind", widget.ErrUnknownItemKind, []widget.MenuItemModel{
-			{ID: "x", Kind: widget.ItemKindRadio + 1, Visible: true, Enabled: true},
+		{"an undeclared kind", core.ErrUnknownItemKind, []core.MenuItemModel{
+			{ID: "x", Kind: core.ItemKindRadio + 1, Visible: true, Enabled: true},
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			m := widget.NewMenu()
-			good := []widget.MenuItemModel{widget.NewCommand("keep", "Keep", nil)}
+			m := core.NewMenu()
+			good := []core.MenuItemModel{core.NewCommand("keep", "Keep", nil)}
 			if err := m.SetModel(good); err != nil {
 				t.Fatalf("the control model was rejected: %v", err)
 			}
@@ -124,7 +124,7 @@ func TestSetModelRejectsWhatCannotBeAddressed(t *testing.T) {
 			if !errors.Is(err, tc.leaf) {
 				t.Errorf("errors.Is(err, %v) = false; err = %v", tc.leaf, err)
 			}
-			if !errors.Is(err, widget.ErrInvalidMenuModel) {
+			if !errors.Is(err, core.ErrInvalidMenuModel) {
 				t.Errorf("errors.Is(err, ErrInvalidMenuModel) = false; err = %v", err)
 			}
 			// Nothing changed: the old model is still there.
@@ -141,10 +141,10 @@ func TestSetModelRejectsWhatCannotBeAddressed(t *testing.T) {
 // own slice cannot reach inside a mounted widget and the widget cannot leak its
 // storage. Children are the part a shallow copy gets wrong.
 func TestTheModelIsAValueOnBothSides(t *testing.T) {
-	children := []widget.MenuItemModel{widget.NewCommand("deep", "Deep", nil)}
-	items := []widget.MenuItemModel{widget.NewSubmenu("s", "More", children)}
+	children := []core.MenuItemModel{core.NewCommand("deep", "Deep", nil)}
+	items := []core.MenuItemModel{core.NewSubmenu("s", "More", children)}
 
-	m := widget.NewMenu()
+	m := core.NewMenu()
 	if err := m.SetModel(items); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
@@ -177,13 +177,13 @@ func TestTheModelIsAValueOnBothSides(t *testing.T) {
 // different reasons. Traversal that checked only Enabled would land on a
 // separator, which is the bug this pins.
 func TestArrowsSkipWhatCannotBeSelected(t *testing.T) {
-	m := widget.NewMenu()
-	if err := m.SetModel([]widget.MenuItemModel{
-		widget.NewCommand("open", "Open", nil),
-		widget.NewSeparator("sep"),
-		disabled(widget.NewCommand("save", "Save", nil)),
-		hidden(widget.NewCommand("ghost", "Ghost", nil)),
-		widget.NewCommand("quit", "Quit", nil),
+	m := core.NewMenu()
+	if err := m.SetModel([]core.MenuItemModel{
+		core.NewCommand("open", "Open", nil),
+		core.NewSeparator("sep"),
+		disabled(core.NewCommand("save", "Save", nil)),
+		hidden(core.NewCommand("ghost", "Ghost", nil)),
+		core.NewCommand("quit", "Quit", nil),
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
@@ -208,15 +208,15 @@ func TestArrowsSkipWhatCannotBeSelected(t *testing.T) {
 
 // TestSelectRefusesAnUnselectableRow.
 func TestSelectRefusesAnUnselectableRow(t *testing.T) {
-	m := widget.NewMenu()
-	if err := m.SetModel([]widget.MenuItemModel{
-		widget.NewCommand("ok", "OK", nil),
-		widget.NewSeparator("sep"),
-		disabled(widget.NewCommand("no", "No", nil)),
+	m := core.NewMenu()
+	if err := m.SetModel([]core.MenuItemModel{
+		core.NewCommand("ok", "OK", nil),
+		core.NewSeparator("sep"),
+		disabled(core.NewCommand("no", "No", nil)),
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
-	for _, id := range []widget.ItemID{"sep", "no", "absent"} {
+	for _, id := range []core.ItemID{"sep", "no", "absent"} {
 		if m.Select(id) {
 			t.Errorf("Select(%q) succeeded", id)
 		}
@@ -240,8 +240,8 @@ func TestActivationOrdersStateThenActionThenClose(t *testing.T) {
 	// The executor reads the row back through the menu, which is what an
 	// application handler does. Declared before the Menu so the closure can
 	// capture it; assigned after, because it needs the Menu.
-	var m *widget.Menu
-	m = widget.NewMenu(widget.WithActionExecutor(func(tui.ActionInvocation) bool {
+	var m *core.Menu
+	m = core.NewMenu(core.WithActionExecutor(func(tui.ActionInvocation) bool {
 		ran.Add(1)
 		for _, it := range m.Model() {
 			if it.ID == "wrap" {
@@ -250,8 +250,8 @@ func TestActivationOrdersStateThenActionThenClose(t *testing.T) {
 		}
 		return true
 	}))
-	if err := m.SetModel([]widget.MenuItemModel{
-		widget.NewCheck("wrap", "Wrap lines", saveAction{}),
+	if err := m.SetModel([]core.MenuItemModel{
+		core.NewCheck("wrap", "Wrap lines", saveAction{}),
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
@@ -299,9 +299,9 @@ func TestAnActivationEventIsEmittedEvenWhenNothingHandledIt(t *testing.T) {
 		{"no executor at all", nil, saveAction{}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			m := widget.NewMenu(widget.WithActionExecutor(tc.exec))
-			if err := m.SetModel([]widget.MenuItemModel{
-				widget.NewCommand("go", "Go", tc.action),
+			m := core.NewMenu(core.WithActionExecutor(tc.exec))
+			if err := m.SetModel([]core.MenuItemModel{
+				core.NewCommand("go", "Go", tc.action),
 			}); err != nil {
 				t.Fatalf("SetModel: %v", err)
 			}
@@ -309,8 +309,8 @@ func TestAnActivationEventIsEmittedEvenWhenNothingHandledIt(t *testing.T) {
 			defer h.stop()
 
 			var mu sync.Mutex
-			var events []widget.MenuActivatedEvent
-			unsub := tui.Subscribe(h.app.Bus(), func(ev widget.MenuActivatedEvent) {
+			var events []core.MenuActivatedEvent
+			unsub := tui.Subscribe(h.app.Bus(), func(ev core.MenuActivatedEvent) {
 				mu.Lock()
 				events = append(events, ev)
 				mu.Unlock()
@@ -326,7 +326,7 @@ func TestAnActivationEventIsEmittedEvenWhenNothingHandledIt(t *testing.T) {
 			h.settle()
 
 			mu.Lock()
-			got := append([]widget.MenuActivatedEvent(nil), events...)
+			got := append([]core.MenuActivatedEvent(nil), events...)
 			mu.Unlock()
 			if len(got) != 1 {
 				t.Fatalf("%d activation events, want exactly 1", len(got))
@@ -347,13 +347,13 @@ func TestAnActivationEventIsEmittedEvenWhenNothingHandledIt(t *testing.T) {
 // TestASeparatorCannotBeActivated.
 func TestASeparatorCannotBeActivated(t *testing.T) {
 	var ran atomic.Int64
-	m := widget.NewMenu(widget.WithActionExecutor(func(tui.ActionInvocation) bool {
+	m := core.NewMenu(core.WithActionExecutor(func(tui.ActionInvocation) bool {
 		ran.Add(1)
 		return true
 	}))
-	if err := m.SetModel([]widget.MenuItemModel{
-		widget.NewSeparator("sep"),
-		widget.NewCommand("go", "Go", saveAction{}),
+	if err := m.SetModel([]core.MenuItemModel{
+		core.NewSeparator("sep"),
+		core.NewCommand("go", "Go", saveAction{}),
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
@@ -361,11 +361,11 @@ func TestASeparatorCannotBeActivated(t *testing.T) {
 	defer h.stop()
 
 	var events atomic.Int64
-	unsub := tui.Subscribe(h.app.Bus(), func(widget.MenuActivatedEvent) { events.Add(1) })
+	unsub := tui.Subscribe(h.app.Bus(), func(core.MenuActivatedEvent) { events.Add(1) })
 	defer unsub()
 
 	// The selection cannot rest on the separator, so activate it by name.
-	h.onLoop(func() { m.Context().DoAction(widget.MenuActivateAction{ItemID: "sep"}) })
+	h.onLoop(func() { m.Context().DoAction(core.MenuActivateAction{ItemID: "sep"}) })
 	h.settle()
 	h.settle()
 
@@ -381,11 +381,11 @@ func TestASeparatorCannotBeActivated(t *testing.T) {
 // exclusivity only within one level would leave two members checked — which is
 // exactly the state a radio group exists to prevent.
 func TestRadioActivationClearsItsGroupEverywhere(t *testing.T) {
-	m := widget.NewMenu(widget.WithActionExecutor(func(tui.ActionInvocation) bool { return true }))
-	if err := m.SetModel([]widget.MenuItemModel{
-		checked(widget.NewRadio("light", "Light", "theme", saveAction{})),
-		widget.NewSubmenu("more", "More", []widget.MenuItemModel{
-			widget.NewRadio("dark", "Dark", "theme", saveAction{}),
+	m := core.NewMenu(core.WithActionExecutor(func(tui.ActionInvocation) bool { return true }))
+	if err := m.SetModel([]core.MenuItemModel{
+		checked(core.NewRadio("light", "Light", "theme", saveAction{})),
+		core.NewSubmenu("more", "More", []core.MenuItemModel{
+			core.NewRadio("dark", "Dark", "theme", saveAction{}),
 		}),
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
@@ -414,13 +414,13 @@ func TestRadioActivationClearsItsGroupEverywhere(t *testing.T) {
 
 // TestOpeningASubmenuAnchorsALevelAndMovesTheKeys.
 func TestOpeningASubmenuAnchorsALevelAndMovesTheKeys(t *testing.T) {
-	m := widget.NewMenu(widget.WithActionExecutor(func(tui.ActionInvocation) bool { return true }))
-	if err := m.SetModel([]widget.MenuItemModel{
-		widget.NewSubmenu("file", "File", []widget.MenuItemModel{
-			widget.NewCommand("new", "New", saveAction{}),
-			widget.NewCommand("open", "Open", saveAction{}),
+	m := core.NewMenu(core.WithActionExecutor(func(tui.ActionInvocation) bool { return true }))
+	if err := m.SetModel([]core.MenuItemModel{
+		core.NewSubmenu("file", "File", []core.MenuItemModel{
+			core.NewCommand("new", "New", saveAction{}),
+			core.NewCommand("open", "Open", saveAction{}),
 		}),
-		widget.NewCommand("quit", "Quit", saveAction{}),
+		core.NewCommand("quit", "Quit", saveAction{}),
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
@@ -453,11 +453,11 @@ func TestOpeningASubmenuAnchorsALevelAndMovesTheKeys(t *testing.T) {
 
 // TestLeftClosesOneLevelAndEscapeClosesAll.
 func TestLeftClosesOneLevelAndEscapeClosesAll(t *testing.T) {
-	m := widget.NewMenu(widget.WithActionExecutor(func(tui.ActionInvocation) bool { return true }))
-	if err := m.SetModel([]widget.MenuItemModel{
-		widget.NewSubmenu("a", "A", []widget.MenuItemModel{
-			widget.NewSubmenu("b", "B", []widget.MenuItemModel{
-				widget.NewCommand("deep", "Deep", saveAction{}),
+	m := core.NewMenu(core.WithActionExecutor(func(tui.ActionInvocation) bool { return true }))
+	if err := m.SetModel([]core.MenuItemModel{
+		core.NewSubmenu("a", "A", []core.MenuItemModel{
+			core.NewSubmenu("b", "B", []core.MenuItemModel{
+				core.NewCommand("deep", "Deep", saveAction{}),
 			}),
 		}),
 	}); err != nil {
@@ -500,14 +500,14 @@ func TestLeftClosesOneLevelAndEscapeClosesAll(t *testing.T) {
 
 // TestOpenRejectsARowItCannotOpen.
 func TestOpenRejectsARowItCannotOpen(t *testing.T) {
-	m := widget.NewMenu()
-	if err := m.SetModel([]widget.MenuItemModel{
-		widget.NewCommand("cmd", "Command", nil),
-		disabled(widget.NewSubmenu("off", "Off", []widget.MenuItemModel{
-			widget.NewCommand("x", "X", nil),
+	m := core.NewMenu()
+	if err := m.SetModel([]core.MenuItemModel{
+		core.NewCommand("cmd", "Command", nil),
+		disabled(core.NewSubmenu("off", "Off", []core.MenuItemModel{
+			core.NewCommand("x", "X", nil),
 		})),
-		hidden(widget.NewSubmenu("gone", "Gone", []widget.MenuItemModel{
-			widget.NewCommand("y", "Y", nil),
+		hidden(core.NewSubmenu("gone", "Gone", []core.MenuItemModel{
+			core.NewCommand("y", "Y", nil),
 		})),
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
@@ -515,7 +515,7 @@ func TestOpenRejectsARowItCannotOpen(t *testing.T) {
 	h, _ := menuFixture(t, m, 30, 12)
 	defer h.stop()
 
-	for _, id := range []widget.ItemID{"cmd", "off", "gone", "absent"} {
+	for _, id := range []core.ItemID{"cmd", "off", "gone", "absent"} {
 		var err error
 		h.onLoop(func() { err = m.Open(id) })
 		if err == nil {
@@ -533,14 +533,14 @@ func TestOpenRejectsARowItCannotOpen(t *testing.T) {
 // enabling a row, renaming another. A level whose row survives must survive with
 // it, or every update would collapse the cascade the user is working in.
 func TestSetModelKeepsALevelItStillJustifies(t *testing.T) {
-	sub := func(label string) []widget.MenuItemModel {
-		return []widget.MenuItemModel{
-			widget.NewSubmenu("file", label, []widget.MenuItemModel{
-				widget.NewCommand("new", "New", nil),
+	sub := func(label string) []core.MenuItemModel {
+		return []core.MenuItemModel{
+			core.NewSubmenu("file", label, []core.MenuItemModel{
+				core.NewCommand("new", "New", nil),
 			}),
 		}
 	}
-	m := widget.NewMenu()
+	m := core.NewMenu()
 	if err := m.SetModel(sub("File")); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
@@ -571,8 +571,8 @@ func TestSetModelKeepsALevelItStillJustifies(t *testing.T) {
 
 	// A model where the row is gone closes it.
 	h.onLoop(func() {
-		if err := m.SetModel([]widget.MenuItemModel{
-			widget.NewCommand("other", "Other", nil),
+		if err := m.SetModel([]core.MenuItemModel{
+			core.NewCommand("other", "Other", nil),
 		}); err != nil {
 			t.Errorf("SetModel: %v", err)
 		}
@@ -588,13 +588,13 @@ func TestSetModelKeepsALevelItStillJustifies(t *testing.T) {
 // a user who presses the wrong row can slide off and let go without running it.
 func TestAMouseGestureActivatesOnReleaseOverThePressedRow(t *testing.T) {
 	var ran atomic.Int64
-	m := widget.NewMenu(widget.WithActionExecutor(func(tui.ActionInvocation) bool {
+	m := core.NewMenu(core.WithActionExecutor(func(tui.ActionInvocation) bool {
 		ran.Add(1)
 		return true
 	}))
-	if err := m.SetModel([]widget.MenuItemModel{
-		widget.NewCommand("one", "One", saveAction{}),
-		widget.NewCommand("two", "Two", saveAction{}),
+	if err := m.SetModel([]core.MenuItemModel{
+		core.NewCommand("one", "One", saveAction{}),
+		core.NewCommand("two", "Two", saveAction{}),
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
@@ -602,7 +602,7 @@ func TestAMouseGestureActivatesOnReleaseOverThePressedRow(t *testing.T) {
 	defer h.stop()
 
 	var events atomic.Int64
-	unsub := tui.Subscribe(h.app.Bus(), func(widget.MenuActivatedEvent) { events.Add(1) })
+	unsub := tui.Subscribe(h.app.Bus(), func(core.MenuActivatedEvent) { events.Add(1) })
 	defer unsub()
 
 	x1, y1 := cellOfLabel(t, h, "One")
@@ -625,13 +625,13 @@ func TestAMouseGestureActivatesOnReleaseOverThePressedRow(t *testing.T) {
 // is what distinguishes cancelling a gesture from closing a menu.
 func TestReleasingOffThePressedRowActivatesNothingAndKeepsTheMenuOpen(t *testing.T) {
 	var ran atomic.Int64
-	m := widget.NewMenu(widget.WithActionExecutor(func(tui.ActionInvocation) bool {
+	m := core.NewMenu(core.WithActionExecutor(func(tui.ActionInvocation) bool {
 		ran.Add(1)
 		return true
 	}))
-	if err := m.SetModel([]widget.MenuItemModel{
-		widget.NewCommand("one", "One", saveAction{}),
-		widget.NewCommand("two", "Two", saveAction{}),
+	if err := m.SetModel([]core.MenuItemModel{
+		core.NewCommand("one", "One", saveAction{}),
+		core.NewCommand("two", "Two", saveAction{}),
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
@@ -661,13 +661,13 @@ func TestReleasingOffThePressedRowActivatesNothingAndKeepsTheMenuOpen(t *testing
 // the menu kept the grab while the pointer was away.
 func TestDraggingOffAndBackReArmsTheOriginalRow(t *testing.T) {
 	var ran atomic.Int64
-	m := widget.NewMenu(widget.WithActionExecutor(func(tui.ActionInvocation) bool {
+	m := core.NewMenu(core.WithActionExecutor(func(tui.ActionInvocation) bool {
 		ran.Add(1)
 		return true
 	}))
-	if err := m.SetModel([]widget.MenuItemModel{
-		widget.NewCommand("one", "One", saveAction{}),
-		widget.NewCommand("two", "Two", saveAction{}),
+	if err := m.SetModel([]core.MenuItemModel{
+		core.NewCommand("one", "One", saveAction{}),
+		core.NewCommand("two", "Two", saveAction{}),
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
@@ -684,13 +684,13 @@ func TestDraggingOffAndBackReArmsTheOriginalRow(t *testing.T) {
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
-func disabled(m widget.MenuItemModel) widget.MenuItemModel { m.Enabled = false; return m }
-func hidden(m widget.MenuItemModel) widget.MenuItemModel   { m.Visible = false; return m }
-func checked(m widget.MenuItemModel) widget.MenuItemModel  { m.Checked = true; return m }
+func disabled(m core.MenuItemModel) core.MenuItemModel { m.Enabled = false; return m }
+func hidden(m core.MenuItemModel) core.MenuItemModel   { m.Visible = false; return m }
+func checked(m core.MenuItemModel) core.MenuItemModel  { m.Checked = true; return m }
 
 // flatten yields every row at every depth, for assertions about the whole model.
-func flatten(items []widget.MenuItemModel) []widget.MenuItemModel {
-	var out []widget.MenuItemModel
+func flatten(items []core.MenuItemModel) []core.MenuItemModel {
+	var out []core.MenuItemModel
 	for _, it := range items {
 		out = append(out, it)
 		out = append(out, flatten(it.Children)...)
@@ -714,14 +714,14 @@ func (*nilableAction) ActionID() tui.ActionID { return "test.nilable" }
 // its own code for a row the model says does nothing.
 func TestATypedNilRowActionIsNoAction(t *testing.T) {
 	var ran atomic.Int64
-	m := widget.NewMenu(widget.WithActionExecutor(func(tui.ActionInvocation) bool {
+	m := core.NewMenu(core.WithActionExecutor(func(tui.ActionInvocation) bool {
 		ran.Add(1)
 		return true
 	}))
 	var nilAction *nilableAction
-	if err := m.SetModel([]widget.MenuItemModel{
-		widget.NewCommand("dead", "Dead", nilAction),
-		widget.NewCommand("live", "Live", saveAction{}),
+	if err := m.SetModel([]core.MenuItemModel{
+		core.NewCommand("dead", "Dead", nilAction),
+		core.NewCommand("live", "Live", saveAction{}),
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}

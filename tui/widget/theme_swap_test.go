@@ -6,14 +6,14 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // styleSwatches paints every default look introduced by the interactive
 // widget layers. It uses a real Surface, so this verifies the App-owned theme
 // and resolution cache rather than merely inspecting token-valued structs.
 type styleSwatches struct {
-	widget.Base
+	core.Base
 	styles []style.Style
 }
 
@@ -30,10 +30,10 @@ func (s *styleSwatches) Render(su tui.Surface) {
 func (*styleSwatches) HandleEvent(tui.Event) bool { return false }
 
 func interactiveDefaultStyles() []style.Style {
-	b := widget.DefaultButtonStyle()
-	m := widget.DefaultModalStyle()
-	menu := widget.DefaultMenuStyle()
-	r := widget.DefaultResizableStyle()
+	b := core.DefaultButtonStyle()
+	m := core.DefaultModalStyle()
+	menu := core.DefaultMenuStyle()
+	r := core.DefaultResizableStyle()
 	return []style.Style{
 		b.Normal(), b.Focused(), b.Armed(), b.Disabled(),
 		m.Card(), m.Title(), m.Border(), m.Scrim(),

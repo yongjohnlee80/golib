@@ -10,7 +10,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/files"
 )
 
 // filebrowser_test.go runs the browser on a real App and reads the screen. The
@@ -38,7 +38,7 @@ func tree(t *testing.T, files map[string]string) string {
 	return root
 }
 
-var browserStyles = widget.FilePaneStyles{
+var browserStyles = files.FilePaneStyles{
 	Surface:       style.New().Background(style.ANSI(4)).Foreground(style.ANSI(7)),
 	Cursor:        style.New().Background(style.ANSI(6)).Foreground(style.ANSI(0)),
 	CursorBlurred: style.New().Background(style.ANSI(8)).Foreground(style.ANSI(6)),
@@ -46,7 +46,7 @@ var browserStyles = widget.FilePaneStyles{
 	FocusedBorder: style.New().Foreground(style.ANSI(15)),
 }
 
-func startBrowser(t *testing.T, b widget.FileChooser) *harness {
+func startBrowser(t *testing.T, b files.FileChooser) *harness {
 	t.Helper()
 	h := startApp(t, b, 80, 20)
 	h.onLoop(b.FocusInitial)
@@ -82,7 +82,7 @@ func (h *harness) rowWith(sub string) int {
 
 func TestAnOpenBrowserListsFoldersThenFilesUnderDotDot(t *testing.T) {
 	root := tree(t, map[string]string{"b.txt": "bee", "A.txt": "ay", "zdir/": "", "adir/": ""})
-	b := widget.NewFileOpenView(widget.WithFileViewDir(root))
+	b := files.NewFileOpenView(files.WithFileViewDir(root))
 	h := startBrowser(t, b)
 	defer h.stop()
 	rows := []int{h.rowWith("../"), h.rowWith("adir/"), h.rowWith("zdir/"), h.rowWith("A.txt"), h.rowWith("b.txt")}
@@ -101,7 +101,7 @@ func TestAnOpenBrowserListsFoldersThenFilesUnderDotDot(t *testing.T) {
 func TestThePreviewFollowsTheCursorAndShowsTheWholeFile(t *testing.T) {
 	long := strings.Repeat("line\n", 60) + "THE-END\n"
 	root := tree(t, map[string]string{"a.txt": "first file", "b.txt": long, "c.bin": "x\x00y"})
-	b := widget.NewFileOpenView(widget.WithFileViewDir(root))
+	b := files.NewFileOpenView(files.WithFileViewDir(root))
 	h := startBrowser(t, b)
 	defer h.stop()
 	h.inject(key(tui.KeyDown)) // a.txt
@@ -125,7 +125,7 @@ func TestTabMovesIntoThePreviewToReadIt(t *testing.T) {
 		long += "row " + strings.Repeat("x", i%7) + itoaT(i) + "\n"
 	}
 	root := tree(t, map[string]string{"long.txt": long})
-	b := widget.NewFileOpenView(widget.WithFileViewDir(root))
+	b := files.NewFileOpenView(files.WithFileViewDir(root))
 	h := startBrowser(t, b)
 	defer h.stop()
 	h.inject(key(tui.KeyDown))
@@ -149,7 +149,7 @@ func itoaT(i int) string {
 
 func TestEnterOpensFoldersAndDotDotGoesBack(t *testing.T) {
 	root := tree(t, map[string]string{"sub/inner.txt": "in"})
-	b := widget.NewFileOpenView(widget.WithFileViewDir(root))
+	b := files.NewFileOpenView(files.WithFileViewDir(root))
 	h := startBrowser(t, b)
 	defer h.stop()
 	h.inject(key(tui.KeyDown), key(tui.KeyEnter)) // sub/
@@ -167,8 +167,8 @@ func TestEnterOpensFoldersAndDotDotGoesBack(t *testing.T) {
 func TestEnterOnAFileChoosesIt(t *testing.T) {
 	root := tree(t, map[string]string{"pick.txt": "p", "dir/": ""})
 	var chosen atomic.Int32
-	b := widget.NewFileOpenView(widget.WithFileViewDir(root),
-		widget.WithOnChoose(func() { chosen.Add(1) }))
+	b := files.NewFileOpenView(files.WithFileViewDir(root),
+		files.WithOnChoose(func() { chosen.Add(1) }))
 	h := startBrowser(t, b)
 	defer h.stop()
 	var ok bool
@@ -193,8 +193,8 @@ func TestEnterOnAFileChoosesIt(t *testing.T) {
 func TestASaveBrowserNamesTheFile(t *testing.T) {
 	root := tree(t, map[string]string{"old.txt": "o", "into/": ""})
 	var chosen atomic.Int32
-	b := widget.NewFileSaveView(widget.WithFileViewDir(root),
-		widget.WithOnChoose(func() { chosen.Add(1) }))
+	b := files.NewFileSaveView(files.WithFileViewDir(root),
+		files.WithOnChoose(func() { chosen.Add(1) }))
 	h := startBrowser(t, b)
 	defer h.stop()
 	h.wantContains("File name")
@@ -222,7 +222,7 @@ func TestASaveBrowserNamesTheFile(t *testing.T) {
 // TestSavingOntoAFolderNameOpensTheFolder rather than writing over it.
 func TestSavingOntoAFolderNameOpensTheFolder(t *testing.T) {
 	root := tree(t, map[string]string{"into/": ""})
-	b := widget.NewFileSaveView(widget.WithFileViewDir(root))
+	b := files.NewFileSaveView(files.WithFileViewDir(root))
 	h := startBrowser(t, b)
 	defer h.stop()
 	for _, r := range "into" {
@@ -240,8 +240,8 @@ func TestSavingOntoAFolderNameOpensTheFolder(t *testing.T) {
 // TestTheCursorIsAFullRowBarBrightWithTheKeyboardAndDimWithout.
 func TestTheCursorIsAFullRowBarBrightWithTheKeyboardAndDimWithout(t *testing.T) {
 	root := tree(t, map[string]string{"a.txt": "a"})
-	b := widget.NewFileOpenView(widget.WithFileViewDir(root),
-		widget.WithFileViewStyles(browserStyles))
+	b := files.NewFileOpenView(files.WithFileViewDir(root),
+		files.WithFileViewStyles(browserStyles))
 	h := startBrowser(t, b)
 	defer h.stop()
 	y := h.rowWith("../")
@@ -266,14 +266,14 @@ func TestThePreviewIsOptional(t *testing.T) {
 	root := tree(t, map[string]string{"a.txt": "alpha body"})
 	for _, c := range []struct {
 		name string
-		view widget.FileChooser
+		view files.FileChooser
 		want bool
 	}{
-		{"open, preview off", widget.NewFileOpenView(widget.WithFileViewDir(root), widget.WithFileViewPreview(false)), false},
-		{"save, preview on", widget.NewFileSaveView(widget.WithFileViewDir(root), widget.WithFileViewPreview(true)), true},
+		{"open, preview off", files.NewFileOpenView(files.WithFileViewDir(root), files.WithFileViewPreview(false)), false},
+		{"save, preview on", files.NewFileSaveView(files.WithFileViewDir(root), files.WithFileViewPreview(true)), true},
 	} {
 		h := startBrowser(t, c.view)
-		if _, save := c.view.(*widget.FileSaveView); save {
+		if _, save := c.view.(*files.FileSaveView); save {
 			h.inject(tab(), tab()) // from the name field, past the path field, to the list
 		}
 		h.inject(key(tui.KeyDown), key(tui.KeyDown)) // a.txt
@@ -299,10 +299,10 @@ func TestAViewListsAnyFilesystem(t *testing.T) {
 		"docs/sub/x.txt": {Data: []byte("x")},
 		"top.txt":        {Data: []byte("top")},
 	}
-	src := widget.FileSource{FS: mem, Root: "mem://"}
+	src := files.FileSource{FS: mem, Root: "mem://"}
 	var chosen atomic.Int32
-	v := widget.NewFileOpenView(widget.WithFileViewSource(src), widget.WithFileViewDir("mem://docs"),
-		widget.WithOnChoose(func() { chosen.Add(1) }))
+	v := files.NewFileOpenView(files.WithFileViewSource(src), files.WithFileViewDir("mem://docs"),
+		files.WithOnChoose(func() { chosen.Add(1) }))
 	h := startBrowser(t, v)
 	defer h.stop()
 	h.shows("readme.md")
@@ -331,7 +331,7 @@ func TestAViewListsAnyFilesystem(t *testing.T) {
 // cursor on it; the Save view names it, existing or not.
 func TestSelectPlacesTheSelection(t *testing.T) {
 	root := tree(t, map[string]string{"sub/b.txt": "bee body", "a.txt": "a"})
-	open := widget.NewFileOpenView(widget.WithFileViewDir(root))
+	open := files.NewFileOpenView(files.WithFileViewDir(root))
 	h := startBrowser(t, open)
 	h.onLoop(func() { open.Select(filepath.Join(root, "sub", "b.txt")) })
 	h.shows("bee body")
@@ -342,7 +342,7 @@ func TestSelectPlacesTheSelection(t *testing.T) {
 	}
 	h.stop()
 
-	save := widget.NewFileSaveView(widget.WithFileViewDir(root))
+	save := files.NewFileSaveView(files.WithFileViewDir(root))
 	h = startBrowser(t, save)
 	defer h.stop()
 	h.onLoop(func() { save.Select(filepath.Join(root, "sub", "new.md")) })

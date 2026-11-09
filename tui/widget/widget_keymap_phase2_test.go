@@ -9,7 +9,10 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/files"
+	"github.com/yongjohnlee80/golib/tui/widget/htmlview"
+	"github.com/yongjohnlee80/golib/tui/widget/terminal"
 )
 
 // Each widget is its own scope, and App.KeyBindings lists its own commands first: its stop is the
@@ -22,28 +25,28 @@ func TestEachWidgetsScopeAndOwnStopByTheRoute(t *testing.T) {
 		first string // the first command of its stop; "" for a widget with none
 	}{
 		{"Tabs", func() tui.Component {
-			return widget.NewTabs(widget.WithTab("a", widget.NewText("a")), widget.WithTab("b", widget.NewText("b")))
-		}, widget.TabsScope, widget.TabsPrev.ID},
+			return core.NewTabs(core.WithTab("a", core.NewText("a")), core.WithTab("b", core.NewText("b")))
+		}, core.TabsScope, core.TabsPrev.ID},
 		{"TabStrip", func() tui.Component {
-			s := widget.NewTabStrip()
-			s.SetTabs([]widget.StripTab{{ID: "a", Label: "a"}})
+			s := core.NewTabStrip()
+			s.SetTabs([]core.StripTab{{ID: "a", Label: "a"}})
 			return s
-		}, widget.TabStripScope, widget.TabStripAdd.ID},
-		{"TerminalTabs", func() tui.Component { return widget.NewTerminalTabs() }, widget.TabStripScope, widget.TabStripAdd.ID},
+		}, core.TabStripScope, core.TabStripAdd.ID},
+		{"TerminalTabs", func() tui.Component { return terminal.NewTerminalTabs() }, core.TabStripScope, core.TabStripAdd.ID},
 		{"Split horizontal", func() tui.Component {
-			return widget.NewSplit(widget.Horizontal, widget.NewText("a"), widget.NewText("b"))
-		}, widget.SplitScope, widget.SplitCancel.ID},
-		{"Resizable", func() tui.Component { return widget.NewResizable(widget.NewText("a")) }, widget.ResizableScope, widget.ResizableCancel.ID},
-		{"Select", func() tui.Component { return widget.NewSelect[string]() }, widget.SelectScope, widget.SelectOpen.ID},
-		{"TextArea", func() tui.Component { return widget.NewTextArea() }, widget.TextAreaScope, widget.TextAreaNewline.ID},
-		{"HTMLView", func() tui.Component { return widget.NewHTMLView() }, widget.HTMLViewScope, widget.HTMLViewUp.ID},
-		{"BufferView", func() tui.Component { return widget.NewBufferView() }, widget.BufferViewScope, widget.BufferViewUp.ID},
+			return core.NewSplit(core.Horizontal, core.NewText("a"), core.NewText("b"))
+		}, core.SplitScope, core.SplitCancel.ID},
+		{"Resizable", func() tui.Component { return core.NewResizable(core.NewText("a")) }, core.ResizableScope, core.ResizableCancel.ID},
+		{"Select", func() tui.Component { return core.NewSelect[string]() }, core.SelectScope, core.SelectOpen.ID},
+		{"TextArea", func() tui.Component { return core.NewTextArea() }, core.TextAreaScope, core.TextAreaNewline.ID},
+		{"HTMLView", func() tui.Component { return htmlview.NewHTMLView() }, htmlview.HTMLViewScope, htmlview.HTMLViewUp.ID},
+		{"BufferView", func() tui.Component { return core.NewBufferView() }, core.BufferViewScope, core.BufferViewUp.ID},
 		{"FileOpenView", func() tui.Component {
-			return widget.NewFileOpenView(widget.WithFileViewSource(widget.FileSource{
+			return files.NewFileOpenView(files.WithFileViewSource(files.FileSource{
 				FS: fstest.MapFS{"a.md": {Data: []byte("a")}}, Root: "/"}))
-		}, widget.FileViewScope, widget.FileViewHome.ID},
-		{"Image that does not scroll", func() tui.Component { return widget.NewImage() }, widget.ImageScope, ""},
-		{"Terminal", func() tui.Component { return widget.NewTerminal() }, widget.TerminalScope, widget.TerminalPrefix.ID},
+		}, files.FileViewScope, files.FileViewHome.ID},
+		{"Image that does not scroll", func() tui.Component { return htmlview.NewImage() }, htmlview.ImageScope, ""},
+		{"Terminal", func() tui.Component { return terminal.NewTerminal() }, terminal.TerminalScope, terminal.TerminalPrefix.ID},
 	} {
 		w := c.build()
 		h := startApp(t, newShell(w), 60, 12)
@@ -86,27 +89,27 @@ func TestATerminalFollowsItsKeymap(t *testing.T) {
 	ctrl := func(r rune) tui.KeyEvent { return tui.KeyEvent{Kind: tui.KeyPress, Code: r, Mods: tui.ModCtrl} }
 	f.h.inject(ctrl('\\'), ctrl('n'))
 	f.h.barrier(f.sh)
-	if got := scope(); got != widget.TerminalScope {
+	if got := scope(); got != terminal.TerminalScope {
 		t.Fatalf("Ctrl+\\ Ctrl+n after the scheme moved the prefix: scope %q", got)
 	}
 	f.h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyF11}, ctrl('n'))
 	f.h.barrier(f.sh)
-	if got := scope(); got != widget.TerminalNormalScope {
+	if got := scope(); got != terminal.TerminalNormalScope {
 		t.Fatalf("F11 Ctrl+n: scope %q, want normal mode's", got)
 	}
 	f.h.inject(ch('/'))
 	f.h.barrier(f.sh)
-	if got := scope(); got != widget.TerminalSearchScope {
+	if got := scope(); got != terminal.TerminalSearchScope {
 		t.Fatalf("/: scope %q, want the search line's", got)
 	}
 	var bs []keymap.Binding
 	f.h.onLoop(func() { bs, _ = f.h.app.KeyBindings(f.term) })
-	if len(bs) == 0 || bs[0].Command.ID != widget.TermSearchClose.ID {
+	if len(bs) == 0 || bs[0].Command.ID != terminal.TermSearchClose.ID {
 		t.Errorf("the search line's stop: %v", bs)
 	}
 	f.h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEscape}, ch('i'))
 	f.h.barrier(f.sh)
-	if got := scope(); got != widget.TerminalScope {
+	if got := scope(); got != terminal.TerminalScope {
 		t.Fatalf("Esc then i: scope %q, want input mode's", got)
 	}
 }
@@ -115,7 +118,7 @@ func TestATerminalFollowsItsKeymap(t *testing.T) {
 // one no longer does.
 func TestTabsFollowTheirKeymap(t *testing.T) {
 	m := mustKeymap(t, `<mapping><shortcut id="tui.tabs.next"><key value="Alt+N"/></shortcut></mapping>`)
-	tb := widget.NewTabs(widget.WithTab("a", widget.NewTextInput()), widget.WithTab("b", widget.NewTextInput()))
+	tb := core.NewTabs(core.WithTab("a", core.NewTextInput()), core.WithTab("b", core.NewTextInput()))
 	sh := newShell(tb)
 	h := startAppOpts(t, sh, 40, 6, tui.WithKeymap(m))
 	h.inject(tab())
@@ -140,7 +143,7 @@ func TestTabsFollowTheirKeymap(t *testing.T) {
 // A scheme moving the TextArea's newline moves it: Ctrl+J breaks the line, and Enter no longer does.
 func TestATextAreaFollowsItsKeymap(t *testing.T) {
 	m := mustKeymap(t, `<mapping><shortcut id="tui.textarea.newline"><key value="Ctrl+J"/></shortcut></mapping>`)
-	ta := widget.NewTextArea()
+	ta := core.NewTextArea()
 	sh := newShell(ta)
 	h := startAppOpts(t, sh, 40, 6, tui.WithKeymap(m))
 	h.inject(tab(), ch('a'), tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter}, ch('b'),
@@ -155,12 +158,12 @@ func TestATextAreaFollowsItsKeymap(t *testing.T) {
 
 // g's grammar: any plain key ends a pending g, so g, x, g does not go to the first line; g, g does.
 func TestATerminalsPendingGEndsOnAnyPlainKey(t *testing.T) {
-	f := startTerm(t, 20, 4, widget.WithVimKeys(true), widget.WithScrollback(50))
+	f := startTerm(t, 20, 4, terminal.WithVimKeys(true), terminal.WithScrollback(50))
 	for i := range 20 {
 		f.output(fmt.Sprintf("line %d\r\n", i))
 	}
 	f.h.inject(key(tui.KeyEscape))
-	f.h.waitFor("normal", func() bool { return f.mode() == widget.TerminalNormal })
+	f.h.waitFor("normal", func() bool { return f.mode() == terminal.TerminalNormal })
 	row := func() int {
 		_, y, _ := f.h.tb.CursorPos()
 		return y
@@ -178,8 +181,8 @@ func TestATerminalsPendingGEndsOnAnyPlainKey(t *testing.T) {
 
 // Esc in a file chooser's listing clears a filter it kept, and every entry is listed again.
 func TestAFileChoosersEscClearsItsFilter(t *testing.T) {
-	v := widget.NewFileOpenView(widget.WithFileViewPreview(false), widget.WithFileViewDir("/"),
-		widget.WithFileViewSource(widget.FileSource{
+	v := files.NewFileOpenView(files.WithFileViewPreview(false), files.WithFileViewDir("/"),
+		files.WithFileViewSource(files.FileSource{
 			FS: fstest.MapFS{"a.md": {Data: []byte("a")}, "b.txt": {Data: []byte("b")}}, Root: "/"}))
 	h := startBrowser(t, v)
 	defer h.stop()

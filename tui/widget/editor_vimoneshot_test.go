@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // Insert's Ctrl-o: one Normal-mode command, then Insert again where it left the cursor. A command
@@ -62,21 +62,21 @@ func TestVimInsertOneShotRepeat(t *testing.T) {
 func TestVimInsertOneShotState(t *testing.T) {
 	c, _ := coreWith(t, "abc")
 	vimSeq(c, "i<cto>")
-	if !c.InsertOneShot() || c.Mode() != widget.ModeNormal {
+	if !c.InsertOneShot() || c.Mode() != editor.ModeNormal {
 		t.Fatalf("after Ctrl-o: one-shot %v, mode %v", c.InsertOneShot(), c.Mode())
 	}
 	if c.HandleKey(keyMod('x', tui.ModAlt)) {
 		t.Fatal("Ctrl-o then an unbound key: consumed")
 	}
-	if c.InsertOneShot() || c.Mode() != widget.ModeInsert {
+	if c.InsertOneShot() || c.Mode() != editor.ModeInsert {
 		t.Fatalf("after an unbound key: one-shot %v, mode %v", c.InsertOneShot(), c.Mode())
 	}
 	vimSeq(c, "<cto>")
-	if !c.HandleKey(tui.KeyEvent{Code: tui.KeyEscape}) || c.Mode() != widget.ModeInsert {
+	if !c.HandleKey(tui.KeyEvent{Code: tui.KeyEscape}) || c.Mode() != editor.ModeInsert {
 		t.Fatalf("Esc right after Ctrl-o: mode %v", c.Mode())
 	}
 	vimSeq(c, "<cto>2")
-	if !c.InsertOneShot() || c.Mode() != widget.ModeNormal {
+	if !c.InsertOneShot() || c.Mode() != editor.ModeNormal {
 		t.Fatal("a count alone ended the one-shot")
 	}
 	for _, e := range []struct{ what, text, seq string }{
@@ -85,7 +85,7 @@ func TestVimInsertOneShotState(t *testing.T) {
 	} {
 		c, _ := coreWith(t, e.text)
 		vimSeq(c, e.seq)
-		if c.InsertOneShot() || c.Mode() != widget.ModeNormal {
+		if c.InsertOneShot() || c.Mode() != editor.ModeNormal {
 			t.Errorf("%s: %q: one-shot %v, mode %v", e.what, e.seq, c.InsertOneShot(), c.Mode())
 		}
 	}
@@ -96,7 +96,7 @@ func TestVimInsertOneShotCommandLine(t *testing.T) {
 	c, _ := coreWith(t, "a\nb\nc")
 	c.SetCommandLine(func() bool { return true })
 	vimSeq(c, "i<cto>:")
-	if !c.InsertOneShot() || c.Mode() != widget.ModeNormal {
+	if !c.InsertOneShot() || c.Mode() != editor.ModeNormal {
 		t.Fatalf("with the prompt open: one-shot %v, mode %v", c.InsertOneShot(), c.Mode())
 	}
 	if err := c.RunCommand("3"); err != nil {
@@ -113,7 +113,7 @@ func TestVimInsertOneShotCommandLine(t *testing.T) {
 func TestVimInsertOneShotPrompt(t *testing.T) {
 	h, ed, _ := cmdFixture(t, "one\ntwo\nthree")
 	defer h.stop()
-	mode := func() (m widget.EditorMode) {
+	mode := func() (m editor.EditorMode) {
 		h.onLoop(func() { m = ed.Core().Mode() })
 		return
 	}
@@ -123,13 +123,13 @@ func TestVimInsertOneShotPrompt(t *testing.T) {
 	h.waitFor("the prompt", func() bool { return promptOpen(h, ed) })
 	typeIn(h, "3")
 	enter(h)
-	h.waitFor("Insert after the line ran", func() bool { return !promptOpen(h, ed) && mode() == widget.ModeInsert })
+	h.waitFor("Insert after the line ran", func() bool { return !promptOpen(h, ed) && mode() == editor.ModeInsert })
 	h.inject(tui.KeyEvent{Code: 'o', Mods: tui.ModCtrl})
 	typeIn(h, ":")
 	h.waitFor("the prompt again", func() bool { return promptOpen(h, ed) })
 	h.inject(tui.KeyEvent{Code: tui.KeyEscape})
 	h.settle()
-	h.waitFor("Insert after Esc", func() bool { return !promptOpen(h, ed) && mode() == widget.ModeInsert })
+	h.waitFor("Insert after Esc", func() bool { return !promptOpen(h, ed) && mode() == editor.ModeInsert })
 	typeIn(h, "X")
 	var got string
 	h.onLoop(func() { got = ed.Core().Value() })
@@ -140,9 +140,9 @@ func TestVimInsertOneShotPrompt(t *testing.T) {
 
 // A host's ActUnbound on Insert Ctrl-o leaves the key unconsumed, and Insert stays.
 func TestVimInsertOneShotHostUnbinds(t *testing.T) {
-	c, _ := coreWith(t, "abc", widget.CoreKeymap(widget.Keymap{{Mode: widget.ModeInsert, Code: 'o', Ctrl: true}: widget.ActUnbound}))
+	c, _ := coreWith(t, "abc", editor.CoreKeymap(editor.Keymap{{Mode: editor.ModeInsert, Code: 'o', Ctrl: true}: editor.ActUnbound}))
 	keys(c, "i")
-	if c.HandleKey(tui.KeyEvent{Code: 'o', Mods: tui.ModCtrl}) || c.Mode() != widget.ModeInsert {
+	if c.HandleKey(tui.KeyEvent{Code: 'o', Mods: tui.ModCtrl}) || c.Mode() != editor.ModeInsert {
 		t.Fatalf("an unbound Ctrl-o: mode %v", c.Mode())
 	}
 }
@@ -152,7 +152,7 @@ func TestVimInsertOneShotPress(t *testing.T) {
 	c, _ := coreWith(t, "abc")
 	vimSeq(c, "i<cto>")
 	c.PressAt(0, 2)
-	if c.InsertOneShot() || c.Mode() != widget.ModeInsert {
+	if c.InsertOneShot() || c.Mode() != editor.ModeInsert {
 		t.Fatalf("after a press: one-shot %v, mode %v", c.InsertOneShot(), c.Mode())
 	}
 	vimSeq(c, "X<esc>")
@@ -167,14 +167,14 @@ func TestVimInsertOneShotEndsWithTheDocument(t *testing.T) {
 	vimSeq(c, "i<cto>")
 	c.SetValue("xyz")
 	vimSeq(c, "x")
-	if c.InsertOneShot() || c.Mode() != widget.ModeNormal || c.Value() != "yz" {
+	if c.InsertOneShot() || c.Mode() != editor.ModeNormal || c.Value() != "yz" {
 		t.Fatalf("after SetValue, x: one-shot %v, mode %v, %q", c.InsertOneShot(), c.Mode(), c.Value())
 	}
 	vimSeq(c, "i<cto>")
-	c.SetKeyset(widget.KeysetNano)
-	c.SetKeyset(widget.KeysetVim)
+	c.SetKeyset(editor.KeysetNano)
+	c.SetKeyset(editor.KeysetVim)
 	vimSeq(c, "x")
-	if c.InsertOneShot() || c.Mode() != widget.ModeNormal || c.Value() != "z" {
+	if c.InsertOneShot() || c.Mode() != editor.ModeNormal || c.Value() != "z" {
 		t.Fatalf("after a keyset round trip, x: one-shot %v, mode %v, %q", c.InsertOneShot(), c.Mode(), c.Value())
 	}
 }

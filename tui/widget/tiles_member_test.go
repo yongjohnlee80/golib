@@ -5,23 +5,23 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // member is a GovernedWindow as a program builds one: a window (a WindowMod) in a Float in the
 // overlay, at its own anchor; governed, it is anchored live over its tile, docked at its edge when
 // the tile has no cells, and its core takes the tile's target.
 type member struct {
-	float     *widget.Float
-	mod       *widget.WindowMod
-	own, dock widget.Anchor
-	dock2     *widget.MinimizedWindows // where it goes minimized
-	governs   int                      // how many times it was governed
+	float     *core.Float
+	mod       *core.WindowMod
+	own, dock core.Anchor
+	dock2     *core.MinimizedWindows // where it goes minimized
+	governs   int                    // how many times it was governed
 }
 
 func (m *member) Govern(rect func() (tui.Rect, bool), target any) {
 	m.governs++
-	m.float.SetAnchor(widget.AtLive(rect, m.dock))
+	m.float.SetAnchor(core.AtLive(rect, m.dock))
 	m.mod.Core().Retarget(target)
 }
 
@@ -30,14 +30,14 @@ func (m *member) Release() {
 	m.mod.Core().Retarget(nil)
 }
 
-func (m *member) WindowBehavior() *widget.WindowCore { return m.mod.Core() }
+func (m *member) WindowBehavior() *core.WindowCore { return m.mod.Core() }
 
 // newMember is a window titled title at own, docked at dock while governed without cells.
-func newMember(title string, own, dock widget.Anchor) *member {
-	collector := widget.NewMinimizedWindows()
-	mod := widget.NewWindowMod(widget.NewBox(widget.NewText(""), widget.WithTitle(title)),
-		widget.WithWindowMove(), widget.WithWindowResize(), widget.WithWindowMinimize(collector))
-	return &member{float: widget.NewFloat(mod, widget.WithAnchor(own)), mod: mod, own: own, dock: dock, dock2: collector}
+func newMember(title string, own, dock core.Anchor) *member {
+	collector := core.NewMinimizedWindows()
+	mod := core.NewWindowMod(core.NewBox(core.NewText(""), core.WithTitle(title)),
+		core.WithWindowMove(), core.WithWindowResize(), core.WithWindowMinimize(collector))
+	return &member{float: core.NewFloat(mod, core.WithAnchor(own)), mod: mod, own: own, dock: dock, dock2: collector}
 }
 
 // boxAt is where the box titled title is drawn: its top-left corner and its width; -1s when it is
@@ -69,13 +69,13 @@ func boxAt(h *harness, title string) (x, y, w int) {
 // tilesRig is a manager over the overlay with members attached and shown.
 type tilesRig struct {
 	h       *harness
-	tiles   *widget.Tiles
+	tiles   *core.Tiles
 	members map[string]*member
 }
 
-func startTiles(t *testing.T, w, ht int, tiles *widget.Tiles, base tui.Component, ms map[string]*member) *tilesRig {
+func startTiles(t *testing.T, w, ht int, tiles *core.Tiles, base tui.Component, ms map[string]*member) *tilesRig {
 	t.Helper()
-	host := widget.NewOverlayHost(base)
+	host := core.NewOverlayHost(base)
 	for _, m := range ms {
 		host.Attach(m.float)
 	}
@@ -99,10 +99,10 @@ func (r *tilesRig) governed(key string) bool {
 // A member that wants to be tiled is anchored over its tile, docked; one that stops wanting is
 // released to its own placement, exactly where it was, and the page fills the manager again.
 func TestAWantingMemberIsGovernedOverItsTileAndReleasedToItsOwnPlace(t *testing.T) {
-	tiles := widget.NewTiles()
-	tiles.Add("page", widget.NewBox(widget.NewText(""), widget.WithTitle("PG")), widget.TilePlace{Edge: tui.DockCenter, Min: 5})
-	a := newMember("AA", widget.AtRect(tui.Rect{X: 20, Y: 3, W: 12, H: 4}), widget.Left)
-	tiles.AddMember("a", a, widget.TilePlace{Edge: tui.DockLeft, Size: 25, Min: 5}, true)
+	tiles := core.NewTiles()
+	tiles.Add("page", core.NewBox(core.NewText(""), core.WithTitle("PG")), core.TilePlace{Edge: tui.DockCenter, Min: 5})
+	a := newMember("AA", core.AtRect(tui.Rect{X: 20, Y: 3, W: 12, H: 4}), core.Left)
+	tiles.AddMember("a", a, core.TilePlace{Edge: tui.DockLeft, Size: 25, Min: 5}, true)
 	r := startTiles(t, 40, 10, tiles, tiles, map[string]*member{"a": a})
 	if x, y, w := boxAt(r.h, "AA"); x != 0 || y != 0 || w != 10 {
 		t.Fatalf("governed: the member at (%d,%d) %d wide, want its tile's (0,0) 10 wide:\n%s", x, y, w, r.h.tb.String())
@@ -133,12 +133,12 @@ func TestAWantingMemberIsGovernedOverItsTileAndReleasedToItsOwnPlace(t *testing.
 func TestTheMostRecentlyTiledMemberIsReleasedWhenTheSetNoLongerFits(t *testing.T) {
 	for _, first := range []string{"a", "b"} {
 		t.Run(first+" tiled first", func(t *testing.T) {
-			tiles := widget.NewTiles()
-			tiles.Add("page", widget.NewText("page"), widget.TilePlace{Edge: tui.DockCenter, Min: 10})
-			a := newMember("AA", widget.AtRect(tui.Rect{X: 2, Y: 6, W: 8, H: 3}), widget.Left)
-			b := newMember("BB", widget.AtRect(tui.Rect{X: 12, Y: 6, W: 8, H: 3}), widget.Right)
-			tiles.AddMember("a", a, widget.TilePlace{Edge: tui.DockLeft, Size: 25, Min: 10}, false)
-			tiles.AddMember("b", b, widget.TilePlace{Edge: tui.DockRight, Size: 25, Min: 10}, false)
+			tiles := core.NewTiles()
+			tiles.Add("page", core.NewText("page"), core.TilePlace{Edge: tui.DockCenter, Min: 10})
+			a := newMember("AA", core.AtRect(tui.Rect{X: 2, Y: 6, W: 8, H: 3}), core.Left)
+			b := newMember("BB", core.AtRect(tui.Rect{X: 12, Y: 6, W: 8, H: 3}), core.Right)
+			tiles.AddMember("a", a, core.TilePlace{Edge: tui.DockLeft, Size: 25, Min: 10}, false)
+			tiles.AddMember("b", b, core.TilePlace{Edge: tui.DockRight, Size: 25, Min: 10}, false)
 			second := map[string]string{"a": "b", "b": "a"}[first]
 			tiles.SetWants(first, true)
 			tiles.SetWants(second, true)
@@ -164,12 +164,12 @@ func TestTheMostRecentlyTiledMemberIsReleasedWhenTheSetNoLongerFits(t *testing.T
 // even for a frame. Before its first Govern a member's visibility is its own window's, so the set
 // settle tests holds both, and only the earlier tiles.
 func TestAShownMemberThatDoesNotFitIsNeverGoverned(t *testing.T) {
-	tiles := widget.NewTiles()
-	tiles.Add("page", widget.NewText("page"), widget.TilePlace{Edge: tui.DockCenter, Min: 10})
-	a := newMember("AA", widget.AtRect(tui.Rect{X: 2, Y: 6, W: 8, H: 3}), widget.Left)
-	b := newMember("BB", widget.AtRect(tui.Rect{X: 12, Y: 6, W: 8, H: 3}), widget.Right)
-	tiles.AddMember("a", a, widget.TilePlace{Edge: tui.DockLeft, Size: 25, Min: 10}, false)
-	tiles.AddMember("b", b, widget.TilePlace{Edge: tui.DockRight, Size: 25, Min: 10}, false)
+	tiles := core.NewTiles()
+	tiles.Add("page", core.NewText("page"), core.TilePlace{Edge: tui.DockCenter, Min: 10})
+	a := newMember("AA", core.AtRect(tui.Rect{X: 2, Y: 6, W: 8, H: 3}), core.Left)
+	b := newMember("BB", core.AtRect(tui.Rect{X: 12, Y: 6, W: 8, H: 3}), core.Right)
+	tiles.AddMember("a", a, core.TilePlace{Edge: tui.DockLeft, Size: 25, Min: 10}, false)
+	tiles.AddMember("b", b, core.TilePlace{Edge: tui.DockRight, Size: 25, Min: 10}, false)
 	r := startTiles(t, 25, 10, tiles, tiles, map[string]*member{"a": a, "b": b})
 	r.h.onLoop(func() {
 		tiles.SetWants("a", true)
@@ -185,12 +185,12 @@ func TestAShownMemberThatDoesNotFitIsNeverGoverned(t *testing.T) {
 // asked to tile again while still closed, it is away, so it is governed and takes no cells, rather
 // than counted as shown by that stale facet and released for want of room.
 func TestAClosedMemberAskingToTileAgainIsGovernedWhileAway(t *testing.T) {
-	tiles := widget.NewTiles()
-	tiles.Add("page", widget.NewText("page"), widget.TilePlace{Edge: tui.DockCenter, Min: 10})
-	a := newMember("AA", widget.AtRect(tui.Rect{X: 2, Y: 6, W: 8, H: 3}), widget.Left)
-	b := newMember("BB", widget.AtRect(tui.Rect{X: 12, Y: 6, W: 8, H: 3}), widget.Right)
-	tiles.AddMember("a", a, widget.TilePlace{Edge: tui.DockLeft, Size: 25, Min: 10}, false)
-	tiles.AddMember("b", b, widget.TilePlace{Edge: tui.DockRight, Size: 25, Min: 10}, true)
+	tiles := core.NewTiles()
+	tiles.Add("page", core.NewText("page"), core.TilePlace{Edge: tui.DockCenter, Min: 10})
+	a := newMember("AA", core.AtRect(tui.Rect{X: 2, Y: 6, W: 8, H: 3}), core.Left)
+	b := newMember("BB", core.AtRect(tui.Rect{X: 12, Y: 6, W: 8, H: 3}), core.Right)
+	tiles.AddMember("a", a, core.TilePlace{Edge: tui.DockLeft, Size: 25, Min: 10}, false)
+	tiles.AddMember("b", b, core.TilePlace{Edge: tui.DockRight, Size: 25, Min: 10}, true)
 	r := startTiles(t, 25, 10, tiles, tiles, map[string]*member{"a": a, "b": b})
 	if !r.governed("b") {
 		t.Fatal("b alone fits 25 wide")
@@ -214,9 +214,9 @@ func TestAClosedMemberAskingToTileAgainIsGovernedWhileAway(t *testing.T) {
 // With nothing tiled the manager hibernates: no centre is needed, nothing is governed, and it draws
 // nothing; a member that does not want to be tiled floats where it is.
 func TestAManagerWithNothingTiledHibernates(t *testing.T) {
-	tiles := widget.NewTiles()
-	a := newMember("AA", widget.AtRect(tui.Rect{X: 5, Y: 2, W: 10, H: 4}), widget.Left)
-	tiles.AddMember("a", a, widget.TilePlace{Edge: tui.DockLeft, Size: 30, Min: 5}, false)
+	tiles := core.NewTiles()
+	a := newMember("AA", core.AtRect(tui.Rect{X: 5, Y: 2, W: 10, H: 4}), core.Left)
+	tiles.AddMember("a", a, core.TilePlace{Edge: tui.DockLeft, Size: 30, Min: 5}, false)
 	r := startTiles(t, 40, 10, tiles, tiles, map[string]*member{"a": a})
 	if r.governed("a") {
 		t.Fatal("a member that does not want to be tiled is governed")
@@ -237,11 +237,11 @@ func TestAManagerWithNothingTiledHibernates(t *testing.T) {
 // With no centre tiled the strips fill the manager: the last tiled strip takes the remainder, and no
 // cell is left over or shared.
 func TestWithNoCentreTiledTheStripsFillTheManager(t *testing.T) {
-	tiles := widget.NewTiles()
-	a := newMember("AA", widget.AtRect(tui.Rect{X: 0, Y: 6, W: 8, H: 3}), widget.Left)
-	b := newMember("BB", widget.AtRect(tui.Rect{X: 10, Y: 6, W: 8, H: 3}), widget.Right)
-	tiles.AddMember("a", a, widget.TilePlace{Edge: tui.DockLeft, Size: 25, Min: 5}, true)
-	tiles.AddMember("b", b, widget.TilePlace{Edge: tui.DockRight, Size: 25, Min: 5}, true)
+	tiles := core.NewTiles()
+	a := newMember("AA", core.AtRect(tui.Rect{X: 0, Y: 6, W: 8, H: 3}), core.Left)
+	b := newMember("BB", core.AtRect(tui.Rect{X: 10, Y: 6, W: 8, H: 3}), core.Right)
+	tiles.AddMember("a", a, core.TilePlace{Edge: tui.DockLeft, Size: 25, Min: 5}, true)
+	tiles.AddMember("b", b, core.TilePlace{Edge: tui.DockRight, Size: 25, Min: 5}, true)
 	r := startTiles(t, 40, 10, tiles, tiles, map[string]*member{"a": a, "b": b})
 	ax, _, aw := boxAt(r.h, "AA")
 	bx, _, bw := boxAt(r.h, "BB")
@@ -253,11 +253,11 @@ func TestWithNoCentreTiledTheStripsFillTheManager(t *testing.T) {
 // A governed member is never moved on its own: an Alt-left drag into another edge it may take does
 // not re-dock it. Alt-right on its shared border resizes its tile, the page following.
 func TestAMemberRefusesAMoveAndResizesByItsSharedBorder(t *testing.T) {
-	tiles := widget.NewTiles()
-	tiles.Add("page", widget.NewBox(widget.NewText(""), widget.WithTitle("PG")), widget.TilePlace{Edge: tui.DockCenter, Min: 5})
-	a := newMember("AA", widget.AtRect(tui.Rect{X: 20, Y: 3, W: 12, H: 4}), widget.Left)
+	tiles := core.NewTiles()
+	tiles.Add("page", core.NewBox(core.NewText(""), core.WithTitle("PG")), core.TilePlace{Edge: tui.DockCenter, Min: 5})
+	a := newMember("AA", core.AtRect(tui.Rect{X: 20, Y: 3, W: 12, H: 4}), core.Left)
 	// it may sit at the right edge too, so a move it took would land somewhere: a re-dock there
-	tiles.AddMember("a", a, widget.TilePlace{Edge: tui.DockLeft, Edges: []tui.DockEdge{tui.DockLeft, tui.DockRight}, Size: 25, Min: 5}, true)
+	tiles.AddMember("a", a, core.TilePlace{Edge: tui.DockLeft, Edges: []tui.DockEdge{tui.DockLeft, tui.DockRight}, Size: 25, Min: 5}, true)
 	r := startTiles(t, 40, 10, tiles, tiles, map[string]*member{"a": a})
 	drag := func(btn tui.MouseButton, x0, y0, x1, y1 int) {
 		r.h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: btn, Mods: tui.ModAlt, X: x0, Y: y0})
@@ -281,10 +281,10 @@ func TestAMemberRefusesAMoveAndResizesByItsSharedBorder(t *testing.T) {
 // A member minimized through its own window takes no cells and stays governed; restored, it is back
 // over its tile.
 func TestAHiddenMemberTakesNoCellsAndStaysGoverned(t *testing.T) {
-	tiles := widget.NewTiles()
-	tiles.Add("page", widget.NewBox(widget.NewText(""), widget.WithTitle("PG")), widget.TilePlace{Edge: tui.DockCenter, Min: 5})
-	a := newMember("AA", widget.AtRect(tui.Rect{X: 20, Y: 3, W: 12, H: 4}), widget.Left)
-	tiles.AddMember("a", a, widget.TilePlace{Edge: tui.DockLeft, Size: 25, Min: 5}, true)
+	tiles := core.NewTiles()
+	tiles.Add("page", core.NewBox(core.NewText(""), core.WithTitle("PG")), core.TilePlace{Edge: tui.DockCenter, Min: 5})
+	a := newMember("AA", core.AtRect(tui.Rect{X: 20, Y: 3, W: 12, H: 4}), core.Left)
+	tiles.AddMember("a", a, core.TilePlace{Edge: tui.DockLeft, Size: 25, Min: 5}, true)
 	r := startTiles(t, 40, 10, tiles, tiles, map[string]*member{"a": a})
 	r.h.onLoop(func() { a.mod.Core().Minimize() })
 	r.h.settle()
@@ -310,7 +310,7 @@ func TestAHiddenMemberTakesNoCellsAndStaysGoverned(t *testing.T) {
 
 // bar is a docked bar of rows rows, the full width.
 type bar struct {
-	widget.Base
+	core.Base
 	rows int
 }
 
@@ -319,10 +319,10 @@ func (b *bar) Render(tui.Surface)                {}
 
 // barred is a manager under a docked bar of n rows, its origin reported from where the dock placed
 // it, as a decl Window wires it.
-func barred(n int) (*tui.Dock, *bar, *widget.Tiles) {
+func barred(n int) (*tui.Dock, *bar, *core.Tiles) {
 	top := &bar{rows: n}
 	var origin tui.Point
-	tiles := widget.NewTiles(widget.WithTilesOrigin(func() tui.Point { return origin }))
+	tiles := core.NewTiles(core.WithTilesOrigin(func() tui.Point { return origin }))
 	dock := tui.NewDock()
 	dock.OnPlaced(func(c tui.Component, r tui.Rect) {
 		if c == tiles {
@@ -338,8 +338,8 @@ func barred(n int) (*tui.Dock, *bar, *widget.Tiles) {
 // follows the bar's height when it changes.
 func TestAMemberUnderADockedBarIsPlacedBelowItAndFollowsIt(t *testing.T) {
 	dock, top, tiles := barred(2)
-	a := newMember("AA", widget.AtRect(tui.Rect{X: 20, Y: 6, W: 12, H: 3}), widget.Left)
-	tiles.AddMember("a", a, widget.TilePlace{Edge: tui.DockLeft, Size: 25, Min: 5}, true)
+	a := newMember("AA", core.AtRect(tui.Rect{X: 20, Y: 6, W: 12, H: 3}), core.Left)
+	tiles.AddMember("a", a, core.TilePlace{Edge: tui.DockLeft, Size: 25, Min: 5}, true)
 	r := startTiles(t, 40, 12, tiles, dock, map[string]*member{"a": a})
 	if x, y, _ := boxAt(r.h, "AA"); x != 0 || y != 2 {
 		t.Fatalf("under a 2-row bar the member is at (%d,%d), want (0,2):\n%s", x, y, r.h.tb.String())
@@ -354,10 +354,10 @@ func TestAMemberUnderADockedBarIsPlacedBelowItAndFollowsIt(t *testing.T) {
 // Without WithTilesOrigin a manager is at the overlay's origin: a bare manager's member is at its
 // tile's own rect.
 func TestABareManagersMemberIsAtItsTile(t *testing.T) {
-	tiles := widget.NewTiles()
-	a := newMember("AA", widget.AtRect(tui.Rect{X: 20, Y: 6, W: 12, H: 3}), widget.Top)
-	tiles.AddMember("a", a, widget.TilePlace{Edge: tui.DockTop, Size: 40, Min: 3}, true)
-	tiles.Add("page", widget.NewText("page"), widget.TilePlace{Edge: tui.DockCenter, Min: 3})
+	tiles := core.NewTiles()
+	a := newMember("AA", core.AtRect(tui.Rect{X: 20, Y: 6, W: 12, H: 3}), core.Top)
+	tiles.AddMember("a", a, core.TilePlace{Edge: tui.DockTop, Size: 40, Min: 3}, true)
+	tiles.Add("page", core.NewText("page"), core.TilePlace{Edge: tui.DockCenter, Min: 3})
 	r := startTiles(t, 40, 10, tiles, tiles, map[string]*member{"a": a})
 	if x, y, w := boxAt(r.h, "AA"); x != 0 || y != 0 || w != 40 {
 		t.Fatalf("a bare manager's top member is at (%d,%d) %d wide, want (0,0) 40 wide:\n%s", x, y, w, r.h.tb.String())
@@ -385,12 +385,12 @@ func (f *fixedTarget) WindowVisible() bool { return f.visible }
 func (f *fixedTarget) Modal() bool         { return false }
 
 // floatWindow is a movable, minimizable window in a Float at r, shown over a blank base.
-func floatWindow(t *testing.T, r tui.Rect) (*harness, *widget.Float, *widget.WindowMod) {
+func floatWindow(t *testing.T, r tui.Rect) (*harness, *core.Float, *core.WindowMod) {
 	t.Helper()
-	mod := widget.NewWindowMod(widget.NewBox(widget.NewText(""), widget.WithTitle("WW")),
-		widget.WithWindowMove(), widget.WithWindowMinimize(widget.NewMinimizedWindows()))
-	f := widget.NewFloat(mod, widget.WithAnchor(widget.AtRect(r)))
-	host := widget.NewOverlayHost(widget.NewText(""))
+	mod := core.NewWindowMod(core.NewBox(core.NewText(""), core.WithTitle("WW")),
+		core.WithWindowMove(), core.WithWindowMinimize(core.NewMinimizedWindows()))
+	f := core.NewFloat(mod, core.WithAnchor(core.AtRect(r)))
+	host := core.NewOverlayHost(core.NewText(""))
 	host.Attach(f)
 	h := startApp(t, host, 40, 10)
 	t.Cleanup(h.stop)
@@ -406,7 +406,7 @@ func TestRetargetProbesTheNewTargetAndNilGivesBackTheFloats(t *testing.T) {
 	h, _, mod := floatWindow(t, tui.Rect{X: 5, Y: 2, W: 10, H: 4})
 	target := &fixedTarget{r: tui.Rect{X: 1, Y: 1, W: 6, H: 3}, visible: true}
 	step := func() {
-		mod.Core().HandleAction(tui.ActionInvocation{Action: widget.WindowMoveByAction{DX: 1}, Origin: tui.OriginProgrammatic})
+		mod.Core().HandleAction(tui.ActionInvocation{Action: core.WindowMoveByAction{DX: 1}, Origin: tui.OriginProgrammatic})
 	}
 	var bounds tui.Rect
 	h.onLoop(func() { mod.Core().Retarget(target); bounds = mod.Core().Bounds(); step() })
@@ -463,23 +463,23 @@ func TestRetargetCancelsADragInFlight(t *testing.T) {
 // window's core (WindowChangeHandler): an Alt-right drag of its border keeps the size it reached after
 // another layout, and the manager publishes it once. Its minimize and restore are published too.
 func TestAMembersGesturesCommitThroughItsTile(t *testing.T) {
-	var got []widget.TilesChangedEvent
-	tiles := widget.NewTiles(widget.WithTilesChanged(func(e widget.TilesChangedEvent) { got = append(got, e) }))
-	tiles.Add("page", widget.NewBox(widget.NewText(""), widget.WithTitle("PG")), widget.TilePlace{Edge: tui.DockCenter, Min: 5})
-	a := newMember("AA", widget.AtRect(tui.Rect{X: 20, Y: 3, W: 12, H: 4}), widget.Left)
-	tiles.AddMember("a", a, widget.TilePlace{Edge: tui.DockLeft, Size: 25, Min: 5}, true)
+	var got []core.TilesChangedEvent
+	tiles := core.NewTiles(core.WithTilesChanged(func(e core.TilesChangedEvent) { got = append(got, e) }))
+	tiles.Add("page", core.NewBox(core.NewText(""), core.WithTitle("PG")), core.TilePlace{Edge: tui.DockCenter, Min: 5})
+	a := newMember("AA", core.AtRect(tui.Rect{X: 20, Y: 3, W: 12, H: 4}), core.Left)
+	tiles.AddMember("a", a, core.TilePlace{Edge: tui.DockLeft, Size: 25, Min: 5}, true)
 	r := startTiles(t, 40, 10, tiles, tiles, map[string]*member{"a": a})
 	r.h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseRight, Mods: tui.ModAlt, X: 9, Y: 4})
 	r.h.inject(tui.MouseEvent{Kind: tui.MouseMotion, Button: tui.MouseRight, Mods: tui.ModAlt, X: 15, Y: 4})
 	r.h.inject(tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseRight, Mods: tui.ModAlt, X: 15, Y: 4})
 	r.h.settle()
 	var size float64
-	var events []widget.TilesChangedEvent
+	var events []core.TilesChangedEvent
 	r.h.onLoop(func() { size = tiles.Tile("a").Place().Size; events = append(events, got...) })
 	if size != 40 {
 		t.Fatalf("after the drag the member's committed size is %v%%, want 40%% (16 of 40 cells)", size)
 	}
-	if len(events) != 1 || events[0].Key != "a" || events[0].Operation != widget.WindowResize || events[0].Size != 40 {
+	if len(events) != 1 || events[0].Key != "a" || events[0].Operation != core.WindowResize || events[0].Size != 40 {
 		t.Fatalf("published %+v, want one resize of a to 40%%", events)
 	}
 	r.h.tb.InjectResize(40, 9) // another layout: a committed size is kept, a staged one would be dropped
@@ -491,8 +491,8 @@ func TestAMembersGesturesCommitThroughItsTile(t *testing.T) {
 	r.h.settle()
 	r.h.onLoop(func() { a.mod.Core().Restore() })
 	r.h.settle()
-	r.h.onLoop(func() { events = append([]widget.TilesChangedEvent(nil), got...) })
-	if len(events) != 2 || events[0].Operation != widget.WindowMinimize || !events[0].Hidden || events[1].Operation != widget.WindowRestore || events[1].Hidden {
+	r.h.onLoop(func() { events = append([]core.TilesChangedEvent(nil), got...) })
+	if len(events) != 2 || events[0].Operation != core.WindowMinimize || !events[0].Hidden || events[1].Operation != core.WindowRestore || events[1].Hidden {
 		t.Fatalf("minimize then restore published %+v, want a hidden minimize then a shown restore", events)
 	}
 }
@@ -512,10 +512,10 @@ func overPage(h *harness) int {
 // A minimized member released stays minimized: its node hidden, its window in its collector; a
 // Restore then shows it at its own place, not over its old tile.
 func TestAMinimizedMemberReleasedStaysHiddenUntilRestored(t *testing.T) {
-	tiles := widget.NewTiles()
-	tiles.Add("page", widget.NewBox(widget.NewText(""), widget.WithTitle("PG")), widget.TilePlace{Edge: tui.DockCenter, Min: 5})
-	a := newMember("AA", widget.AtRect(tui.Rect{X: 20, Y: 3, W: 12, H: 4}), widget.Left)
-	tiles.AddMember("a", a, widget.TilePlace{Edge: tui.DockLeft, Size: 25, Min: 5}, true)
+	tiles := core.NewTiles()
+	tiles.Add("page", core.NewBox(core.NewText(""), core.WithTitle("PG")), core.TilePlace{Edge: tui.DockCenter, Min: 5})
+	a := newMember("AA", core.AtRect(tui.Rect{X: 20, Y: 3, W: 12, H: 4}), core.Left)
+	tiles.AddMember("a", a, core.TilePlace{Edge: tui.DockLeft, Size: 25, Min: 5}, true)
 	r := startTiles(t, 40, 10, tiles, tiles, map[string]*member{"a": a})
 	r.h.onLoop(func() { a.mod.Core().Minimize() })
 	r.h.settle()
@@ -542,12 +542,12 @@ func TestAMinimizedMemberReleasedStaysHiddenUntilRestored(t *testing.T) {
 // the drag ends. The pointer is free: the other member's border drags at once, and the released
 // member's late motion and release move nothing.
 func TestAMemberReleasedDuringItsDragEndsTheDrag(t *testing.T) {
-	tiles := widget.NewTiles()
-	tiles.Add("page", widget.NewText("page"), widget.TilePlace{Edge: tui.DockCenter, Min: 10})
-	a := newMember("AA", widget.AtRect(tui.Rect{X: 2, Y: 6, W: 8, H: 3}), widget.Left)
-	b := newMember("BB", widget.AtRect(tui.Rect{X: 12, Y: 6, W: 8, H: 3}), widget.Right)
-	tiles.AddMember("a", a, widget.TilePlace{Edge: tui.DockLeft, Size: 25, Min: 10}, true)
-	tiles.AddMember("b", b, widget.TilePlace{Edge: tui.DockRight, Size: 25, Min: 10}, true)
+	tiles := core.NewTiles()
+	tiles.Add("page", core.NewText("page"), core.TilePlace{Edge: tui.DockCenter, Min: 10})
+	a := newMember("AA", core.AtRect(tui.Rect{X: 2, Y: 6, W: 8, H: 3}), core.Left)
+	b := newMember("BB", core.AtRect(tui.Rect{X: 12, Y: 6, W: 8, H: 3}), core.Right)
+	tiles.AddMember("a", a, core.TilePlace{Edge: tui.DockLeft, Size: 25, Min: 10}, true)
+	tiles.AddMember("b", b, core.TilePlace{Edge: tui.DockRight, Size: 25, Min: 10}, true)
 	r := startTiles(t, 40, 10, tiles, tiles, map[string]*member{"a": a, "b": b})
 	if !r.governed("a") || !r.governed("b") {
 		t.Fatal("40 wide fits both (10 + 10 + the page's 10)")

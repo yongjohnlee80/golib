@@ -7,11 +7,12 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/htmlview"
 )
 
 func TestStatusBarSegments(t *testing.T) {
-	bar := widget.NewStatusBar()
+	bar := core.NewStatusBar()
 	h := startApp(t, bar, 40, 1)
 	h.onLoop(func() {
 		bar.SetLeft("LEFT")
@@ -35,7 +36,7 @@ func TestStatusBarSegments(t *testing.T) {
 // option is skipped, and a segment takes one style at most.
 func TestStatusBarOptions(t *testing.T) {
 	red := style.New().Background(style.ANSI(1))
-	s := widget.NewStatusBar(nil, widget.WithBarStyle(red))
+	s := core.NewStatusBar(nil, core.WithBarStyle(red))
 	h := startApp(t, s, 10, 1)
 	h.waitFor("the bar in red", func() bool {
 		var bg tui.CellColor
@@ -54,8 +55,8 @@ func TestStatusBarOptions(t *testing.T) {
 // right segment a column before them; Move reorders them, Remove drops one; one wider than the row
 // is truncated to what is free, and one offered no columns takes none.
 func TestStatusBarPermanentWidgets(t *testing.T) {
-	bar := widget.NewStatusBar()
-	a, b := widget.NewText("AA"), widget.NewText("BBB")
+	bar := core.NewStatusBar()
+	a, b := core.NewText("AA"), core.NewText("BBB")
 	h := startApp(t, bar, 20, 1)
 	h.onLoop(func() {
 		bar.SetLeft("L")
@@ -75,14 +76,14 @@ func TestStatusBarPermanentWidgets(t *testing.T) {
 	h.onLoop(func() { bar.Move(b, 0) })
 	h.waitFor("moved", func() bool { return strings.HasSuffix(h.row(0), "R BBB AA") })
 	h.onLoop(func() {
-		bar.Move(widget.NewText("stranger"), 0) // not its own: nothing happens
+		bar.Move(core.NewText("stranger"), 0) // not its own: nothing happens
 		bar.Remove(b)
 		bar.Remove(nil)
 	})
 	h.waitFor("removed", func() bool { return strings.HasSuffix(h.row(0), "R AA") && !strings.Contains(h.row(0), "BBB") })
 	// too wide for the row: the last added keeps the end, truncated to the columns free, and the
 	// one before it, offered none, takes none
-	wide := widget.NewText(strings.Repeat("W", 30))
+	wide := core.NewText(strings.Repeat("W", 30))
 	h.onLoop(func() { bar.Add(wide) })
 	h.waitFor("the wide one truncated, AA left out", func() bool {
 		return h.row(0) == strings.Repeat("W", 19)+"…"
@@ -94,9 +95,9 @@ func TestStatusBarPermanentWidgets(t *testing.T) {
 // TestStatusBarMoveRefusesAnIndexOutside: a move past the permanent widgets is the caller's
 // structure gone wrong.
 func TestStatusBarMoveRefusesAnIndexOutside(t *testing.T) {
-	bar := widget.NewStatusBar()
-	a := widget.NewText("A")
-	bar.Add(a, widget.NewText("B"))
+	bar := core.NewStatusBar()
+	a := core.NewText("A")
+	bar.Add(a, core.NewText("B"))
 	defer func() {
 		if r := recover(); r == nil || !strings.Contains(fmt.Sprint(r), "outside") {
 			t.Fatalf("recovered %v", r)
@@ -112,15 +113,15 @@ func TestStatusBarAddRefusesNil(t *testing.T) {
 			t.Fatalf("recovered %v", r)
 		}
 	}()
-	widget.NewStatusBar().Add(nil)
+	core.NewStatusBar().Add(nil)
 }
 
 // TestStatusBarNormalWidgets: AddWidget's widgets sit at the left end in order, a column apart,
 // before the left segment; Children and Move keep one order across both kinds; a normal widget
 // wider than what the permanent ones left is truncated to it.
 func TestStatusBarNormalWidgets(t *testing.T) {
-	bar := widget.NewStatusBar()
-	n1, n2, p := widget.NewText("N1"), widget.NewText("N2"), widget.NewText("P")
+	bar := core.NewStatusBar()
+	n1, n2, p := core.NewText("N1"), core.NewText("N2"), core.NewText("P")
 	h := startApp(t, bar, 20, 1)
 	h.onLoop(func() {
 		bar.SetLeft("L")
@@ -144,7 +145,7 @@ func TestStatusBarNormalWidgets(t *testing.T) {
 	}
 	h.onLoop(func() { bar.Move(n2, 0) })
 	h.waitFor("moved", func() bool { return strings.HasPrefix(h.row(0), "N2 N1 L") })
-	wide := widget.NewText(strings.Repeat("W", 30))
+	wide := core.NewText(strings.Repeat("W", 30))
 	h.onLoop(func() {
 		bar.Remove(n1)
 		bar.Remove(n2)
@@ -170,13 +171,13 @@ func (s *narrowSurface) Caps() tui.Capabilities                { return tui.Capa
 // TestStatusBarEdges: a bar with no columns draws nothing; a normal widget offered no columns (the
 // permanent ones took the row) takes none; Children stops when asked.
 func TestStatusBarEdges(t *testing.T) {
-	bar := widget.NewStatusBar()
+	bar := core.NewStatusBar()
 	sur := &narrowSurface{}
 	bar.Render(sur)
 	if sur.drawn != 0 {
 		t.Fatalf("a bar with no columns drew %d times", sur.drawn)
 	}
-	normal, wide := widget.NewText("N"), widget.NewText(strings.Repeat("P", 40))
+	normal, wide := core.NewText("N"), core.NewText(strings.Repeat("P", 40))
 	h := startApp(t, bar, 20, 1)
 	h.onLoop(func() {
 		bar.SetLeft("L")
@@ -215,7 +216,7 @@ func (s *sizedSurface) Caps() tui.Capabilities                { return tui.Capab
 // host renders its PNG for. Painting it on another surface is a read, and changes neither
 // (tui-widget-shell-S2).
 func TestPaintingAnImageElsewhereKeepsItsCells(t *testing.T) {
-	img := widget.NewImage()
+	img := htmlview.NewImage()
 	h := startApp(t, img, 40, 10)
 	defer h.stop()
 	h.settle()

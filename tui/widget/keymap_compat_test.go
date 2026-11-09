@@ -5,7 +5,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // The names the key map moved into tui/key or extended still compile from outside golib and mean
@@ -33,7 +33,7 @@ func TestTheOldKeyAPICompilesAndMeansTheSame(t *testing.T) {
 		}
 	}
 	_ = tuidecl.Commands(map[string]func() error{"App.x": func() error { return nil }})
-	kc := widget.KeyChord{Mode: widget.ModeNormal, Code: 'x', Ctrl: true}
+	kc := editor.KeyChord{Mode: editor.ModeNormal, Code: 'x', Ctrl: true}
 	if kc.String() != "Ctrl+x" {
 		t.Errorf("KeyChord.String: %q", kc.String())
 	}
@@ -42,8 +42,8 @@ func TestTheOldKeyAPICompilesAndMeansTheSame(t *testing.T) {
 // An old keyed overlay literal on a functional key meant the key with or without Shift, because the
 // editor read Shift+Down as Down; replayed over a scheme-built table it still does.
 func TestAnOldFunctionalKeyOverlayKeepsItsShiftTwin(t *testing.T) {
-	h, e, sh := mountedEditor(t, mustKeymap(t, `<mapping/>`), widget.WithCore(widget.CoreKeymap(widget.Keymap{
-		{Mode: widget.ModeNormal, Code: tui.KeyDown}: widget.ActLineEnd,
+	h, e, sh := mountedEditor(t, mustKeymap(t, `<mapping/>`), editor.WithCore(editor.CoreKeymap(editor.Keymap{
+		{Mode: editor.ModeNormal, Code: tui.KeyDown}: editor.ActLineEnd,
 	})))
 	h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyDown, Mods: tui.ModShift}, ch('i'), ch('!'))
 	h.barrier(sh)

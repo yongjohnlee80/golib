@@ -7,11 +7,11 @@ import (
 	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
-func mdRenderer() *widget.MarkdownCellRenderer {
-	return &widget.MarkdownCellRenderer{MarkdownBlocks: widget.MarkdownBlocks{HideMetadata: true}}
+func mdRenderer() *editor.MarkdownCellRenderer {
+	return &editor.MarkdownCellRenderer{MarkdownBlocks: editor.MarkdownBlocks{HideMetadata: true}}
 }
 
 // rows are the first n rows drawn, right-trimmed.
@@ -101,14 +101,14 @@ func TestMarkdownProseWrapsAtWords(t *testing.T) {
 }
 
 // mdEditorAt is renderedEditor at w×h.
-func mdEditorAt(t *testing.T, text string, w, h int) (*harness, *shell, *widget.Editor) {
+func mdEditorAt(t *testing.T, text string, w, h int) (*harness, *shell, *editor.Editor) {
 	t.Helper()
-	ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText(text)))
+	ed := editor.NewEditor(editor.WithCore(editor.CoreInitialText(text)))
 	sh := newShell(ed)
 	hs := startApp(t, sh, w, h)
 	hs.onLoop(func() {
 		ed.SetRenderer(mdRenderer())
-		ed.SetView(widget.ViewRendered)
+		ed.SetView(editor.ViewRendered)
 		hs.app.FocusInto(ed)
 	})
 	hs.barrier(sh)
@@ -116,7 +116,7 @@ func mdEditorAt(t *testing.T, text string, w, h int) (*harness, *shell, *widget.
 }
 
 // caretAt puts the cursor on (ln, col) and asks where the Editor draws it.
-func caretAt(h *harness, sh *shell, ed *widget.Editor, ln, col int) (x, y int, ok bool) {
+func caretAt(h *harness, sh *shell, ed *editor.Editor, ln, col int) (x, y int, ok bool) {
 	h.onLoop(func() { ed.Core().SetLine(ln, col) })
 	h.barrier(sh)
 	h.onLoop(func() { x, y, ok = ed.Cursor() })
@@ -203,14 +203,14 @@ func TestMarkdownCodeIsHighlightedInItsLanguage(t *testing.T) {
 		}
 		return nil, 0
 	})
-	r := &widget.MarkdownCellRenderer{Languages: highlight.NewRepository(highlight.Definition{Name: "toy", Highlighter: toy}).Snapshot()}
+	r := &editor.MarkdownCellRenderer{Languages: highlight.NewRepository(highlight.Definition{Name: "toy", Highlighter: toy}).Snapshot()}
 	red, green, blue := style.RGB(200, 0, 0), style.RGB(0, 200, 0), style.RGB(0, 0, 200)
-	var th widget.CellTheme
+	var th editor.CellTheme
 	th.Syntax[highlight.Keyword] = style.New().Foreground(red)
 	th.Syntax[highlight.Comment] = style.New().Foreground(green)
-	th.Syntax[widget.MarkdownCodeStyle] = style.New().Foreground(blue)
+	th.Syntax[editor.MarkdownCodeStyle] = style.New().Foreground(blue)
 	lines := []string{"```toy", "a kw", "/* x", "y */", "z", "```"}
-	cb := r.LayOut(widget.Block{From: 0, To: len(lines)}, lines, 40, func(string) int { return 1 }, false, th)
+	cb := r.LayOut(editor.Block{From: 0, To: len(lines)}, lines, 40, func(string) int { return 1 }, false, th)
 	fg := func(row, cell int) style.Color {
 		if row >= len(cb.Rows) || cell >= len(cb.Rows[row].Cells) {
 			t.Fatalf("no cell %d on row %d of %d rows", cell, row, len(cb.Rows))
@@ -280,7 +280,7 @@ func TestMarkdownTableColumnsNarrowToTheView(t *testing.T) {
 func TestATableTooWideToNarrowKeepsItsWidth(t *testing.T) {
 	row := "|" + strings.Repeat(" abcde |", 9)
 	lines := []string{row, "|" + strings.Repeat("---|", 9), row}
-	cb := (&widget.MarkdownCellRenderer{}).LayOut(widget.Block{From: 0, To: len(lines)}, lines, 40, func(string) int { return 1 }, false, widget.CellTheme{})
+	cb := (&editor.MarkdownCellRenderer{}).LayOut(editor.Block{From: 0, To: len(lines)}, lines, 40, func(string) int { return 1 }, false, editor.CellTheme{})
 	if want := 4 + 3*8 + 5*9; cb.Width != want {
 		t.Errorf("a nine-column table in 40 cells: Width %d, want its natural %d", cb.Width, want)
 	}
@@ -524,7 +524,7 @@ func TestAPanIsItsBuffersOwn(t *testing.T) {
 	if got := edge(); got != '«' {
 		t.Fatalf("precondition: the second table's edge %q, want « (panned):\n%s", got, h.grid())
 	}
-	b := widget.NewBuffer(widget.BufferText(doc))
+	b := editor.NewBuffer(editor.BufferText(doc))
 	h.onLoop(func() { ed.Core().SetBuffer(b) })
 	h.barrier(sh)
 	if got := edge(); got != ' ' {

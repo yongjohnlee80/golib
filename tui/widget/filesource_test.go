@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/files"
 	"github.com/yongjohnlee80/golib/vfs"
 	"github.com/yongjohnlee80/golib/vfs/memfs"
 )
@@ -109,8 +109,8 @@ var vfsFiles = map[string]string{
 func TestAVFSSourceIsListedOffTheLoop(t *testing.T) {
 	g := newGated(t, vfsFiles)
 	g.release("file:top.txt")
-	v := widget.NewFileOpenView(widget.WithFileViewSource(widget.FileSource{VFS: g, Root: "vfs://"}),
-		widget.WithFileViewDir("vfs://"))
+	v := files.NewFileOpenView(files.WithFileViewSource(files.FileSource{VFS: g, Root: "vfs://"}),
+		files.WithFileViewDir("vfs://"))
 	h := startBrowser(t, v)
 	defer h.stop()
 	h.shows("loading")
@@ -130,8 +130,8 @@ func TestAVFSSourceIsListedOffTheLoop(t *testing.T) {
 func TestALaterLoadSupersedesAPendingName(t *testing.T) {
 	g := newGated(t, vfsFiles)
 	g.release("dir:.")
-	v := widget.NewFileOpenView(widget.WithFileViewSource(widget.FileSource{VFS: g, Root: "vfs://"}),
-		widget.WithFileViewDir("vfs://"), widget.WithFileViewPreview(false))
+	v := files.NewFileOpenView(files.WithFileViewSource(files.FileSource{VFS: g, Root: "vfs://"}),
+		files.WithFileViewDir("vfs://"), files.WithFileViewPreview(false))
 	h := startBrowser(t, v)
 	defer h.stop()
 	h.shows("top.txt")
@@ -162,8 +162,8 @@ func TestALaterLoadSupersedesAPendingName(t *testing.T) {
 // mid-read (a dialog closed) cancels the read through its context.
 func TestARemovedViewCancelsItsReadAndAppliesNothing(t *testing.T) {
 	g := newGated(t, vfsFiles)
-	v := widget.NewFileOpenView(widget.WithFileViewSource(widget.FileSource{VFS: g, Root: "vfs://"}),
-		widget.WithFileViewDir("vfs://"))
+	v := files.NewFileOpenView(files.WithFileViewSource(files.FileSource{VFS: g, Root: "vfs://"}),
+		files.WithFileViewDir("vfs://"))
 	root := tui.NewFlex(tui.Vertical)
 	root.AddWeighted(v, 1)
 	h := startApp(t, root, 80, 20)
@@ -183,8 +183,8 @@ func TestARemovedViewCancelsItsReadAndAppliesNothing(t *testing.T) {
 func TestAVFSPreviewIsReadOffTheLoop(t *testing.T) {
 	g := newGated(t, vfsFiles)
 	g.release("dir:a")
-	v := widget.NewFileOpenView(widget.WithFileViewSource(widget.FileSource{VFS: g, Root: "vfs://"}),
-		widget.WithFileViewDir("vfs://a"))
+	v := files.NewFileOpenView(files.WithFileViewSource(files.FileSource{VFS: g, Root: "vfs://"}),
+		files.WithFileViewDir("vfs://a"))
 	h := startBrowser(t, v)
 	defer h.stop()
 	h.shows("readme.md")
@@ -210,10 +210,10 @@ func TestAVFSPreviewIsReadOffTheLoop(t *testing.T) {
 // reads the file off the loop, and shows it when the read is let through.
 func TestAVFSPreviewShownBeforeItsMountIsReadAtTheMount(t *testing.T) {
 	g := newGated(t, vfsFiles)
-	p := widget.NewFilePreview(widget.FilePaneStyles{}, false)
+	p := files.NewFilePreview(files.FilePaneStyles{}, false)
 	shown := make(chan struct{})
 	go func() {
-		p.Show(widget.FileSource{VFS: g, Root: "vfs://"}, "a/x.txt", false)
+		p.Show(files.FileSource{VFS: g, Root: "vfs://"}, "a/x.txt", false)
 		close(shown)
 	}()
 	select {
@@ -237,7 +237,7 @@ func TestAVFSPreviewShownBeforeItsMountIsReadAtTheMount(t *testing.T) {
 // A new folder clears it too.
 func TestTheOpenViewFilters(t *testing.T) {
 	root := tree(t, map[string]string{"alpha.md": "a", "beta.md": "b", "gamma.txt": "g", "sub/c.md": "c"})
-	v := widget.NewFileOpenView(widget.WithFileViewDir(root), widget.WithFileViewPreview(false))
+	v := files.NewFileOpenView(files.WithFileViewDir(root), files.WithFileViewPreview(false))
 	h := startBrowser(t, v)
 	defer h.stop()
 	h.shows("gamma.txt")
@@ -282,7 +282,7 @@ func TestTheOpenViewFilters(t *testing.T) {
 // machine on CI. A frame has just run, so the cap holds the next one while the burst is routed.
 func TestAFilterTypedRightAfterSlashReachesTheField(t *testing.T) {
 	root := tree(t, map[string]string{"alpha.md": "a", "beta.md": "b", "gamma.txt": "g", "sub/c.md": "c"})
-	v := widget.NewFileOpenView(widget.WithFileViewDir(root), widget.WithFileViewPreview(false))
+	v := files.NewFileOpenView(files.WithFileViewDir(root), files.WithFileViewPreview(false))
 	h := startAppOpts(t, v, 80, 20, tui.WithMinFrameInterval(300*time.Millisecond))
 	defer h.stop()
 	h.onLoop(v.FocusInitial)
@@ -301,8 +301,8 @@ func TestALateAnswerIsDropped(t *testing.T) {
 	g := newGated(t, vfsFiles)
 	g.stubborn = true
 	g.release("dir:.")
-	v := widget.NewFileOpenView(widget.WithFileViewSource(widget.FileSource{VFS: g, Root: "vfs://"}),
-		widget.WithFileViewDir("vfs://"))
+	v := files.NewFileOpenView(files.WithFileViewSource(files.FileSource{VFS: g, Root: "vfs://"}),
+		files.WithFileViewDir("vfs://"))
 	h := startBrowser(t, v)
 	defer h.stop()
 	h.shows("top.txt")
@@ -340,8 +340,8 @@ func TestTheLastFoldersRowsCannotBeChosenWhileTheNextLoads(t *testing.T) {
 	g.release("dir:.")
 	g.release("file:top.txt")
 	var chosen atomic.Int32
-	v := widget.NewFileOpenView(widget.WithFileViewSource(widget.FileSource{VFS: g, Root: "vfs://"}),
-		widget.WithFileViewDir("vfs://"), widget.WithOnChoose(func() { chosen.Add(1) }))
+	v := files.NewFileOpenView(files.WithFileViewSource(files.FileSource{VFS: g, Root: "vfs://"}),
+		files.WithFileViewDir("vfs://"), files.WithOnChoose(func() { chosen.Add(1) }))
 	h := startBrowser(t, v)
 	defer h.stop()
 	h.shows("top.txt")
@@ -377,8 +377,8 @@ func TestTheLastFoldersRowsCannotBeChosenWhileTheNextLoads(t *testing.T) {
 func TestAReadIsStoppedWhenTheLoopTakesOver(t *testing.T) {
 	g := newGated(t, vfsFiles)
 	g.release("dir:a")
-	v := widget.NewFileOpenView(widget.WithFileViewSource(widget.FileSource{VFS: g, Root: "vfs://"}),
-		widget.WithFileViewDir("vfs://a"))
+	v := files.NewFileOpenView(files.WithFileViewSource(files.FileSource{VFS: g, Root: "vfs://"}),
+		files.WithFileViewDir("vfs://a"))
 	h := startBrowser(t, v)
 	defer h.stop()
 	h.shows("readme.md")
@@ -393,7 +393,7 @@ func TestAReadIsStoppedWhenTheLoopTakesOver(t *testing.T) {
 	h.onLoop(func() { v.SetDir("vfs://b") }) // held
 	h.waitFor("b's read held", func() bool { return g.started.Load() > started })
 	h.onLoop(func() {
-		v.SetSource(widget.FileSource{FS: fstest.MapFS{"local.txt": {Data: []byte("l")}}, Root: "/"})
+		v.SetSource(files.FileSource{FS: fstest.MapFS{"local.txt": {Data: []byte("l")}}, Root: "/"})
 		v.SetDir("/")
 	})
 	h.waitFor("the listing's read stopped", func() bool { return g.cancelled.Load() > before })
@@ -407,8 +407,8 @@ func TestAReadIsStoppedWhenTheLoopTakesOver(t *testing.T) {
 func TestAFileListWaitsForItsVFSFolder(t *testing.T) {
 	g := newGated(t, vfsFiles)
 	g.release("dir:b")
-	l := widget.NewFileList(widget.WithFileListSource(widget.FileSource{VFS: g, Root: "vfs://"}),
-		widget.WithFileListDir("vfs://a"))
+	l := files.NewFileList(files.WithFileListSource(files.FileSource{VFS: g, Root: "vfs://"}),
+		files.WithFileListDir("vfs://a"))
 	l.SetDir("vfs://b") // not mounted: b is listed at mount, a never
 	if l.Loading() || l.Dir() != "b" {
 		t.Fatalf("before mount: Loading %v, Dir %q; want b, nothing in flight", l.Loading(), l.Dir())
@@ -446,8 +446,8 @@ func TestASaveViewAsksAVFSSourceWhetherANameIsAFolder(t *testing.T) {
 	g := newGated(t, vfsFiles)
 	g.release("dir:.")
 	g.release("dir:a")
-	v := widget.NewFileSaveView(widget.WithFileViewSource(widget.FileSource{VFS: g, Root: "vfs://"}),
-		widget.WithFileViewDir("vfs://"))
+	v := files.NewFileSaveView(files.WithFileViewSource(files.FileSource{VFS: g, Root: "vfs://"}),
+		files.WithFileViewDir("vfs://"))
 	h := startBrowser(t, v)
 	defer h.stop()
 	h.shows("top.txt")
@@ -501,8 +501,8 @@ func (d gatedDirFS) Stat(name string) (fs.FileInfo, error) {
 // superseded cannot be stopped, and when it answers late it is dropped.
 func TestAnAsyncFSIsListedOffTheLoop(t *testing.T) {
 	d := newGatedDir(vfsFiles)
-	v := widget.NewFileOpenView(widget.WithFileViewSource(widget.FileSource{FS: d, Root: "mem://", Async: true}),
-		widget.WithFileViewDir("mem://"), widget.WithFileViewPreview(false))
+	v := files.NewFileOpenView(files.WithFileViewSource(files.FileSource{FS: d, Root: "mem://", Async: true}),
+		files.WithFileViewDir("mem://"), files.WithFileViewPreview(false))
 	h := startBrowser(t, v)
 	defer h.stop()
 	h.shows("loading")
@@ -540,8 +540,8 @@ func TestAnAsyncLocalSourceFollowsLinksToFolders(t *testing.T) {
 	if err := os.Symlink("real", filepath.Join(root, "rel")); err != nil {
 		t.Fatal(err)
 	}
-	v := widget.NewFileOpenView(widget.WithFileViewSource(widget.FileSource{FS: os.DirFS("/"), Root: "/", Async: true}),
-		widget.WithFileViewDir(root))
+	v := files.NewFileOpenView(files.WithFileViewSource(files.FileSource{FS: os.DirFS("/"), Root: "/", Async: true}),
+		files.WithFileViewDir(root))
 	h := startBrowser(t, v)
 	defer h.stop()
 	h.shows("rel/")
@@ -583,8 +583,8 @@ func TestASaveViewChecksATypedNameOffTheLoop(t *testing.T) {
 	d.g.release("dir:.")
 	d.g.release("dir:a")
 	var chosen atomic.Int32
-	v := widget.NewFileSaveView(widget.WithFileViewSource(widget.FileSource{FS: d, Root: "mem://", Async: true}),
-		widget.WithFileViewDir("mem://"), widget.WithOnChoose(func() { chosen.Add(1) }))
+	v := files.NewFileSaveView(files.WithFileViewSource(files.FileSource{FS: d, Root: "mem://", Async: true}),
+		files.WithFileViewDir("mem://"), files.WithOnChoose(func() { chosen.Add(1) }))
 	h := startBrowser(t, v) // the name field has the keyboard
 	defer h.stop()
 	h.shows("top.txt")
@@ -650,10 +650,10 @@ func TestASourceSwapDropsATypedNamesCheck(t *testing.T) {
 	file.g.release("dir:.")
 	folder.g.release("dir:.")
 	folder.g.release("dir:x")
-	srcOf := func(d gatedDirFS) widget.FileSource { return widget.FileSource{FS: d, Root: "mem://", Async: true} }
+	srcOf := func(d gatedDirFS) files.FileSource { return files.FileSource{FS: d, Root: "mem://", Async: true} }
 	var chosen atomic.Int32
-	v := widget.NewFileSaveView(widget.WithFileViewSource(srcOf(file)), widget.WithFileViewDir("mem://"),
-		widget.WithOnChoose(func() { chosen.Add(1) }))
+	v := files.NewFileSaveView(files.WithFileViewSource(srcOf(file)), files.WithFileViewDir("mem://"),
+		files.WithOnChoose(func() { chosen.Add(1) }))
 	h := startBrowser(t, v)
 	defer h.stop()
 	// the cursor lands on x once the file source's rows are in, and names it
@@ -695,12 +695,12 @@ func TestASourceSwapDropsATypedNamesCheck(t *testing.T) {
 // tick later on top of FileList's own call (tui-widget-data-I4).
 func TestAFileListReportsACursorMoveOnce(t *testing.T) {
 	var calls []string
-	l := widget.NewFileList(
-		widget.WithFileListSource(widget.FileSource{FS: fstest.MapFS{
+	l := files.NewFileList(
+		files.WithFileListSource(files.FileSource{FS: fstest.MapFS{
 			"a.txt": {Data: []byte("a")}, "b.txt": {Data: []byte("b")}, "c.txt": {Data: []byte("c")},
 		}, Root: "/"}),
-		widget.WithFileListDir("/"),
-		widget.WithOnCursor(func(p string, _ bool) { calls = append(calls, path.Base(p)) }))
+		files.WithFileListDir("/"),
+		files.WithOnCursor(func(p string, _ bool) { calls = append(calls, path.Base(p)) }))
 	h := startApp(t, l, 60, 12)
 	defer h.stop()
 	h.waitFor("listed", func() bool { return strings.Contains(h.grid(), "c.txt") })
@@ -744,8 +744,8 @@ func (r refusingFS) Stat(ctx context.Context, name string) (vfs.FileInfo, error)
 // found, even where the store has that name inside its root. The folder listed stays as it was.
 func TestAVFSSourceTellsThePathFieldWhatAPathIs(t *testing.T) {
 	g := newGated(t, map[string]string{"in/f.md": "f", "secret/x": "x"})
-	src := widget.FileSource{VFS: refusingFS{FS: g.FS, refused: "secret"}, Root: "vfs://"}
-	v := widget.NewFileFolderView(widget.WithFileViewSource(src), widget.WithFileViewDir("vfs://"))
+	src := files.FileSource{VFS: refusingFS{FS: g.FS, refused: "secret"}, Root: "vfs://"}
+	v := files.NewFileFolderView(files.WithFileViewSource(src), files.WithFileViewDir("vfs://"))
 	h := startBrowser(t, v)
 	defer h.stop()
 	h.shows("in/")

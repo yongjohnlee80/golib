@@ -5,13 +5,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // TestProgressBarIdleZeroFlush asserts no tick registration while
 // determinate-and-idle — the idle app emits zero bytes (no flushes).
 func TestProgressBarIdleZeroFlush(t *testing.T) {
-	p := widget.NewProgressBar()
+	p := core.NewProgressBar()
 	h := startApp(t, p, 20, 1)
 
 	// Indeterminate: the animation produces frames.
@@ -32,7 +32,7 @@ func TestProgressBarIdleZeroFlush(t *testing.T) {
 }
 
 func TestProgressBarSpinner(t *testing.T) {
-	p := widget.NewProgressBar(widget.WithSpinner([]string{"|", "/", "-", "\\"}, 5*time.Millisecond))
+	p := core.NewProgressBar(core.WithSpinner([]string{"|", "/", "-", "\\"}, 5*time.Millisecond))
 	h := startApp(t, p, 5, 1)
 	h.onLoop(p.SetIndeterminate)
 	h.waitFor("spinner frame", func() bool {

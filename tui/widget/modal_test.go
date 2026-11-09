@@ -9,7 +9,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // A dialog is mostly lifecycle and focus policy, and both are the kind of thing
@@ -20,17 +20,17 @@ import (
 // modalFixture builds host(base + dialog-ready) at a known size and returns
 // both. The base is a focusable leaf, so "focus moved into the dialog" is
 // distinguishable from "focus was already there".
-func modalFixture(t *testing.T, m *widget.Modal, w, h int) (*harness, *widget.OverlayHost, *widget.Button) {
+func modalFixture(t *testing.T, m *core.Modal, w, h int) (*harness, *core.OverlayHost, *core.Button) {
 	t.Helper()
-	base := widget.NewButton("base")
-	host := widget.NewOverlayHost(base)
+	base := core.NewButton("base")
+	host := core.NewOverlayHost(base)
 	hh := startApp(t, host, w, h)
 	hh.onLoop(func() { base.Context().RequestFocus() })
 	hh.settle()
 	return hh, host, base
 }
 
-func openOn(t *testing.T, h *harness, m *widget.Modal, host *widget.OverlayHost) {
+func openOn(t *testing.T, h *harness, m *core.Modal, host *core.OverlayHost) {
 	t.Helper()
 	var err error
 	h.onLoop(func() { err = m.Open(host) })
@@ -44,9 +44,9 @@ func openOn(t *testing.T, h *harness, m *widget.Modal, host *widget.OverlayHost)
 // focus, so the dialog starts on its default button, though another comes first
 // in Tab order: a focused button claims Enter, and Enter must answer the default.
 func TestOpeningADialogTrapsFocusOnItsDefaultButton(t *testing.T) {
-	cancel := widget.NewButton("Cancel", widget.WithRole(widget.ButtonRoleReject))
-	ok := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
-	m := widget.NewModal(widget.NewText("Sure?"), widget.WithButtons(cancel, ok))
+	cancel := core.NewButton("Cancel", core.WithRole(core.ButtonRoleReject))
+	ok := core.NewButton("OK", core.WithRole(core.ButtonRoleAccept), core.WithDefault(true))
+	m := core.NewModal(core.NewText("Sure?"), core.WithButtons(cancel, ok))
 
 	h, host, base := modalFixture(t, m, 40, 12)
 	defer h.stop()
@@ -83,13 +83,13 @@ func TestOpeningADialogTrapsFocusOnItsDefaultButton(t *testing.T) {
 // Tab order, so a form starts in its first field — not on OK, where the first
 // Space typed into what the user took for the field would press it.
 func TestAnInputDialogStartsInItsFirstField(t *testing.T) {
-	user, pass := widget.NewTextInput(), widget.NewTextInput()
-	ok := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
+	user, pass := core.NewTextInput(), core.NewTextInput()
+	ok := core.NewButton("OK", core.WithRole(core.ButtonRoleAccept), core.WithDefault(true))
 	body := tui.NewFlex(tui.Vertical)
-	for _, c := range []tui.Component{widget.NewText("user"), user, widget.NewText("passphrase"), pass} {
+	for _, c := range []tui.Component{core.NewText("user"), user, core.NewText("passphrase"), pass} {
 		body.Add(c)
 	}
-	m := widget.NewModal(body, widget.WithButtons(ok))
+	m := core.NewModal(body, core.WithButtons(ok))
 
 	h, host, _ := modalFixture(t, m, 40, 14)
 	defer h.stop()
@@ -109,17 +109,17 @@ func TestAnInputDialogStartsInItsFirstField(t *testing.T) {
 // the dialog answers with its default button — a login form signs in from its
 // last field, as a Qt dialog does.
 func TestEnterInAFieldAnswersTheDialog(t *testing.T) {
-	user := widget.NewTextInput()
+	user := core.NewTextInput()
 	submitted := ""
-	pass := widget.NewTextInput(widget.WithOnSubmit(func(v string) { submitted = v }))
-	ok := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
+	pass := core.NewTextInput(core.WithOnSubmit(func(v string) { submitted = v }))
+	ok := core.NewButton("OK", core.WithRole(core.ButtonRoleAccept), core.WithDefault(true))
 	body := tui.NewFlex(tui.Vertical)
 	for _, c := range []tui.Component{user, pass} {
 		body.Add(c)
 	}
-	var reasons []widget.DismissReason
-	m := widget.NewModal(body, widget.WithButtons(ok),
-		widget.WithOnDismiss(func(r widget.DismissReason) { reasons = append(reasons, r) }))
+	var reasons []core.DismissReason
+	m := core.NewModal(body, core.WithButtons(ok),
+		core.WithOnDismiss(func(r core.DismissReason) { reasons = append(reasons, r) }))
 
 	h, host, _ := modalFixture(t, m, 40, 14)
 	defer h.stop()
@@ -131,15 +131,15 @@ func TestEnterInAFieldAnswersTheDialog(t *testing.T) {
 	h.settle()
 
 	var open bool
-	var got []widget.DismissReason
+	var got []core.DismissReason
 	var sawSubmit string
 	h.onLoop(func() {
-		open, got, sawSubmit = m.IsOpen(), append([]widget.DismissReason(nil), reasons...), submitted
+		open, got, sawSubmit = m.IsOpen(), append([]core.DismissReason(nil), reasons...), submitted
 	})
 	if sawSubmit != "secret" {
 		t.Errorf("the field's submit hook saw %q, want it to run first", sawSubmit)
 	}
-	if open || len(got) != 1 || got[0] != widget.DismissAccept {
+	if open || len(got) != 1 || got[0] != core.DismissAccept {
 		t.Errorf("Enter in the field left the dialog open=%v, dismissed %v; want accepted", open, got)
 	}
 }
@@ -148,13 +148,13 @@ func TestEnterInAFieldAnswersTheDialog(t *testing.T) {
 // from it — a control that uses Enter keeps it — so a dialog whose default is
 // OK answers nothing while its Select has focus.
 func TestASelectInADialogKeepsEnter(t *testing.T) {
-	sel := widget.NewSelect(widget.WithOptions([]widget.SelectItem[string]{
+	sel := core.NewSelect(core.WithOptions([]core.SelectItem[string]{
 		{Label: "sqlite", Value: "sqlite"}, {Label: "postgres", Value: "postgres"},
 	}))
-	ok := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
-	var reasons []widget.DismissReason
-	m := widget.NewModal(sel, widget.WithButtons(ok),
-		widget.WithOnDismiss(func(r widget.DismissReason) { reasons = append(reasons, r) }))
+	ok := core.NewButton("OK", core.WithRole(core.ButtonRoleAccept), core.WithDefault(true))
+	var reasons []core.DismissReason
+	m := core.NewModal(sel, core.WithButtons(ok),
+		core.WithOnDismiss(func(r core.DismissReason) { reasons = append(reasons, r) }))
 
 	h, host, _ := modalFixture(t, m, 40, 14)
 	defer h.stop()
@@ -165,10 +165,10 @@ func TestASelectInADialogKeepsEnter(t *testing.T) {
 	h.settle()
 
 	var open bool
-	var got []widget.DismissReason
+	var got []core.DismissReason
 	var v string
 	h.onLoop(func() {
-		open, got = m.IsOpen(), append([]widget.DismissReason(nil), reasons...)
+		open, got = m.IsOpen(), append([]core.DismissReason(nil), reasons...)
 		v, _ = sel.Value()
 	})
 	if !open || len(got) != 0 {
@@ -182,22 +182,22 @@ func TestASelectInADialogKeepsEnter(t *testing.T) {
 // TestOpeningATwiceOpenedDialogChangesNothing. Two code paths opening the same
 // dialog would otherwise mount it twice and leave one copy unreachable.
 func TestOpeningATwiceOpenedDialogChangesNothing(t *testing.T) {
-	ok := widget.NewButton("OK")
-	m := widget.NewModal(widget.NewText("Body"), widget.WithButtons(ok))
+	ok := core.NewButton("OK")
+	m := core.NewModal(core.NewText("Body"), core.WithButtons(ok))
 	h, host, _ := modalFixture(t, m, 40, 12)
 	defer h.stop()
 
 	openOn(t, h, m, host)
 
 	var err error
-	var top *widget.Modal
+	var top *core.Modal
 	h.onLoop(func() {
 		err = m.Open(host)
 		top = host.TopModal()
 	})
 	h.settle()
 
-	if !errors.Is(err, widget.ErrModalAlreadyOpen) {
+	if !errors.Is(err, core.ErrModalAlreadyOpen) {
 		t.Errorf("second Open returned %v, want ErrModalAlreadyOpen", err)
 	}
 	if top != m {
@@ -210,8 +210,8 @@ func TestOpeningATwiceOpenedDialogChangesNothing(t *testing.T) {
 
 // TestOpeningWithoutAHostIsRefused.
 func TestOpeningWithoutAHostIsRefused(t *testing.T) {
-	m := widget.NewModal(widget.NewText("Body"))
-	if err := m.Open(nil); !errors.Is(err, widget.ErrNilOverlayHost) {
+	m := core.NewModal(core.NewText("Body"))
+	if err := m.Open(nil); !errors.Is(err, core.ErrNilOverlayHost) {
 		t.Errorf("Open(nil) returned %v, want ErrNilOverlayHost", err)
 	}
 	if m.IsOpen() {
@@ -225,14 +225,14 @@ func TestDismissPublishesExactlyOnceAndRunsTheCallbackFirst(t *testing.T) {
 	var mu sync.Mutex
 	note := func(s string) { mu.Lock(); order = append(order, s); mu.Unlock() }
 
-	m := widget.NewModal(widget.NewText("Body"),
-		widget.WithOnDismiss(func(widget.DismissReason) { note("callback") }))
+	m := core.NewModal(core.NewText("Body"),
+		core.WithOnDismiss(func(core.DismissReason) { note("callback") }))
 	h, host, _ := modalFixture(t, m, 40, 12)
 	defer h.stop()
 	openOn(t, h, m, host)
 
-	var got []widget.OverlayDismissedEvent
-	unsub := tui.Subscribe(h.app.Bus(), func(ev widget.OverlayDismissedEvent) {
+	var got []core.OverlayDismissedEvent
+	unsub := tui.Subscribe(h.app.Bus(), func(ev core.OverlayDismissedEvent) {
 		note("event")
 		mu.Lock()
 		got = append(got, ev)
@@ -240,7 +240,7 @@ func TestDismissPublishesExactlyOnceAndRunsTheCallbackFirst(t *testing.T) {
 	})
 	defer unsub()
 
-	h.onLoop(func() { m.Dismiss(widget.DismissProgrammatic) })
+	h.onLoop(func() { m.Dismiss(core.DismissProgrammatic) })
 	h.waitFor("dismissal published", func() bool {
 		mu.Lock()
 		defer mu.Unlock()
@@ -250,14 +250,14 @@ func TestDismissPublishesExactlyOnceAndRunsTheCallbackFirst(t *testing.T) {
 
 	mu.Lock()
 	seq := append([]string(nil), order...)
-	evs := append([]widget.OverlayDismissedEvent(nil), got...)
+	evs := append([]core.OverlayDismissedEvent(nil), got...)
 	mu.Unlock()
 
 	if len(evs) != 1 {
 		t.Fatalf("%d dismissal events, want exactly 1", len(evs))
 	}
-	if evs[0].Reason != widget.DismissProgrammatic {
-		t.Errorf("reason = %v, want %v", evs[0].Reason, widget.DismissProgrammatic)
+	if evs[0].Reason != core.DismissProgrammatic {
+		t.Errorf("reason = %v, want %v", evs[0].Reason, core.DismissProgrammatic)
 	}
 	// The callback completes before any observer sees the event. Worth stating,
 	// but note WHY: Bus.Publish is enqueue-only, so a subscriber always runs in
@@ -277,20 +277,20 @@ func TestDismissPublishesExactlyOnceAndRunsTheCallbackFirst(t *testing.T) {
 // what stops one closure producing three events.
 func TestDismissingAClosedDialogIsSilent(t *testing.T) {
 	var callbacks atomic.Int64
-	m := widget.NewModal(widget.NewText("Body"),
-		widget.WithOnDismiss(func(widget.DismissReason) { callbacks.Add(1) }))
+	m := core.NewModal(core.NewText("Body"),
+		core.WithOnDismiss(func(core.DismissReason) { callbacks.Add(1) }))
 	h, host, _ := modalFixture(t, m, 40, 12)
 	defer h.stop()
 	openOn(t, h, m, host)
 
 	var events atomic.Int64
-	unsub := tui.Subscribe(h.app.Bus(), func(widget.OverlayDismissedEvent) { events.Add(1) })
+	unsub := tui.Subscribe(h.app.Bus(), func(core.OverlayDismissedEvent) { events.Add(1) })
 	defer unsub()
 
 	h.onLoop(func() {
-		m.Dismiss(widget.DismissProgrammatic)
-		m.Dismiss(widget.DismissProgrammatic) // already closed
-		m.Dismiss(widget.DismissEscape)       // still closed
+		m.Dismiss(core.DismissProgrammatic)
+		m.Dismiss(core.DismissProgrammatic) // already closed
+		m.Dismiss(core.DismissEscape)       // still closed
 	})
 	h.waitFor("first dismissal published", func() bool { return events.Load() >= 1 })
 	h.settle()
@@ -312,18 +312,18 @@ func TestEscapeResolvesTheCancelRoleRatherThanALabel(t *testing.T) {
 	var cancelled atomic.Int64
 	// Deliberately misleading: the CANCEL role is on the button labelled "Nope",
 	// and a button labelled "Cancel" carries no role at all.
-	decoy := widget.NewButton("Cancel")
-	real := widget.NewButton("Nope", widget.WithRole(widget.ButtonRoleReject),
-		widget.WithOnActivate(func() { cancelled.Add(1) }))
-	m := widget.NewModal(widget.NewText("Body"), widget.WithButtons(decoy, real))
+	decoy := core.NewButton("Cancel")
+	real := core.NewButton("Nope", core.WithRole(core.ButtonRoleReject),
+		core.WithOnActivate(func() { cancelled.Add(1) }))
+	m := core.NewModal(core.NewText("Body"), core.WithButtons(decoy, real))
 
 	h, host, _ := modalFixture(t, m, 40, 12)
 	defer h.stop()
 	openOn(t, h, m, host)
 
-	var reason widget.DismissReason
+	var reason core.DismissReason
 	var seen atomic.Int64
-	unsub := tui.Subscribe(h.app.Bus(), func(ev widget.OverlayDismissedEvent) {
+	unsub := tui.Subscribe(h.app.Bus(), func(ev core.OverlayDismissedEvent) {
 		reason = ev.Reason
 		seen.Add(1)
 	})
@@ -336,23 +336,23 @@ func TestEscapeResolvesTheCancelRoleRatherThanALabel(t *testing.T) {
 	if got := cancelled.Load(); got != 1 {
 		t.Errorf("the Cancel-ROLE button activated %d times, want 1", got)
 	}
-	if reason != widget.DismissCancel {
+	if reason != core.DismissCancel {
 		t.Errorf("reason = %v, want %v: a dialog with a cancel role reports that role",
-			reason, widget.DismissCancel)
+			reason, core.DismissCancel)
 	}
 }
 
 // TestEscapeWithoutACancelRoleStillCloses.
 func TestEscapeWithoutACancelRoleStillCloses(t *testing.T) {
-	m := widget.NewModal(widget.NewText("Body"),
-		widget.WithButtons(widget.NewButton("OK", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))))
+	m := core.NewModal(core.NewText("Body"),
+		core.WithButtons(core.NewButton("OK", core.WithRole(core.ButtonRoleAccept), core.WithDefault(true))))
 	h, host, _ := modalFixture(t, m, 40, 12)
 	defer h.stop()
 	openOn(t, h, m, host)
 
-	var reason widget.DismissReason
+	var reason core.DismissReason
 	var seen atomic.Int64
-	unsub := tui.Subscribe(h.app.Bus(), func(ev widget.OverlayDismissedEvent) {
+	unsub := tui.Subscribe(h.app.Bus(), func(ev core.OverlayDismissedEvent) {
 		reason = ev.Reason
 		seen.Add(1)
 	})
@@ -361,8 +361,8 @@ func TestEscapeWithoutACancelRoleStillCloses(t *testing.T) {
 	h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEscape})
 	h.waitFor("dismissed", func() bool { return seen.Load() == 1 })
 
-	if reason != widget.DismissEscape {
-		t.Errorf("reason = %v, want %v", reason, widget.DismissEscape)
+	if reason != core.DismissEscape {
+		t.Errorf("reason = %v, want %v", reason, core.DismissEscape)
 	}
 }
 
@@ -375,22 +375,22 @@ func TestEscapeWithoutACancelRoleStillCloses(t *testing.T) {
 // as a real control is available.
 func TestTheDialogItselfTakesFocusOnlyWhenNoButtonCan(t *testing.T) {
 	t.Run("zero buttons", func(t *testing.T) {
-		m := widget.NewModal(widget.NewText("Body"))
+		m := core.NewModal(core.NewText("Body"))
 		if !m.AcceptsFocus() {
 			t.Error("a dialog with no buttons refuses focus, leaving the trap empty")
 		}
 	})
 
 	t.Run("one enabled button", func(t *testing.T) {
-		m := widget.NewModal(widget.NewText("Body"), widget.WithButtons(widget.NewButton("OK")))
+		m := core.NewModal(core.NewText("Body"), core.WithButtons(core.NewButton("OK")))
 		if m.AcceptsFocus() {
 			t.Error("a dialog with an enabled button takes focus itself; the button should")
 		}
 	})
 
 	t.Run("all buttons disabled", func(t *testing.T) {
-		b := widget.NewButton("OK")
-		m := widget.NewModal(widget.NewText("Body"), widget.WithButtons(b))
+		b := core.NewButton("OK")
+		m := core.NewModal(core.NewText("Body"), core.WithButtons(b))
 		h, host, _ := modalFixture(t, m, 40, 12)
 		defer h.stop()
 		openOn(t, h, m, host)
@@ -417,7 +417,7 @@ func TestTheDialogItselfTakesFocusOnlyWhenNoButtonCan(t *testing.T) {
 
 		// And Escape still works, which is the whole reason for the rule.
 		var seen atomic.Int64
-		unsub := tui.Subscribe(h.app.Bus(), func(widget.OverlayDismissedEvent) { seen.Add(1) })
+		unsub := tui.Subscribe(h.app.Bus(), func(core.OverlayDismissedEvent) { seen.Add(1) })
 		defer unsub()
 		h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEscape})
 		h.waitFor("escape still closes an all-disabled dialog", func() bool { return seen.Load() == 1 })
@@ -426,8 +426,8 @@ func TestTheDialogItselfTakesFocusOnlyWhenNoButtonCan(t *testing.T) {
 
 // TestSetButtonsRejectsADuplicateRoleWithoutChangingAnything.
 func TestSetButtonsRejectsADuplicateRoleWithoutChangingAnything(t *testing.T) {
-	ok := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
-	m := widget.NewModal(widget.NewText("Body"), widget.WithButtons(ok))
+	ok := core.NewButton("OK", core.WithRole(core.ButtonRoleAccept), core.WithDefault(true))
+	m := core.NewModal(core.NewText("Body"), core.WithButtons(ok))
 	h, host, _ := modalFixture(t, m, 40, 12)
 	defer h.stop()
 	openOn(t, h, m, host)
@@ -435,13 +435,13 @@ func TestSetButtonsRejectsADuplicateRoleWithoutChangingAnything(t *testing.T) {
 	var err error
 	h.onLoop(func() {
 		err = m.SetButtons(
-			widget.NewButton("A", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true)),
-			widget.NewButton("B", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true)),
+			core.NewButton("A", core.WithRole(core.ButtonRoleAccept), core.WithDefault(true)),
+			core.NewButton("B", core.WithRole(core.ButtonRoleAccept), core.WithDefault(true)),
 		)
 	})
 	h.settle()
 
-	if !errors.Is(err, widget.ErrDuplicateDefault) {
+	if !errors.Is(err, core.ErrDuplicateDefault) {
 		t.Fatalf("SetButtons returned %v, want ErrDuplicateDefault", err)
 	}
 	// ATOMIC: the original list survives a rejected call.
@@ -454,14 +454,14 @@ func TestSetButtonsRejectsADuplicateRoleWithoutChangingAnything(t *testing.T) {
 
 // TestSetButtonsReplacesAValidList.
 func TestSetButtonsReplacesAValidList(t *testing.T) {
-	m := widget.NewModal(widget.NewText("Body"),
-		widget.WithButtons(widget.NewButton("Old")))
+	m := core.NewModal(core.NewText("Body"),
+		core.WithButtons(core.NewButton("Old")))
 	h, host, _ := modalFixture(t, m, 40, 12)
 	defer h.stop()
 	openOn(t, h, m, host)
 
-	a := widget.NewButton("A", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
-	b := widget.NewButton("B", widget.WithRole(widget.ButtonRoleReject))
+	a := core.NewButton("A", core.WithRole(core.ButtonRoleAccept), core.WithDefault(true))
+	b := core.NewButton("B", core.WithRole(core.ButtonRoleReject))
 	var err error
 	h.onLoop(func() { err = m.SetButtons(a, b) })
 	h.settle()
@@ -479,9 +479,9 @@ func TestSetButtonsReplacesAValidList(t *testing.T) {
 // same rule the runtime setter returns an error for.
 func TestConstructingWithADuplicateRolePanics(t *testing.T) {
 	fatal := fatalFromWidgetExt(func() {
-		widget.NewModal(widget.NewText("Body"), widget.WithButtons(
-			widget.NewButton("A", widget.WithRole(widget.ButtonRoleReject)),
-			widget.NewButton("B", widget.WithRole(widget.ButtonRoleReject)),
+		core.NewModal(core.NewText("Body"), core.WithButtons(
+			core.NewButton("A", core.WithRole(core.ButtonRoleReject)),
+			core.NewButton("B", core.WithRole(core.ButtonRoleReject)),
 		))
 	})
 	if fatal == nil {
@@ -491,9 +491,9 @@ func TestConstructingWithADuplicateRolePanics(t *testing.T) {
 	// The control: one of each is fine, so the panic above is about the
 	// duplicate rather than about roles in general.
 	if f := fatalFromWidgetExt(func() {
-		widget.NewModal(widget.NewText("Body"), widget.WithButtons(
-			widget.NewButton("A", widget.WithRole(widget.ButtonRoleReject)),
-			widget.NewButton("B", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true)),
+		core.NewModal(core.NewText("Body"), core.WithButtons(
+			core.NewButton("A", core.WithRole(core.ButtonRoleReject)),
+			core.NewButton("B", core.WithRole(core.ButtonRoleAccept), core.WithDefault(true)),
 		))
 	}); f != nil {
 		t.Errorf("NewModal rejected a legal list (%v)", f.Rule)
@@ -504,7 +504,7 @@ func TestConstructingWithADuplicateRolePanics(t *testing.T) {
 // top-left, so centring is something the Modal must do rather than something it
 // inherits — which is exactly why the card is a separate placed child.
 func TestTheCardIsCentredWithinTheHost(t *testing.T) {
-	m := widget.NewModal(widget.NewText("Hi"), widget.WithModalTitle("T"))
+	m := core.NewModal(core.NewText("Hi"), core.WithModalTitle("T"))
 	h, host, _ := modalFixture(t, m, 40, 12)
 	defer h.stop()
 	openOn(t, h, m, host)
@@ -552,17 +552,17 @@ func cardBounds(t *testing.T, h *harness) (x0, y0, x1, y1 int) {
 func TestEachPlacementPutsTheCardWhereItSays(t *testing.T) {
 	const hostW, hostH = 40, 12
 	for _, tc := range []struct {
-		p                 widget.ModalPlacement
+		p                 core.ModalPlacement
 		wantLeft, wantTop bool
 	}{
-		{widget.PlacementTopLeft, true, true},
-		{widget.PlacementTopRight, false, true},
-		{widget.PlacementBottomLeft, true, false},
-		{widget.PlacementBottomRight, false, false},
+		{core.PlacementTopLeft, true, true},
+		{core.PlacementTopRight, false, true},
+		{core.PlacementBottomLeft, true, false},
+		{core.PlacementBottomRight, false, false},
 	} {
 		t.Run(tc.p.String(), func(t *testing.T) {
-			m := widget.NewModal(widget.NewText("Hi"),
-				widget.WithModalTitle("T"), widget.WithPlacement(tc.p))
+			m := core.NewModal(core.NewText("Hi"),
+				core.WithModalTitle("T"), core.WithPlacement(tc.p))
 			h, host, _ := modalFixture(t, m, hostW, hostH)
 			defer h.stop()
 			openOn(t, h, m, host)
@@ -593,8 +593,8 @@ func TestEachPlacementPutsTheCardWhereItSays(t *testing.T) {
 // screen: after the upper dialog closes, what is left must be exactly what was
 // there before it opened.
 func TestClosingAStackedDialogRestoresTheBackdropBeneathTheOneBelow(t *testing.T) {
-	lower := widget.NewModal(widget.NewText("first"), widget.WithModalTitle("Alpha"))
-	upper := widget.NewModal(widget.NewText("later"), widget.WithModalTitle("Bravo"))
+	lower := core.NewModal(core.NewText("first"), core.WithModalTitle("Alpha"))
+	upper := core.NewModal(core.NewText("later"), core.WithModalTitle("Bravo"))
 
 	h, host, _ := modalFixture(t, lower, 40, 12)
 	defer h.stop()
@@ -611,13 +611,13 @@ func TestClosingAStackedDialogRestoresTheBackdropBeneathTheOneBelow(t *testing.T
 			"comparison below cannot observe the restore either")
 	}
 
-	var top *widget.Modal
+	var top *core.Modal
 	h.onLoop(func() { top = host.TopModal() })
 	if top != upper {
 		t.Error("TopModal() is not the dialog opened last")
 	}
 
-	h.onLoop(func() { upper.Dismiss(widget.DismissProgrammatic) })
+	h.onLoop(func() { upper.Dismiss(core.DismissProgrammatic) })
 	h.settle()
 
 	if got := h.grid(); got != alone {
@@ -629,7 +629,7 @@ func TestClosingAStackedDialogRestoresTheBackdropBeneathTheOneBelow(t *testing.T
 		t.Error("the dialog underneath did not become topmost after the one above closed")
 	}
 
-	h.onLoop(func() { lower.Dismiss(widget.DismissProgrammatic) })
+	h.onLoop(func() { lower.Dismiss(core.DismissProgrammatic) })
 	h.settle()
 	h.onLoop(func() { top = host.TopModal() })
 	if top != nil {
@@ -646,10 +646,10 @@ func TestClosingAStackedDialogRestoresTheBackdropBeneathTheOneBelow(t *testing.T
 func TestAnAssociatedStyleDressesTheScrim(t *testing.T) {
 	// NewModalStyle states the two looks a caller cares about and derives the
 	// rest; the scrim is then replaced so it is distinguishable from the default.
-	st := widget.NewModalStyle(styleOf(1), styleOf(2)).
+	st := core.NewModalStyle(styleOf(1), styleOf(2)).
 		WithScrim(style.New().Underline(true))
-	m := widget.NewModal(widget.NewText("Body"),
-		widget.WithModalTitle("T"), widget.WithModalStyle(st))
+	m := core.NewModal(core.NewText("Body"),
+		core.WithModalTitle("T"), core.WithModalStyle(st))
 
 	h, host, _ := modalFixture(t, m, 30, 8)
 	defer h.stop()
@@ -674,11 +674,11 @@ func TestAnAssociatedStyleDressesTheScrim(t *testing.T) {
 // dialog is on top.
 func TestScrimIsPaintedByDefaultAndSuppressible(t *testing.T) {
 	withScrim := func(want bool) string {
-		opts := []widget.ModalOption{widget.WithModalTitle("T")}
+		opts := []core.ModalOption{core.WithModalTitle("T")}
 		if !want {
-			opts = append(opts, widget.WithScrim(false))
+			opts = append(opts, core.WithScrim(false))
 		}
-		m := widget.NewModal(widget.NewText("Hi"), opts...)
+		m := core.NewModal(core.NewText("Hi"), opts...)
 		h, host, _ := modalFixture(t, m, 30, 8)
 		defer h.stop()
 		openOn(t, h, m, host)
@@ -696,19 +696,19 @@ func TestScrimIsPaintedByDefaultAndSuppressible(t *testing.T) {
 // TestDismissReasonNamesEveryValue, including the unknown arm — an application
 // may dismiss with a reason of its own, and it must render rather than vanish.
 func TestDismissReasonNamesEveryValue(t *testing.T) {
-	for r, want := range map[widget.DismissReason]string{
-		widget.DismissProgrammatic: "programmatic",
-		widget.DismissEscape:       "escape",
-		widget.DismissAccept:       "accept",
-		widget.DismissCancel:       "cancel",
-		widget.DismissAnchorLost:   "anchor-lost",
-		widget.DismissReplaced:     "replaced",
+	for r, want := range map[core.DismissReason]string{
+		core.DismissProgrammatic: "programmatic",
+		core.DismissEscape:       "escape",
+		core.DismissAccept:       "accept",
+		core.DismissCancel:       "cancel",
+		core.DismissAnchorLost:   "anchor-lost",
+		core.DismissReplaced:     "replaced",
 	} {
 		if got := r.String(); got != want {
 			t.Errorf("DismissReason(%d).String() = %q, want %q", r, got, want)
 		}
 	}
-	if got := widget.DismissReason(200).String(); got != "unknown" {
+	if got := core.DismissReason(200).String(); got != "unknown" {
 		t.Errorf("a consumer-defined reason rendered as %q, want %q", got, "unknown")
 	}
 }
@@ -718,57 +718,57 @@ func TestPlacementEnumsValidateAndName(t *testing.T) {
 	// The FIRST invalid value of each, not a far-out one: an off-by-one bound
 	// rejects 200 exactly as readily as a correct bound does, so probing only
 	// that cannot see the edge move.
-	if !widget.PlacementBottomRight.Valid() || (widget.PlacementBottomRight + 1).Valid() {
+	if !core.PlacementBottomRight.Valid() || (core.PlacementBottomRight + 1).Valid() {
 		t.Error("ModalPlacement.Valid does not bound the declared set at its edge")
 	}
-	if !widget.PlacementLeft.Valid() || (widget.PlacementLeft + 1).Valid() {
+	if !core.PlacementLeft.Valid() || (core.PlacementLeft + 1).Valid() {
 		t.Error("PlacementSide.Valid does not bound the declared set at its edge")
 	}
-	if !widget.PlacementAlignEnd.Valid() || (widget.PlacementAlignEnd + 1).Valid() {
+	if !core.PlacementAlignEnd.Valid() || (core.PlacementAlignEnd + 1).Valid() {
 		t.Error("PlacementAlign.Valid does not bound the declared set at its edge")
 	}
 	// The zero Placement is the common case and must be valid unconfigured.
-	if !(widget.Placement{}).Valid() {
+	if !(core.Placement{}).Valid() {
 		t.Error("the zero Placement is invalid; below/start/no-offset is the default")
 	}
-	if (widget.Placement{Side: widget.PlacementSide(9)}).Valid() {
+	if (core.Placement{Side: core.PlacementSide(9)}).Valid() {
 		t.Error("Placement.Valid accepted an out-of-range side")
 	}
-	for p, want := range map[widget.ModalPlacement]string{
-		widget.PlacementCenter:      "center",
-		widget.PlacementTopLeft:     "top-left",
-		widget.PlacementBottomRight: "bottom-right",
+	for p, want := range map[core.ModalPlacement]string{
+		core.PlacementCenter:      "center",
+		core.PlacementTopLeft:     "top-left",
+		core.PlacementBottomRight: "bottom-right",
 	} {
 		if got := p.String(); got != want {
 			t.Errorf("ModalPlacement(%d).String() = %q, want %q", p, got, want)
 		}
 	}
-	if got := widget.ModalPlacement(200).String(); got != "unknown" {
+	if got := core.ModalPlacement(200).String(); got != "unknown" {
 		t.Errorf("an undefined placement rendered as %q", got)
 	}
-	for s, want := range map[widget.PlacementSide]string{
-		widget.PlacementBelow: "below",
-		widget.PlacementAbove: "above",
-		widget.PlacementRight: "right",
-		widget.PlacementLeft:  "left",
+	for s, want := range map[core.PlacementSide]string{
+		core.PlacementBelow: "below",
+		core.PlacementAbove: "above",
+		core.PlacementRight: "right",
+		core.PlacementLeft:  "left",
 	} {
 		if got := s.String(); got != want {
 			t.Errorf("PlacementSide(%d).String() = %q, want %q", s, got, want)
 		}
 	}
-	if got := widget.PlacementSide(9).String(); got != "unknown" {
+	if got := core.PlacementSide(9).String(); got != "unknown" {
 		t.Errorf("an undefined side rendered as %q", got)
 	}
-	for a, want := range map[widget.PlacementAlign]string{
-		widget.PlacementAlignStart:  "start",
-		widget.PlacementAlignCenter: "center",
-		widget.PlacementAlignEnd:    "end",
+	for a, want := range map[core.PlacementAlign]string{
+		core.PlacementAlignStart:  "start",
+		core.PlacementAlignCenter: "center",
+		core.PlacementAlignEnd:    "end",
 	} {
 		if got := a.String(); got != want {
 			t.Errorf("PlacementAlign(%d).String() = %q, want %q", a, got, want)
 		}
 	}
-	if got := widget.PlacementAlign(9).String(); got != "unknown" {
+	if got := core.PlacementAlign(9).String(); got != "unknown" {
 		t.Errorf("an undefined alignment rendered as %q", got)
 	}
 }
@@ -776,7 +776,7 @@ func TestPlacementEnumsValidateAndName(t *testing.T) {
 // TestAnInvalidPlacementIsRefusedAtConstruction.
 func TestAnInvalidPlacementIsRefusedAtConstruction(t *testing.T) {
 	fatal := fatalFromWidgetExt(func() {
-		widget.NewModal(widget.NewText("Body"), widget.WithPlacement(widget.ModalPlacement(200)))
+		core.NewModal(core.NewText("Body"), core.WithPlacement(core.ModalPlacement(200)))
 	})
 	if fatal == nil {
 		t.Error("an out-of-range ModalPlacement was accepted")
@@ -786,14 +786,14 @@ func TestAnInvalidPlacementIsRefusedAtConstruction(t *testing.T) {
 // TestModalStyleIsNilSafeAndImmutable — the same contract as ButtonStyle, since
 // a consumer who has learned one has learned them all.
 func TestModalStyleIsNilSafeAndImmutable(t *testing.T) {
-	var s *widget.ModalStyle
-	def := widget.DefaultModalStyle()
+	var s *core.ModalStyle
+	def := core.DefaultModalStyle()
 	if s.Card() != def.Card() || s.Title() != def.Title() ||
 		s.Border() != def.Border() || s.Scrim() != def.Scrim() {
 		t.Error("a nil ModalStyle does not fall back to the defaults")
 	}
 
-	base := widget.NewModalStyleFull(
+	base := core.NewModalStyleFull(
 		styleOf(1), styleOf(2), styleOf(3), styleOf(4))
 	before := base.Card()
 	derived := base.WithCard(styleOf(5))
@@ -811,20 +811,20 @@ func TestModalStyleIsNilSafeAndImmutable(t *testing.T) {
 	// four would leave three setters free to mutate in place, which is a defect
 	// that surfaces on the SECOND dialog sharing the value rather than the first.
 	for name, tc := range map[string]struct {
-		derive func(*widget.ModalStyle) *widget.ModalStyle
-		read   func(*widget.ModalStyle) style.Style
+		derive func(*core.ModalStyle) *core.ModalStyle
+		read   func(*core.ModalStyle) style.Style
 	}{
 		"WithTitle": {
-			func(s *widget.ModalStyle) *widget.ModalStyle { return s.WithTitle(styleOf(6)) },
-			(*widget.ModalStyle).Title,
+			func(s *core.ModalStyle) *core.ModalStyle { return s.WithTitle(styleOf(6)) },
+			(*core.ModalStyle).Title,
 		},
 		"WithBorder": {
-			func(s *widget.ModalStyle) *widget.ModalStyle { return s.WithBorder(styleOf(6)) },
-			(*widget.ModalStyle).Border,
+			func(s *core.ModalStyle) *core.ModalStyle { return s.WithBorder(styleOf(6)) },
+			(*core.ModalStyle).Border,
 		},
 		"WithScrim": {
-			func(s *widget.ModalStyle) *widget.ModalStyle { return s.WithScrim(styleOf(6)) },
-			(*widget.ModalStyle).Scrim,
+			func(s *core.ModalStyle) *core.ModalStyle { return s.WithScrim(styleOf(6)) },
+			(*core.ModalStyle).Scrim,
 		},
 	} {
 		was := tc.read(base)
@@ -843,11 +843,11 @@ func TestModalStyleIsNilSafeAndImmutable(t *testing.T) {
 	// NewModalStyle states the two looks a caller has an opinion about and
 	// derives the other two, so a partial statement still yields a complete
 	// style rather than two empty surfaces.
-	derivedFull := widget.NewModalStyle(styleOf(5), styleOf(6))
+	derivedFull := core.NewModalStyle(styleOf(5), styleOf(6))
 	if derivedFull.Border() != derivedFull.Card() {
 		t.Error("NewModalStyle did not derive the border from the card")
 	}
-	if derivedFull.Scrim() != widget.DefaultModalStyle().Scrim() {
+	if derivedFull.Scrim() != core.DefaultModalStyle().Scrim() {
 		t.Error("NewModalStyle did not fall back to the default scrim")
 	}
 }
@@ -876,9 +876,9 @@ func styleOf(n int) style.Style {
 // one press of Tab going nowhere visible — which no test of the initial focus
 // target can detect.
 func TestTabTraversalStaysAmongTheDialogsButtons(t *testing.T) {
-	a := widget.NewButton("A")
-	b := widget.NewButton("B")
-	m := widget.NewModal(widget.NewText("Body"), widget.WithButtons(a, b))
+	a := core.NewButton("A")
+	b := core.NewButton("B")
+	m := core.NewModal(core.NewText("Body"), core.WithButtons(a, b))
 	h, host, base := modalFixture(t, m, 40, 12)
 	defer h.stop()
 	openOn(t, h, m, host)
@@ -925,13 +925,13 @@ func TestTabTraversalStaysAmongTheDialogsButtons(t *testing.T) {
 // sits between the body and the buttons with a row either side, and the footer
 // is the last row inside the card, faded, one blank row under the buttons.
 func TestARuledDialogSeparatesItsMessageFromItsDecision(t *testing.T) {
-	yes := widget.NewButton("Yes", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true), widget.WithMnemonic('y'))
+	yes := core.NewButton("Yes", core.WithRole(core.ButtonRoleAccept), core.WithDefault(true), core.WithMnemonic('y'))
 	var pressed atomic.Bool
-	no := widget.NewButton("No", widget.WithRole(widget.ButtonRoleReject), widget.WithMnemonic('n'),
-		widget.WithOnActivate(func() { pressed.Store(true) }))
-	m := widget.NewModal(widget.NewText("Are you sure to quit?"),
-		widget.WithModalTitle("Quit"), widget.WithButtons(yes, no),
-		widget.WithModalRule(true), widget.WithModalFooter("y/n to choose"))
+	no := core.NewButton("No", core.WithRole(core.ButtonRoleReject), core.WithMnemonic('n'),
+		core.WithOnActivate(func() { pressed.Store(true) }))
+	m := core.NewModal(core.NewText("Are you sure to quit?"),
+		core.WithModalTitle("Quit"), core.WithButtons(yes, no),
+		core.WithModalRule(true), core.WithModalFooter("y/n to choose"))
 	h, host, _ := modalFixture(t, m, 50, 16)
 	defer h.stop()
 	openOn(t, h, m, host)
@@ -976,8 +976,8 @@ func TestARuledDialogSeparatesItsMessageFromItsDecision(t *testing.T) {
 
 // TestADialogWithoutARuleKeepsItsBlankLine: the option is additive.
 func TestADialogWithoutARuleKeepsItsBlankLine(t *testing.T) {
-	ok := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
-	m := widget.NewModal(widget.NewText("Body"), widget.WithButtons(ok))
+	ok := core.NewButton("OK", core.WithRole(core.ButtonRoleAccept), core.WithDefault(true))
+	m := core.NewModal(core.NewText("Body"), core.WithButtons(ok))
 	h, host, _ := modalFixture(t, m, 40, 12)
 	defer h.stop()
 	openOn(t, h, m, host)
@@ -997,12 +997,12 @@ func TestADialogWithoutARuleKeepsItsBlankLine(t *testing.T) {
 // set footer is kept, on a copy, and a nil style yields a complete one; the
 // rule is the border, so it joins the frame in the frame's colour.
 func TestAModalStylesFooterAndRule(t *testing.T) {
-	var none *widget.ModalStyle
+	var none *core.ModalStyle
 	if f, set := none.Footer().GetFaint(); !f || !set {
 		t.Error("a nil style's footer is not the card faded")
 	}
 	card := style.New().Background(style.ANSI(7))
-	base := widget.NewModalStyle(card, card.Bold(true))
+	base := core.NewModalStyle(card, card.Bold(true))
 	if bg, _ := base.Footer().GetBackground(); bg != style.ANSI(7) {
 		t.Errorf("the derived footer lost the card's background: %v", bg)
 	}
@@ -1015,7 +1015,7 @@ func TestAModalStylesFooterAndRule(t *testing.T) {
 		t.Error("WithFooter changed the style it was called on, not a copy")
 	}
 	fromNil := none.WithFooter(red)
-	if fromNil == nil || fromNil.Card() != widget.DefaultModalStyle().Card() {
+	if fromNil == nil || fromNil.Card() != core.DefaultModalStyle().Card() {
 		t.Error("WithFooter on a nil style did not yield a complete default style")
 	}
 	if base.Rule() != base.Border() {

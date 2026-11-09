@@ -6,18 +6,18 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 func TestTextWrapAndTruncate(t *testing.T) {
-	trunc := widget.NewText("a very long label that overflows")
+	trunc := core.NewText("a very long label that overflows")
 	h := startApp(t, trunc, 12, 1)
 	h.settle()
 	if got := h.row(0); !strings.HasSuffix(strings.TrimRight(got, " "), "…") {
 		t.Fatalf("Truncate mode did not ellipsize: %q", got)
 	}
 
-	wrap := widget.NewText("alpha beta gamma", widget.WithWrapMode(widget.Wrap))
+	wrap := core.NewText("alpha beta gamma", core.WithWrapMode(core.Wrap))
 	h2 := startApp(t, wrap, 6, 4)
 	h2.settle()
 	h2.wantContains("alpha")
@@ -42,7 +42,7 @@ func TestAWrappedTextIsAsWideAsItsWidestLine(t *testing.T) {
 		{"alpha beta gamma", 6, 6, 3},     // wraps: the offer
 		{"a\n\nb", 40, 1, 3},              // blank lines kept
 	} {
-		txt := widget.NewText(c.text, widget.WithWrapMode(widget.Wrap))
+		txt := core.NewText(c.text, core.WithWrapMode(core.Wrap))
 		sz := txt.Layout(tui.Loose(tui.Size{W: c.maxW, H: 10}))
 		if sz.W != c.wantW || sz.H != c.wantH {
 			t.Errorf("%q in %d columns: %dx%d, want %dx%d", c.text, c.maxW, sz.W, sz.H, c.wantW, c.wantH)
@@ -51,7 +51,7 @@ func TestAWrappedTextIsAsWideAsItsWidestLine(t *testing.T) {
 }
 
 func TestTextColorOverridesOnlyThePaletteForegroundAcrossRestyles(t *testing.T) {
-	label := widget.NewText("first", widget.WithTextStyle(style.New().Foreground(style.ANSI(4)).Reverse(true)))
+	label := core.NewText("first", core.WithTextStyle(style.New().Foreground(style.ANSI(4)).Reverse(true)))
 	h := startApp(t, label, 16, 2)
 	h.settle()
 	h.onLoop(func() { label.SetColor(style.ANSI(1)) })
@@ -79,7 +79,7 @@ func TestTextColorOverridesOnlyThePaletteForegroundAcrossRestyles(t *testing.T) 
 }
 
 func TestWrappedTextUsesItsExplicitColorOnEveryLine(t *testing.T) {
-	label := widget.NewText("top\nbottom", widget.WithWrapMode(widget.Wrap))
+	label := core.NewText("top\nbottom", core.WithWrapMode(core.Wrap))
 	h := startApp(t, label, 12, 2)
 	h.onLoop(func() { label.SetColor(style.ANSI(5)) })
 	h.settle()

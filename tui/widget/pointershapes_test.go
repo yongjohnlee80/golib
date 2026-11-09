@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
+	"github.com/yongjohnlee80/golib/tui/widget/htmlview"
 )
 
 // shapeHost is a TestBackend that shapes the pointer, keeping the last frame's runs.
@@ -115,7 +117,7 @@ func nLines(n int) string {
 
 // The editor's text is an I-beam; its gutter and its scroll indicator keep the arrow.
 func TestTheEditorsTextIsAnIBeam(t *testing.T) {
-	e := widget.NewEditor()
+	e := editor.NewEditor()
 	e.SetLineNumbers(true)
 	e.SetValue(nLines(12)) // more lines than rows: the scroll indicator shows
 	sh := runShaped(t, e, 20, 5)
@@ -129,12 +131,12 @@ func TestTheEditorsTextIsAnIBeam(t *testing.T) {
 
 // A text area's text, and a text input's, are an I-beam; the area's scroll indicator is not.
 func TestTextAreasAndInputsAreAnIBeam(t *testing.T) {
-	a := widget.NewTextArea()
+	a := core.NewTextArea()
 	a.SetValue(nLines(10))
 	sh := runShaped(t, a, 20, 3)
 	expect(t, sh, map[[2]int]tui.PointerShape{{0, 0}: tui.PointerText, {18, 2}: tui.PointerText, {19, 1}: tui.PointerDefault})
 
-	in := widget.NewTextInput()
+	in := core.NewTextInput()
 	in.SetValue("find")
 	sh = runShaped(t, in, 12, 1)
 	expect(t, sh, map[[2]int]tui.PointerShape{{0, 0}: tui.PointerText, {11, 0}: tui.PointerText})
@@ -142,7 +144,7 @@ func TestTextAreasAndInputsAreAnIBeam(t *testing.T) {
 
 // A split's divider is a resize arrow across it; its panes are not.
 func TestASplitsDividerIsAResizeArrow(t *testing.T) {
-	s := widget.NewSplit(widget.Horizontal, widget.NewText(""), widget.NewText(""), widget.WithRatio(0.5))
+	s := core.NewSplit(core.Horizontal, core.NewText(""), core.NewText(""), core.WithRatio(0.5))
 	sh := runShaped(t, s, 21, 4)
 	var a int
 	deadline := time.Now().Add(5 * time.Second)
@@ -152,7 +154,7 @@ func TestASplitsDividerIsAResizeArrow(t *testing.T) {
 	}
 	expect(t, sh, map[[2]int]tui.PointerShape{{a, 0}: tui.PointerResizeEW, {a, 3}: tui.PointerResizeEW, {a + 2, 1}: tui.PointerDefault})
 
-	v := widget.NewSplit(widget.Vertical, widget.NewText(""), widget.NewText(""), widget.WithRatio(0.5))
+	v := core.NewSplit(core.Vertical, core.NewText(""), core.NewText(""), core.WithRatio(0.5))
 	sh = runShaped(t, v, 10, 9)
 	deadline = time.Now().Add(5 * time.Second)
 	for a = 0; a == 0 && time.Now().Before(deadline); {
@@ -164,7 +166,7 @@ func TestASplitsDividerIsAResizeArrow(t *testing.T) {
 
 // A link is a hand; the text around it, and the page past it, are not.
 func TestAnHTMLViewsLinkIsAHand(t *testing.T) {
-	v := widget.NewHTMLView()
+	v := htmlview.NewHTMLView()
 	v.SetHTML([]byte(`<p>see <a href="b.md">the link</a> here</p>`))
 	sh := runShaped(t, v, 40, 4)
 	expect(t, sh, map[[2]int]tui.PointerShape{
@@ -175,7 +177,7 @@ func TestAnHTMLViewsLinkIsAHand(t *testing.T) {
 
 // A resizable's grips are their drag's arrows; what they resize is not.
 func TestAResizablesGripsAreResizeArrows(t *testing.T) {
-	r := widget.NewResizable(widget.NewText("body"), widget.WithHandles(widget.HandleRight, widget.HandleBottom, widget.HandleBottomRight))
+	r := core.NewResizable(core.NewText("body"), core.WithHandles(core.HandleRight, core.HandleBottom, core.HandleBottomRight))
 	sh := runShaped(t, r, 12, 6)
 	var ew, ns, corner, plain int
 	deadline := time.Now().Add(5 * time.Second)
@@ -208,22 +210,22 @@ func TestAResizablesGripsAreResizeArrows(t *testing.T) {
 // A list's row pointer is over the rows that hold an item: not the scroll indicator, not the
 // space past its last row, and nothing at all unless it is asked for.
 func TestAListsRowPointerIsOverItsItems(t *testing.T) {
-	src := func(n int) widget.ListOption[string] {
+	src := func(n int) core.ListOption[string] {
 		items := make([]string, n)
 		for i := range items {
 			items[i] = "item"
 		}
-		return widget.WithItems(items, func(s string) string { return s })
+		return core.WithItems(items, func(s string) string { return s })
 	}
-	short := widget.NewList(src(3), widget.WithListRowPointer[string](tui.PointerHand))
+	short := core.NewList(src(3), core.WithListRowPointer[string](tui.PointerHand))
 	sh := runShaped(t, short, 20, 5)
 	expect(t, sh, map[[2]int]tui.PointerShape{{0, 0}: tui.PointerHand, {19, 2}: tui.PointerHand, {0, 3}: tui.PointerDefault, {5, 4}: tui.PointerDefault})
 
-	long := widget.NewList(src(10), widget.WithListRowPointer[string](tui.PointerHand))
+	long := core.NewList(src(10), core.WithListRowPointer[string](tui.PointerHand))
 	sh = runShaped(t, long, 20, 5)
 	expect(t, sh, map[[2]int]tui.PointerShape{{0, 0}: tui.PointerHand, {18, 4}: tui.PointerHand, {19, 0}: tui.PointerDefault})
 
-	plain := widget.NewList(src(3))
+	plain := core.NewList(src(3))
 	sh = runShaped(t, plain, 20, 5)
 	time.Sleep(50 * time.Millisecond)
 	if s := sh.at(0, 0); s != tui.PointerDefault {
@@ -251,7 +253,7 @@ func TestTheEditorGivesItsIBeamUpToItsDocument(t *testing.T) {
 // A list's row pointer changed at runtime shows with the next frame, and so does its clearing: the
 // change repaints.
 func TestAListsRowPointerChangesWithTheNextFrame(t *testing.T) {
-	l := widget.NewList(widget.WithItems([]string{"a", "b"}, func(s string) string { return s }), widget.WithListRowPointer[string](tui.PointerHand))
+	l := core.NewList(core.WithItems([]string{"a", "b"}, func(s string) string { return s }), core.WithListRowPointer[string](tui.PointerHand))
 	sh := runShaped(t, l, 20, 4)
 	expect(t, sh, map[[2]int]tui.PointerShape{{0, 0}: tui.PointerHand})
 	sh.app.Update(func() { l.SetRowPointerShape(tui.PointerText) })

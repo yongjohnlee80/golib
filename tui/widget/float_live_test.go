@@ -6,21 +6,21 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // AtLive places the float at the rectangle it reports at each placement: a change to it is followed
 // at the next layout, with no new anchor set; while it reports false the float is where its
 // otherwise anchor puts it. A live-anchored float is docked, not floating.
 func TestALiveAnchoredFloatFollowsItsRectangle(t *testing.T) {
-	base := widget.NewButton("base")
-	host := widget.NewOverlayHost(base)
+	base := core.NewButton("base")
+	host := core.NewOverlayHost(base)
 	var x atomic.Int64
 	var ok atomic.Bool
 	x.Store(4)
 	ok.Store(true)
-	live := widget.AtLive(func() (tui.Rect, bool) { return tui.Rect{X: int(x.Load()), Y: 2, W: 8, H: 3}, ok.Load() }, widget.Left)
-	f := widget.NewFloat(widget.NewBox(widget.NewButton("in"), widget.WithTitle("P")), widget.WithAnchor(live))
+	live := core.AtLive(func() (tui.Rect, bool) { return tui.Rect{X: int(x.Load()), Y: 2, W: 8, H: 3}, ok.Load() }, core.Left)
+	f := core.NewFloat(core.NewBox(core.NewButton("in"), core.WithTitle("P")), core.WithAnchor(live))
 	host.Attach(f)
 	h := startApp(t, host, 30, 8)
 	defer h.stop()
@@ -57,11 +57,11 @@ func TestALiveAnchoredFloatFollowsItsRectangle(t *testing.T) {
 // AtLiveIn's rectangle is reckoned in the area the float is placed in, this pass's: the right half
 // of the screen on the first layout, and of the new screen on the pass that follows a resize.
 func TestAnAtLiveInRectangleIsReckonedInThisPasssArea(t *testing.T) {
-	host := widget.NewOverlayHost(widget.NewButton("base"))
-	half := widget.AtLiveIn(func(area tui.Rect) (tui.Rect, bool) {
+	host := core.NewOverlayHost(core.NewButton("base"))
+	half := core.AtLiveIn(func(area tui.Rect) (tui.Rect, bool) {
 		return tui.Rect{X: area.X + area.W/2, Y: 1, W: area.W / 2, H: 3}, area.W > 0
-	}, widget.Left)
-	f := widget.NewFloat(widget.NewBox(widget.NewButton("in"), widget.WithTitle("P")), widget.WithAnchor(half))
+	}, core.Left)
+	f := core.NewFloat(core.NewBox(core.NewButton("in"), core.WithTitle("P")), core.WithAnchor(half))
 	host.Attach(f)
 	h := startApp(t, host, 30, 8)
 	defer h.stop()
@@ -90,11 +90,11 @@ func TestAnAtLiveInRectangleIsReckonedInThisPasssArea(t *testing.T) {
 // elsewhere): one step right lands a cell right of where the live rectangle put it, the window then
 // at an explicit rectangle, floating.
 func TestAWindowInALiveAnchoredFloatMovesFromItsRectangle(t *testing.T) {
-	w := widget.NewWindowMod(widget.NewBox(widget.NewButton("in"), widget.WithTitle("W")), widget.WithWindowMove())
-	live := widget.AtLive(func() (tui.Rect, bool) { return tui.Rect{X: 5, Y: 1, W: 10, H: 4}, true },
-		widget.AtRect(tui.Rect{X: 15, Y: 3, W: 10, H: 4}))
-	f := widget.NewFloat(w, widget.WithAnchor(live))
-	host := widget.NewOverlayHost(widget.NewButton("base"))
+	w := core.NewWindowMod(core.NewBox(core.NewButton("in"), core.WithTitle("W")), core.WithWindowMove())
+	live := core.AtLive(func() (tui.Rect, bool) { return tui.Rect{X: 5, Y: 1, W: 10, H: 4}, true },
+		core.AtRect(tui.Rect{X: 15, Y: 3, W: 10, H: 4}))
+	f := core.NewFloat(w, core.WithAnchor(live))
+	host := core.NewOverlayHost(core.NewButton("base"))
 	host.Attach(f)
 	h := startApp(t, host, 30, 8)
 	defer h.stop()
@@ -112,7 +112,7 @@ func TestAWindowInALiveAnchoredFloatMovesFromItsRectangle(t *testing.T) {
 		t.Fatalf("the window should be at the live column 5; it is at %d:\n%s", got, h.tb.String())
 	}
 	h.onLoop(func() {
-		w.Core().HandleAction(tui.ActionInvocation{Action: widget.WindowMoveByAction{DX: 1}, Origin: tui.OriginProgrammatic})
+		w.Core().HandleAction(tui.ActionInvocation{Action: core.WindowMoveByAction{DX: 1}, Origin: tui.OriginProgrammatic})
 	})
 	h.settle()
 	if got := col(); got != 6 {
@@ -140,22 +140,22 @@ func TestALiveAnchorWithoutARectangleKeepsItsWholeFallback(t *testing.T) {
 	none := func() (tui.Rect, bool) { return tui.Rect{}, false }
 	for _, c := range []struct {
 		name     string
-		fallback widget.Anchor
+		fallback core.Anchor
 		window   bool
 		x, y     int
 	}{
-		{"AtRect", widget.AtRect(tui.Rect{X: 7, Y: 2, W: 10, H: 4}), false, 7, 2},
-		{"AtFraction", widget.AtFraction(50, 50, 30, 40), false, 15, 5},
-		{"AtRect, a window", widget.AtRect(tui.Rect{X: 7, Y: 2, W: 10, H: 4}), true, 7, 2},
-		{"AtFraction, a window", widget.AtFraction(50, 50, 30, 40), true, 15, 5},
+		{"AtRect", core.AtRect(tui.Rect{X: 7, Y: 2, W: 10, H: 4}), false, 7, 2},
+		{"AtFraction", core.AtFraction(50, 50, 30, 40), false, 15, 5},
+		{"AtRect, a window", core.AtRect(tui.Rect{X: 7, Y: 2, W: 10, H: 4}), true, 7, 2},
+		{"AtFraction, a window", core.AtFraction(50, 50, 30, 40), true, 15, 5},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			var content tui.Component = widget.NewBox(widget.NewButton("inside"), widget.WithTitle("FB"))
+			var content tui.Component = core.NewBox(core.NewButton("inside"), core.WithTitle("FB"))
 			if c.window {
-				content = widget.NewWindowMod(content, widget.WithWindowMove())
+				content = core.NewWindowMod(content, core.WithWindowMove())
 			}
-			f := widget.NewFloat(content, widget.WithAnchor(widget.AtLive(none, c.fallback)))
-			host := widget.NewOverlayHost(widget.NewButton("base"))
+			f := core.NewFloat(content, core.WithAnchor(core.AtLive(none, c.fallback)))
+			host := core.NewOverlayHost(core.NewButton("base"))
 			host.Attach(f)
 			h := startApp(t, host, 30, 10)
 			defer h.stop()
@@ -177,15 +177,15 @@ func TestALiveAnchorFloatsAsItsFallbackDoes(t *testing.T) {
 	some := func() (tui.Rect, bool) { return tui.Rect{X: 2, Y: 1, W: 10, H: 4}, true }
 	for _, c := range []struct {
 		name     string
-		fallback widget.Anchor
+		fallback core.Anchor
 		floats   bool
 	}{
-		{"Left", widget.Left, false},
-		{"BottomRight", widget.BottomRight, false},
-		{"Center", widget.Center, true},
+		{"Left", core.Left, false},
+		{"BottomRight", core.BottomRight, false},
+		{"Center", core.Center, true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			f := widget.NewFloat(widget.NewButton("in"), widget.WithAnchor(widget.AtLive(some, c.fallback)))
+			f := core.NewFloat(core.NewButton("in"), core.WithAnchor(core.AtLive(some, c.fallback)))
 			if f.Floating() != c.floats {
 				t.Fatalf("a live anchor with a %s fallback: Floating %v, want %v", c.name, f.Floating(), c.floats)
 			}

@@ -9,13 +9,14 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/htmlview"
 )
 
 // While it loads and has no PNG, an Image says so, a spinner turning by its own timer, instead of
 // an empty pane; off, the words go.
 func TestAnImageShowsThatItIsLoading(t *testing.T) {
-	img := widget.NewImage()
+	img := htmlview.NewImage()
 	img.SetLoading(true) // before it is mounted: the spinner starts at Init
 	img.SetLoadingText("rendering the page…")
 	h := startApp(t, img, 40, 5)
@@ -43,11 +44,11 @@ func TestAnImageShowsThatItIsLoading(t *testing.T) {
 // An Image that stops scrolling mid-drag lets the pointer go: the button beside it takes the next
 // click, which a capture left behind would have kept from it.
 func TestDisablingScrollMidDragReleasesThePointer(t *testing.T) {
-	img := widget.NewImage()
+	img := htmlview.NewImage()
 	img.SetScrollable(true)
 	img.SetPNG(bigPNG(t))
 	var clicks atomic.Int32
-	btn := widget.NewButton("OK", widget.WithOnActivate(func() { clicks.Add(1) }))
+	btn := core.NewButton("OK", core.WithOnActivate(func() { clicks.Add(1) }))
 	root := tui.NewFlex(tui.Vertical)
 	root.Add(btn, img) // the button first: the Image takes every row it is offered
 	h := startApp(t, root, 30, 8)

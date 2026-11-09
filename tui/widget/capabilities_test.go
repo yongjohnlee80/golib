@@ -4,17 +4,17 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // Tests for capabilities and hierarchical focus seeding (focusFirst).
 
 func TestCapabilities_FocusFirst(t *testing.T) {
 	t.Run("box container child receives seeded focus", func(t *testing.T) {
-		input := widget.NewTextInput()
-		panel := widget.NewBox(input, widget.WithTitle("Panel"))
-		flt := widget.NewFloat(panel, widget.WithModal(true))
-		host := widget.NewOverlayHost(widget.NewText("base"))
+		input := core.NewTextInput()
+		panel := core.NewBox(input, core.WithTitle("Panel"))
+		flt := core.NewFloat(panel, core.WithModal(true))
+		host := core.NewOverlayHost(core.NewText("base"))
 		host.Attach(flt)
 		sh := newShell(host)
 		h := startApp(t, sh, 40, 10)
@@ -33,11 +33,11 @@ func TestCapabilities_FocusFirst(t *testing.T) {
 	})
 
 	t.Run("split childLister pane receives seeded focus", func(t *testing.T) {
-		inputA := widget.NewTextInput()
-		inputB := widget.NewTextInput()
-		sp := widget.NewSplit(widget.Horizontal, inputA, inputB)
-		flt := widget.NewFloat(sp, widget.WithModal(true))
-		host := widget.NewOverlayHost(widget.NewText("base"))
+		inputA := core.NewTextInput()
+		inputB := core.NewTextInput()
+		sp := core.NewSplit(core.Horizontal, inputA, inputB)
+		flt := core.NewFloat(sp, core.WithModal(true))
+		host := core.NewOverlayHost(core.NewText("base"))
 		host.Attach(flt)
 		sh := newShell(host)
 		h := startApp(t, sh, 40, 10)
@@ -59,14 +59,14 @@ func TestCapabilities_FocusFirst(t *testing.T) {
 	})
 
 	t.Run("tabs bar receives focus and switches via keyboard", func(t *testing.T) {
-		tabInput1 := widget.NewTextInput()
-		tabInput2 := widget.NewTextInput()
-		tabs := widget.NewTabs(
-			widget.WithTab("One", tabInput1),
-			widget.WithTab("Two", tabInput2),
+		tabInput1 := core.NewTextInput()
+		tabInput2 := core.NewTextInput()
+		tabs := core.NewTabs(
+			core.WithTab("One", tabInput1),
+			core.WithTab("Two", tabInput2),
 		)
-		flt := widget.NewFloat(tabs, widget.WithModal(true))
-		host := widget.NewOverlayHost(widget.NewText("base"))
+		flt := core.NewFloat(tabs, core.WithModal(true))
+		host := core.NewOverlayHost(core.NewText("base"))
 		host.Attach(flt)
 		sh := newShell(host)
 		h := startApp(t, sh, 40, 10)
@@ -86,9 +86,9 @@ func TestCapabilities_FocusFirst(t *testing.T) {
 	})
 
 	t.Run("unfocusable content fallback", func(t *testing.T) {
-		staticText := widget.NewText("static display only")
-		flt := widget.NewFloat(staticText, widget.WithModal(true))
-		host := widget.NewOverlayHost(widget.NewText("base"))
+		staticText := core.NewText("static display only")
+		flt := core.NewFloat(staticText, core.WithModal(true))
+		host := core.NewOverlayHost(core.NewText("base"))
 		host.Attach(flt)
 		sh := newShell(host)
 		h := startApp(t, sh, 40, 10)

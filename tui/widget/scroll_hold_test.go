@@ -6,7 +6,8 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/files"
 )
 
 // relayout asks the App for a layout pass and waits for it: what a status line's update or a toast
@@ -24,7 +25,7 @@ func TestWheelScrollHoldsThroughALayout(t *testing.T) {
 		for i := range 30 {
 			items = append(items, fmt.Sprintf("row%02d", i))
 		}
-		h, l, sh := focusedList(t, widget.SliceSource(items), 20, 4)
+		h, l, sh := focusedList(t, core.SliceSource(items), 20, 4)
 		for range 5 {
 			h.inject(tui.MouseEvent{Kind: tui.MouseWheel, Button: tui.WheelDown, X: 2, Y: 1})
 		}
@@ -39,11 +40,11 @@ func TestWheelScrollHoldsThroughALayout(t *testing.T) {
 		h.wantContains("row01")
 	})
 	t.Run("tree", func(t *testing.T) {
-		var roots []*widget.TreeNode
+		var roots []*files.TreeNode
 		for i := range 30 {
-			roots = append(roots, widget.NewTreeNode(fmt.Sprintf("n%02d", i), fmt.Sprintf("node%02d", i)))
+			roots = append(roots, files.NewTreeNode(fmt.Sprintf("n%02d", i), fmt.Sprintf("node%02d", i)))
 		}
-		h, tr, sh := focusedTree(t, 30, 4, widget.WithRoots(roots...))
+		h, tr, sh := focusedTree(t, 30, 4, files.WithRoots(roots...))
 		for range 5 {
 			h.inject(tui.MouseEvent{Kind: tui.MouseWheel, Button: tui.WheelDown, X: 2, Y: 1})
 		}

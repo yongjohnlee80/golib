@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // tilesFix is a manager of three tiles, AutoDB's shape: an explorer down the left, the query in the
@@ -14,32 +14,32 @@ import (
 type tilesFix struct {
 	t       *testing.T
 	h       *harness
-	m       *widget.Tiles
-	dock    *widget.MinimizedWindows
-	buttons map[string]*widget.Button
-	events  []widget.TilesChangedEvent // appended on the loop; read through onLoop
+	m       *core.Tiles
+	dock    *core.MinimizedWindows
+	buttons map[string]*core.Button
+	events  []core.TilesChangedEvent // appended on the loop; read through onLoop
 }
 
 type tileSpec struct {
 	key   string
-	place widget.TilePlace
+	place core.TilePlace
 }
 
 func defaultTiles() []tileSpec {
 	return []tileSpec{
-		{"explorer", widget.TilePlace{Edge: tui.DockLeft, Edges: []tui.DockEdge{tui.DockLeft, tui.DockRight}, Size: 25, Min: 10, Minimizable: true}},
-		{"query", widget.TilePlace{Edge: tui.DockCenter, Min: 10}},
-		{"results", widget.TilePlace{Edge: tui.DockBottom, Edges: []tui.DockEdge{tui.DockBottom, tui.DockTop}, Size: 40, Min: 5, Minimizable: true}},
+		{"explorer", core.TilePlace{Edge: tui.DockLeft, Edges: []tui.DockEdge{tui.DockLeft, tui.DockRight}, Size: 25, Min: 10, Minimizable: true}},
+		{"query", core.TilePlace{Edge: tui.DockCenter, Min: 10}},
+		{"results", core.TilePlace{Edge: tui.DockBottom, Edges: []tui.DockEdge{tui.DockBottom, tui.DockTop}, Size: 40, Min: 5, Minimizable: true}},
 	}
 }
 
 func newTiles(t *testing.T, w, h int, specs []tileSpec) *tilesFix {
 	t.Helper()
-	f := &tilesFix{t: t, dock: widget.NewMinimizedWindows(), buttons: map[string]*widget.Button{}}
-	f.m = widget.NewTiles(widget.WithTilesCollector(f.dock),
-		widget.WithTilesChanged(func(e widget.TilesChangedEvent) { f.events = append(f.events, e) }))
+	f := &tilesFix{t: t, dock: core.NewMinimizedWindows(), buttons: map[string]*core.Button{}}
+	f.m = core.NewTiles(core.WithTilesCollector(f.dock),
+		core.WithTilesChanged(func(e core.TilesChangedEvent) { f.events = append(f.events, e) }))
 	for _, s := range specs {
-		b := widget.NewButton(s.key)
+		b := core.NewButton(s.key)
 		f.buttons[s.key] = b
 		f.m.Add(s.key, b, s.place)
 	}
@@ -64,8 +64,8 @@ func (f *tilesFix) wantRects(when string, want map[string]tui.Rect) {
 	}
 }
 
-func (f *tilesFix) changes() []widget.TilesChangedEvent {
-	var out []widget.TilesChangedEvent
+func (f *tilesFix) changes() []core.TilesChangedEvent {
+	var out []core.TilesChangedEvent
 	f.h.onLoop(func() { out = append(out, f.events...) })
 	return out
 }
@@ -115,9 +115,9 @@ func TestTilesShareTheRectStripsInOrderCentreTheRest(t *testing.T) {
 func TestTilesInfeasibleMinimumsGiveWayInOrder(t *testing.T) {
 	t.Run("strips above Min, last-declared first", func(t *testing.T) {
 		f := newTiles(t, 100, 10, []tileSpec{
-			{"explorer", widget.TilePlace{Edge: tui.DockLeft, Size: 60, Min: 20}},
-			{"query", widget.TilePlace{Edge: tui.DockCenter, Min: 10}},
-			{"inspector", widget.TilePlace{Edge: tui.DockRight, Size: 50, Min: 10}},
+			{"explorer", core.TilePlace{Edge: tui.DockLeft, Size: 60, Min: 20}},
+			{"query", core.TilePlace{Edge: tui.DockCenter, Min: 10}},
+			{"inspector", core.TilePlace{Edge: tui.DockRight, Size: 50, Min: 10}},
 		})
 		f.wantRects("100 wide", map[string]tui.Rect{
 			"explorer": {X: 0, Y: 0, W: 60, H: 10}, "inspector": {X: 70, Y: 0, W: 30, H: 10}, "query": {X: 60, Y: 0, W: 10, H: 10}})
@@ -146,7 +146,7 @@ func TestTilesInfeasibleMinimumsGiveWayInOrder(t *testing.T) {
 // beside it, the window reports Minimized, the collector lists it, and focus leaves it.
 func TestTilesHideGoesThroughTheWindow(t *testing.T) {
 	f := newTiles(t, 120, 30, defaultTiles())
-	explorer := func() *widget.WindowMod { return f.m.Tile("explorer").Window() }
+	explorer := func() *core.WindowMod { return f.m.Tile("explorer").Window() }
 	hiddenRects := map[string]tui.Rect{"query": {X: 0, Y: 0, W: 120, H: 18}, "results": {X: 0, Y: 18, W: 120, H: 12}}
 	check := func(when string, hidden bool) {
 		t.Helper()
@@ -263,7 +263,7 @@ func TestTilesAltRightMovesTheNearestSharedBorder(t *testing.T) {
 			f.drag(tui.MouseRight, c.x0, c.y0, c.x1, c.y1)
 			f.wantRects("after the drag", c.want)
 			ev := f.changes()
-			if len(ev) != 1 || ev[0].Key != c.owner || ev[0].By != c.by || ev[0].Operation != widget.WindowResize || !near(ev[0].Size, c.size) {
+			if len(ev) != 1 || ev[0].Key != c.owner || ev[0].By != c.by || ev[0].Operation != core.WindowResize || !near(ev[0].Size, c.size) {
 				t.Fatalf("events: %+v, want one resize of %s by %s to %v", ev, c.owner, c.by, c.size)
 			}
 			if s := f.size(c.owner); !near(s, c.size) {
@@ -277,9 +277,9 @@ func TestTilesAltRightMovesTheNearestSharedBorder(t *testing.T) {
 // own offer starts, not from the manager's side.
 func TestTilesTwoStripsOnOneEdgeMeasureFromTheirOuterSide(t *testing.T) {
 	f := newTiles(t, 100, 20, []tileSpec{
-		{"a", widget.TilePlace{Edge: tui.DockLeft, Size: 20}},
-		{"b", widget.TilePlace{Edge: tui.DockLeft, Size: 30}},
-		{"centre", widget.TilePlace{Edge: tui.DockCenter}},
+		{"a", core.TilePlace{Edge: tui.DockLeft, Size: 20}},
+		{"b", core.TilePlace{Edge: tui.DockLeft, Size: 30}},
+		{"centre", core.TilePlace{Edge: tui.DockCenter}},
 	})
 	f.drag(tui.MouseRight, 52, 10, 62, 10)
 	f.wantRects("after the drag", map[string]tui.Rect{
@@ -304,7 +304,7 @@ func TestTilesEscapeAndANoOpReleaseChangeNothing(t *testing.T) {
 		t.Fatalf("Escape or a no-op release reported: %+v", ev)
 	}
 
-	lone := newTiles(t, 40, 10, []tileSpec{{"only", widget.TilePlace{Edge: tui.DockCenter}}})
+	lone := newTiles(t, 40, 10, []tileSpec{{"only", core.TilePlace{Edge: tui.DockCenter}}})
 	lone.press(tui.MouseRight, 5, 5)
 	var captured bool
 	lone.h.onLoop(func() { captured = lone.m.Tile("only").Window().Context().HasPointerCapture() })
@@ -368,7 +368,7 @@ func TestTilesKeyboardStepsMoveTheSharedBorder(t *testing.T) {
 		t.Fatalf("the centre's step moved the explorer's border to %d, want 139", got.W)
 	}
 	var refused bool
-	lone := newTiles(t, 40, 10, []tileSpec{{"only", widget.TilePlace{Edge: tui.DockCenter}}})
+	lone := newTiles(t, 40, 10, []tileSpec{{"only", core.TilePlace{Edge: tui.DockCenter}}})
 	lone.h.onLoop(func() { refused = !lone.m.Tile("only").Window().ResizeBy(1, 0) })
 	if !refused {
 		t.Fatal("a lone tile took a keyboard step")
@@ -389,7 +389,7 @@ func TestTilesAltLeftRedocksWithAPreview(t *testing.T) {
 	f.h.barrier(nil)
 	f.wantRects("re-docked", map[string]tui.Rect{
 		"explorer": {X: 90, Y: 0, W: 30, H: 30}, "query": {X: 0, Y: 0, W: 90, H: 18}, "results": {X: 0, Y: 18, W: 90, H: 12}})
-	if ev := f.changes(); len(ev) != 1 || ev[0].Key != "explorer" || ev[0].Edge != tui.DockRight || ev[0].Operation != widget.WindowMove {
+	if ev := f.changes(); len(ev) != 1 || ev[0].Key != "explorer" || ev[0].Edge != tui.DockRight || ev[0].Operation != core.WindowMove {
 		t.Fatalf("events: %+v", ev)
 	}
 
@@ -443,9 +443,9 @@ func TestTilesAnUndersizedRedockStillCommits(t *testing.T) {
 // measured from where the first one's step now puts it, not from where it was last placed.
 func TestTilesKeyboardStepsOnTwoOwnersBeforeALayout(t *testing.T) {
 	f := newTiles(t, 100, 20, []tileSpec{
-		{"a", widget.TilePlace{Edge: tui.DockLeft, Size: 20}},
-		{"b", widget.TilePlace{Edge: tui.DockLeft, Size: 30}},
-		{"centre", widget.TilePlace{Edge: tui.DockCenter}},
+		{"a", core.TilePlace{Edge: tui.DockLeft, Size: 20}},
+		{"b", core.TilePlace{Edge: tui.DockLeft, Size: 30}},
+		{"centre", core.TilePlace{Edge: tui.DockCenter}},
 	})
 	f.h.onLoop(func() {
 		f.m.Tile("a").Window().ResizeBy(1, 0)

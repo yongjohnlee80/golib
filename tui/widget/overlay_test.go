@@ -3,7 +3,7 @@ package widget_test
 import (
 	"testing"
 
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 func TestOverlayHostPanicsOnNil(t *testing.T) {
@@ -12,11 +12,11 @@ func TestOverlayHostPanicsOnNil(t *testing.T) {
 			t.Fatal("NewOverlayHost(nil) did not panic")
 		}
 	}()
-	_ = widget.NewOverlayHost(nil)
+	_ = core.NewOverlayHost(nil)
 }
 
 func TestOverlayHostAttachPanicsOnNil(t *testing.T) {
-	host := widget.NewOverlayHost(widget.NewText("base"))
+	host := core.NewOverlayHost(core.NewText("base"))
 	defer func() {
 		if recover() == nil {
 			t.Fatal("OverlayHost.Attach(nil) did not panic")
@@ -26,8 +26,8 @@ func TestOverlayHostAttachPanicsOnNil(t *testing.T) {
 }
 
 func TestOverlayHostRendersBase(t *testing.T) {
-	base := widget.NewText("hello from base")
-	host := widget.NewOverlayHost(base)
+	base := core.NewText("hello from base")
+	host := core.NewOverlayHost(base)
 	sh := newShell(host)
 	h := startApp(t, sh, 30, 5)
 	h.settle()

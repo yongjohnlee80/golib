@@ -7,13 +7,13 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/pty"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/terminal"
 )
 
 // doubleView is a TerminalView at half the window's cell: twice the columns and rows, the pointer
 // doubled. It records its owner, its frames and whether it was detached.
 type doubleView struct {
-	owner *widget.Terminal
+	owner *terminal.Terminal
 
 	mu       sync.Mutex
 	frames   int
@@ -107,20 +107,20 @@ func TestATerminalViewSizesDrawsAndPointsInItsOwnCells(t *testing.T) {
 // TestTerminalTabsGiveEachTabItsOwnView: SetTerminalViews makes one view per tab with that tab's
 // terminal, for tabs added later too; a closed tab's view is Detached; nil takes them all off.
 func TestTerminalTabsGiveEachTabItsOwnView(t *testing.T) {
-	tabs := widget.NewTerminalTabs()
+	tabs := terminal.NewTerminalTabs()
 	var made []*doubleView
 	h := startApp(t, newShell(tabs), 30, 8)
 	h.onLoop(func() {
-		tabs.SetTerminalViews(func(term *widget.Terminal) widget.TerminalView {
+		tabs.SetTerminalViews(func(term *terminal.Terminal) terminal.TerminalView {
 			v := &doubleView{owner: term}
 			made = append(made, v)
 			return v
 		})
 	})
-	var ids []widget.TerminalTabID
+	var ids []terminal.TerminalTabID
 	h.onLoop(func() {
 		for _, name := range []string{"a", "b"} {
-			id, err := tabs.Add(name, widget.WithStarter(func(pty.Cmd) (widget.TerminalProcess, error) { return newFakeProc(), nil }))
+			id, err := tabs.Add(name, terminal.WithStarter(func(pty.Cmd) (terminal.TerminalProcess, error) { return newFakeProc(), nil }))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -133,7 +133,7 @@ func TestTerminalTabsGiveEachTabItsOwnView(t *testing.T) {
 			t.Fatalf("%d views made for 2 tabs, owners distinct %v", len(made), len(made) == 2 && made[0].owner != made[1].owner)
 		}
 		for i, v := range made {
-			if v.owner.TerminalView() != widget.TerminalView(v) {
+			if v.owner.TerminalView() != terminal.TerminalView(v) {
 				t.Errorf("tab %d: its terminal does not read its own view back", i)
 			}
 		}

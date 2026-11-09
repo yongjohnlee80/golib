@@ -17,7 +17,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // TestSplitConstructionRefusesWhatCannotBeHonoured.
@@ -28,38 +28,38 @@ func TestSplitConstructionRefusesWhatCannotBeHonoured(t *testing.T) {
 		call func()
 	}{
 		{"an orientation outside the set", func() {
-			widget.NewSplit(widget.Vertical+1, a, b)
+			core.NewSplit(core.Vertical+1, a, b)
 		}},
-		{"a nil pane", func() { widget.NewSplit(widget.Horizontal, nil, b) }},
+		{"a nil pane", func() { core.NewSplit(core.Horizontal, nil, b) }},
 		{"a ratio at zero", func() {
-			widget.NewSplit(widget.Horizontal, a, b, widget.WithRatio(0))
+			core.NewSplit(core.Horizontal, a, b, core.WithRatio(0))
 		}},
 		{"a ratio at one", func() {
-			widget.NewSplit(widget.Horizontal, a, b, widget.WithRatio(1))
+			core.NewSplit(core.Horizontal, a, b, core.WithRatio(1))
 		}},
 		{"a negative minimum", func() {
-			widget.NewSplit(widget.Horizontal, a, b, widget.WithMinSizes(-1, 0))
+			core.NewSplit(core.Horizontal, a, b, core.WithMinSizes(-1, 0))
 		}},
 		{"a step below one", func() {
-			widget.NewSplit(widget.Horizontal, a, b,
-				widget.WithSplitResizeStep(0, widget.StepCells))
+			core.NewSplit(core.Horizontal, a, b,
+				core.WithSplitResizeStep(0, core.StepCells))
 		}},
 		{"a step unit outside the set", func() {
-			widget.NewSplit(widget.Horizontal, a, b,
-				widget.WithSplitResizeStep(1, widget.StepPercent+1))
+			core.NewSplit(core.Horizontal, a, b,
+				core.WithSplitResizeStep(1, core.StepPercent+1))
 		}},
 		{"a multi-grapheme divider glyph", func() {
-			widget.NewSplit(widget.Horizontal, a, b,
-				widget.WithSplitDividerGlyphs("ab", "─"))
+			core.NewSplit(core.Horizontal, a, b,
+				core.WithSplitDividerGlyphs("ab", "─"))
 		}},
 		{"a zero-width divider glyph", func() {
 			// One cluster, no cells: it would be reserved geometry that paints
 			// nothing, which is the invisible-affordance failure again.
-			widget.NewSplit(widget.Horizontal, a, b,
-				widget.WithSplitDividerGlyphs("\u200b", "─"))
+			core.NewSplit(core.Horizontal, a, b,
+				core.WithSplitDividerGlyphs("\u200b", "─"))
 		}},
 		{"a pointer policy outside the set", func() {
-			widget.NewSplit(widget.Horizontal, a, b).
+			core.NewSplit(core.Horizontal, a, b).
 				WithPointerPolicy(tui.PointerDisabled + 1)
 		}},
 	} {
@@ -71,13 +71,13 @@ func TestSplitConstructionRefusesWhatCannotBeHonoured(t *testing.T) {
 	}
 	// The controls: the last valid value of each closed set is accepted.
 	if panicked(func() {
-		widget.NewSplit(widget.Vertical, a, b,
-			widget.WithRatio(0.999),
-			widget.WithMinSizes(0, 0),
-			widget.WithSplitResizeStep(1, widget.StepPercent),
+		core.NewSplit(core.Vertical, a, b,
+			core.WithRatio(0.999),
+			core.WithMinSizes(0, 0),
+			core.WithSplitResizeStep(1, core.StepPercent),
 			// A WIDE glyph is legal: its width is geometry, and the split
 			// reserves the cells it actually occupies.
-			widget.WithSplitDividerGlyphs("世", "─")).
+			core.WithSplitDividerGlyphs("世", "─")).
 			WithPointerPolicy(tui.PointerDisabled)
 	}) {
 		t.Error("a legal configuration was rejected")
@@ -103,22 +103,22 @@ func panicked(fn func()) (did bool) {
 func TestTheDividerGlyphsAndStyleReachTheScreen(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
-		orient widget.Orientation
+		orient core.Orientation
 		glyph  string
 	}{
-		{"a horizontal split draws the vertical glyph", widget.Horizontal, "!"},
-		{"a vertical split draws the horizontal one", widget.Vertical, "="},
+		{"a horizontal split draws the vertical glyph", core.Horizontal, "!"},
+		{"a vertical split draws the horizontal one", core.Vertical, "="},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			v, hz := "│", "─"
-			if tc.orient == widget.Horizontal {
+			if tc.orient == core.Horizontal {
 				v = tc.glyph
 			} else {
 				hz = tc.glyph
 			}
-			s := widget.NewSplit(tc.orient, &pane{fill: "a"}, &pane{fill: "b"},
-				widget.WithSplitDividerGlyphs(v, hz),
-				widget.WithDividerStyle(style.New().Foreground(style.TokenError)))
+			s := core.NewSplit(tc.orient, &pane{fill: "a"}, &pane{fill: "b"},
+				core.WithSplitDividerGlyphs(v, hz),
+				core.WithDividerStyle(style.New().Foreground(style.TokenError)))
 			sh := newShell(s)
 			h := startApp(t, sh, 20, 6)
 			h.barrier(sh)
@@ -139,8 +139,8 @@ func TestTheDividerGlyphsAndStyleReachTheScreen(t *testing.T) {
 // a broken one, and so goes unreported.
 func TestTheConfiguredStepMovesTheDividerByThatMuch(t *testing.T) {
 	t.Run("cells", func(t *testing.T) {
-		s := widget.NewSplit(widget.Horizontal, &pane{fill: "a"}, &pane{fill: "b"},
-			widget.WithSplitResizeStep(4, widget.StepCells))
+		s := core.NewSplit(core.Horizontal, &pane{fill: "a"}, &pane{fill: "b"},
+			core.WithSplitResizeStep(4, core.StepCells))
 		sh := newShell(s)
 		h := startApp(t, sh, 40, 8)
 		h.inject(tab())
@@ -155,8 +155,8 @@ func TestTheConfiguredStepMovesTheDividerByThatMuch(t *testing.T) {
 
 	t.Run("percent", func(t *testing.T) {
 		// 10% of the 39 available cells is 3.
-		s := widget.NewSplit(widget.Horizontal, &pane{fill: "a"}, &pane{fill: "b"},
-			widget.WithSplitResizeStep(10, widget.StepPercent))
+		s := core.NewSplit(core.Horizontal, &pane{fill: "a"}, &pane{fill: "b"},
+			core.WithSplitResizeStep(10, core.StepPercent))
 		sh := newShell(s)
 		h := startApp(t, sh, 40, 8)
 		h.inject(tab())
@@ -176,7 +176,7 @@ func TestTheConfiguredStepMovesTheDividerByThatMuch(t *testing.T) {
 // and nothing else. A policy that reached the keyboard too would silently make
 // a split unresizable for anyone who set it to stop stray clicks.
 func TestAPointerDisabledSplitStillResizesFromTheKeyboard(t *testing.T) {
-	s := widget.NewSplit(widget.Horizontal, &pane{fill: "a"}, &pane{fill: "b"}).
+	s := core.NewSplit(core.Horizontal, &pane{fill: "a"}, &pane{fill: "b"}).
 		WithPointerPolicy(tui.PointerDisabled)
 	sh := newShell(s)
 	h := startApp(t, sh, 40, 8)
@@ -206,15 +206,15 @@ func TestAPointerDisabledSplitStillResizesFromTheKeyboard(t *testing.T) {
 // consumer can ask which pane is maximised without tracking it themselves.
 func TestZoomedReportsWhatZoomDid(t *testing.T) {
 	h, s, sh := splitFixture(t, 30, 8)
-	read := func() widget.SplitPane {
-		var p widget.SplitPane
+	read := func() core.SplitPane {
+		var p core.SplitPane
 		h.onLoop(func() { p = s.Zoomed() })
 		return p
 	}
-	if got := read(); got != widget.PaneNone {
+	if got := read(); got != core.PaneNone {
 		t.Errorf("Zoomed() = %v at rest, want PaneNone", got)
 	}
-	for _, want := range []widget.SplitPane{widget.PaneA, widget.PaneB, widget.PaneNone} {
+	for _, want := range []core.SplitPane{core.PaneA, core.PaneB, core.PaneNone} {
 		h.onLoop(func() { s.Zoom(want) })
 		h.barrier(sh)
 		if got := read(); got != want {
@@ -251,7 +251,7 @@ func TestSetRatioRefusesWhatIsNotADivision(t *testing.T) {
 // the point projection, the hit test and the step then go unexercised, and a
 // sign or axis error in any of them ships.
 func TestAVerticalSplitDragsItsOwnDivider(t *testing.T) {
-	s := widget.NewSplit(widget.Vertical, &pane{fill: "a"}, &pane{fill: "b"})
+	s := core.NewSplit(core.Vertical, &pane{fill: "a"}, &pane{fill: "b"})
 	sh := newShell(s)
 	h := startApp(t, sh, 20, 21)
 	h.inject(tab())
@@ -273,10 +273,10 @@ func TestAVerticalSplitDragsItsOwnDivider(t *testing.T) {
 	// The ACTION, naming this split's own divider explicitly.
 	after := aCellsOn(t, h, s)
 	h.onLoop(func() {
-		s.Context().DoAction(widget.ResizeBeginAction{
-			Handle: widget.HandleHorizontalDivider, At: tui.Point{X: 3, Y: after}})
-		s.Context().DoAction(widget.ResizeUpdateAction{At: tui.Point{X: 3, Y: after - 2}})
-		s.Context().DoAction(widget.ResizeEndAction{})
+		s.Context().DoAction(core.ResizeBeginAction{
+			Handle: core.HandleHorizontalDivider, At: tui.Point{X: 3, Y: after}})
+		s.Context().DoAction(core.ResizeUpdateAction{At: tui.Point{X: 3, Y: after - 2}})
+		s.Context().DoAction(core.ResizeEndAction{})
 	})
 	h.waitFor("the action moved it on the vertical axis", func() bool {
 		return aCellsOn(t, h, s) == after-2
@@ -284,7 +284,7 @@ func TestAVerticalSplitDragsItsOwnDivider(t *testing.T) {
 
 	// And ResizeSetAction places it absolutely, on the height axis.
 	h.onLoop(func() {
-		s.Context().DoAction(widget.ResizeSetAction{Size: tui.Size{W: 99, H: 6}})
+		s.Context().DoAction(core.ResizeSetAction{Size: tui.Size{W: 99, H: 6}})
 	})
 	h.waitFor("the set action used the height for a vertical split", func() bool {
 		return aCellsOn(t, h, s) == 6
@@ -296,7 +296,7 @@ func TestAVerticalSplitDragsItsOwnDivider(t *testing.T) {
 func TestResizeSetActionPlacesTheDividerAbsolutely(t *testing.T) {
 	h, s, sh := splitFixture(t, 40, 8)
 	h.onLoop(func() {
-		s.Context().DoAction(widget.ResizeSetAction{Size: tui.Size{W: 12, H: 99}})
+		s.Context().DoAction(core.ResizeSetAction{Size: tui.Size{W: 12, H: 99}})
 	})
 	h.barrier(sh)
 	if got := aCellsOn(t, h, s); got != 12 {

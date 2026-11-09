@@ -6,13 +6,13 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // mountedEditor is a focused Editor in an App holding m.
-func mountedEditor(t *testing.T, m *keymap.Map, opts ...widget.EditorOption) (*harness, *widget.Editor, *shell) {
+func mountedEditor(t *testing.T, m *keymap.Map, opts ...editor.EditorOption) (*harness, *editor.Editor, *shell) {
 	t.Helper()
-	e := widget.NewEditor(append([]widget.EditorOption{widget.WithCore(widget.CoreInitialText("one two three"))}, opts...)...)
+	e := editor.NewEditor(append([]editor.EditorOption{editor.WithCore(editor.CoreInitialText("one two three"))}, opts...)...)
 	sh := newShell(e)
 	h := startAppOpts(t, sh, 40, 6, tui.WithKeymap(m))
 	h.inject(tab())
@@ -20,7 +20,7 @@ func mountedEditor(t *testing.T, m *keymap.Map, opts ...widget.EditorOption) (*h
 	return h, e, sh
 }
 
-func editorValue(h *harness, e *widget.Editor) string {
+func editorValue(h *harness, e *editor.Editor) string {
 	var v string
 	h.onLoop(func() { v = e.Core().Value() })
 	return v
@@ -61,7 +61,7 @@ func TestEditorScopesRefuseOnlyTheirOwnConflicts(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = keymap.Build(widget.KeyCommands(), s)
+		_, err = keymap.Build(editor.KeyCommands(), s)
 		return err
 	}
 	if err := build(`<mapping><shortcut id="tui.editor.vim.normal.undo"><key value="X"/></shortcut></mapping>`); err == nil {
@@ -76,9 +76,9 @@ func TestEditorScopesRefuseOnlyTheirOwnConflicts(t *testing.T) {
 // bound, and its rebinding takes a key the scheme moved away.
 func TestAHostOverlayWinsOverAScheme(t *testing.T) {
 	m := mustKeymap(t, `<mapping><shortcut id="tui.editor.vim.normal.deleteChar"><key value="Ctrl+Q"/></shortcut></mapping>`)
-	h, e, sh := mountedEditor(t, m, widget.WithCore(widget.CoreKeymap(widget.Keymap{
-		{Mode: widget.ModeNormal, Code: 'q', Ctrl: true}: widget.ActUnbound, // the host owns Ctrl+Q
-		{Mode: widget.ModeNormal, Code: 'x'}:             widget.ActLineEnd, // and gives x another meaning
+	h, e, sh := mountedEditor(t, m, editor.WithCore(editor.CoreKeymap(editor.Keymap{
+		{Mode: editor.ModeNormal, Code: 'q', Ctrl: true}: editor.ActUnbound, // the host owns Ctrl+Q
+		{Mode: editor.ModeNormal, Code: 'x'}:             editor.ActLineEnd, // and gives x another meaning
 	})))
 	h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: 'q', Mods: tui.ModCtrl})
 	h.barrier(sh)
@@ -142,11 +142,11 @@ func TestAnUnboundAltChordBubblesPastPendingGrammar(t *testing.T) {
 // tui.editor.vim.z.right, pans a wide table in the Rendered view a cell (its left mark shows).
 func TestASchemeBoundZCommandRuns(t *testing.T) {
 	m := mustKeymap(t, `<mapping><shortcut id="tui.editor.vim.z.right"><key value="Alt+L"/></shortcut></mapping>`)
-	h, e, sh := mountedEditor(t, m, widget.WithCore(widget.CoreInitialText(wideTable())))
+	h, e, sh := mountedEditor(t, m, editor.WithCore(editor.CoreInitialText(wideTable())))
 	defer h.stop()
 	h.onLoop(func() {
 		e.SetRenderer(mdRenderer())
-		e.SetView(widget.ViewRendered)
+		e.SetView(editor.ViewRendered)
 	})
 	h.barrier(sh)
 	if g := h.grid(); strings.Contains(g, "«") {

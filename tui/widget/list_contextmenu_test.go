@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // list_contextmenu_test.go: a row's context menu (List.SetContextMenu).
@@ -28,9 +28,9 @@ func shellMice(h *harness, sh *shell) int {
 // TestListContextMenuIsOffByDefault: without SetContextMenu a right press is not the list's: the
 // cursor stays, no menu is requested, and the press goes on to the list's parent, as before.
 func TestListContextMenuIsOffByDefault(t *testing.T) {
-	src := widget.SliceSource([]string{"a", "b", "c", "d"})
+	src := core.SliceSource([]string{"a", "b", "c", "d"})
 	h, l, sh := focusedList(t, src, 10, 4)
-	menus := record[widget.ContextMenuEvent](h)
+	menus := record[core.ContextMenuEvent](h)
 	h.inject(rightPress(2, 2))
 	h.barrier(sh)
 	var idx int
@@ -45,11 +45,11 @@ func TestListContextMenuIsOffByDefault(t *testing.T) {
 // in the list's cells, at any scroll; below the rows it requests no row's (-1), the cursor left
 // where it is; the press is the list's.
 func TestListContextMenuRequestsTheRowPressed(t *testing.T) {
-	src := widget.SliceSource([]string{"a", "b", "c", "d", "e", "f"})
+	src := core.SliceSource([]string{"a", "b", "c", "d", "e", "f"})
 	h, l, sh := focusedList(t, src, 10, 4)
 	h.onLoop(func() { l.SetContextMenu(true) })
-	moves := record[widget.SelectionChangedEvent](h)
-	menus := record[widget.ContextMenuEvent](h)
+	moves := record[core.SelectionChangedEvent](h)
+	menus := record[core.ContextMenuEvent](h)
 
 	h.inject(rightPress(3, 2))
 	h.barrier(sh)
@@ -80,10 +80,10 @@ func TestListContextMenuRequestsTheRowPressed(t *testing.T) {
 	}
 
 	// below the rows: no row's menu, the cursor where it was
-	few := widget.SliceSource([]string{"a", "b"})
+	few := core.SliceSource([]string{"a", "b"})
 	h2, l2, sh2 := focusedList(t, few, 10, 4)
 	h2.onLoop(func() { l2.SetContextMenu(true) })
-	menus2 := record[widget.ContextMenuEvent](h2)
+	menus2 := record[core.ContextMenuEvent](h2)
 	h2.inject(rightPress(1, 3))
 	h2.barrier(sh2)
 	h2.onLoop(func() { idx, _ = l2.Selected() })
@@ -95,9 +95,9 @@ func TestListContextMenuRequestsTheRowPressed(t *testing.T) {
 // TestListContextMenuKeys: on, Shift+F10 and the Menu key request the cursor row's menu, at its
 // first cell on screen; an empty list's, no row's. Off, the keys are not the list's.
 func TestListContextMenuKeys(t *testing.T) {
-	src := widget.SliceSource([]string{"a", "b", "c", "d", "e", "f"})
+	src := core.SliceSource([]string{"a", "b", "c", "d", "e", "f"})
 	h, l, sh := focusedList(t, src, 10, 3)
-	menus := record[widget.ContextMenuEvent](h)
+	menus := record[core.ContextMenuEvent](h)
 	h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyF10, Mods: tui.ModShift})
 	h.barrier(sh)
 	if len(menus.events()) != 0 {
@@ -111,10 +111,10 @@ func TestListContextMenuKeys(t *testing.T) {
 		t.Fatalf("the keys asked: %+v", got)
 	}
 
-	empty := widget.SliceSource([]string{})
+	empty := core.SliceSource([]string{})
 	h2, l2, sh2 := focusedList(t, empty, 10, 3)
 	h2.onLoop(func() { l2.SetContextMenu(true) })
-	menus2 := record[widget.ContextMenuEvent](h2)
+	menus2 := record[core.ContextMenuEvent](h2)
 	h2.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyMenu})
 	h2.barrier(sh2)
 	if got := menus2.events(); len(got) != 1 || got[0].Index != -1 {
@@ -130,9 +130,9 @@ func TestAListTellsItsOwnerOfAMenuRequest(t *testing.T) {
 		at tui.Point
 	}
 	var asks []ask
-	src := widget.SliceSource([]string{"a", "b", "c"})
+	src := core.SliceSource([]string{"a", "b", "c"})
 	h, l, sh := focusedList(t, src, 10, 4,
-		widget.WithListOnContextMenu[string](func(i int, at tui.Point) { asks = append(asks, ask{i, at}) }))
+		core.WithListOnContextMenu[string](func(i int, at tui.Point) { asks = append(asks, ask{i, at}) }))
 	h.onLoop(func() { l.SetContextMenu(true) })
 	h.inject(rightPress(3, 2))
 	h.barrier(sh)

@@ -24,7 +24,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // TestASecondDialogOpenedOverTheFirstTakesTheKeyboard.
@@ -34,10 +34,10 @@ import (
 // so neither trap is an ancestor of the other and ancestry alone could only
 // ever refuse the second.
 func TestASecondDialogOpenedOverTheFirstTakesTheKeyboard(t *testing.T) {
-	firstOK := widget.NewButton("first-ok", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
-	first := widget.NewModal(widget.NewText("first"), widget.WithButtons(firstOK))
-	secondOK := widget.NewButton("second-ok", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
-	second := widget.NewModal(widget.NewText("second"), widget.WithButtons(secondOK))
+	firstOK := core.NewButton("first-ok", core.WithRole(core.ButtonRoleAccept), core.WithDefault(true))
+	first := core.NewModal(core.NewText("first"), core.WithButtons(firstOK))
+	secondOK := core.NewButton("second-ok", core.WithRole(core.ButtonRoleAccept), core.WithDefault(true))
+	second := core.NewModal(core.NewText("second"), core.WithButtons(secondOK))
 
 	h, host, base := modalFixture(t, first, 40, 12)
 	defer h.stop()
@@ -74,10 +74,10 @@ func TestASecondDialogOpenedOverTheFirstTakesTheKeyboard(t *testing.T) {
 // exactly where it was in the lower one, via the scope stack's restore — not
 // on the base, and not nowhere.
 func TestClosingTheTopDialogPutsTheKeyboardBackInTheOneBeneath(t *testing.T) {
-	firstOK := widget.NewButton("first-ok", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
-	first := widget.NewModal(widget.NewText("first"), widget.WithButtons(firstOK))
-	secondOK := widget.NewButton("second-ok", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
-	second := widget.NewModal(widget.NewText("second"), widget.WithButtons(secondOK))
+	firstOK := core.NewButton("first-ok", core.WithRole(core.ButtonRoleAccept), core.WithDefault(true))
+	first := core.NewModal(core.NewText("first"), core.WithButtons(firstOK))
+	secondOK := core.NewButton("second-ok", core.WithRole(core.ButtonRoleAccept), core.WithDefault(true))
+	second := core.NewModal(core.NewText("second"), core.WithButtons(secondOK))
 
 	h, host, base := modalFixture(t, first, 40, 12)
 	defer h.stop()
@@ -90,7 +90,7 @@ func TestClosingTheTopDialogPutsTheKeyboardBackInTheOneBeneath(t *testing.T) {
 		t.Fatal("precondition failed: never reached the second dialog")
 	}
 
-	h.onLoop(func() { second.Dismiss(widget.DismissProgrammatic) })
+	h.onLoop(func() { second.Dismiss(core.DismissProgrammatic) })
 	h.settle()
 	h.settle()
 
@@ -123,12 +123,12 @@ func TestClosingTheTopDialogPutsTheKeyboardBackInTheOneBeneath(t *testing.T) {
 // (TestAnInnerTrapCannotEscapeIntoTheDialogAroundIt), where the inner scope is
 // a real descendant of the outer one.
 func TestADropdownInsideADialogStillOpens(t *testing.T) {
-	sel := widget.NewSelect(widget.WithOptions([]widget.SelectItem[string]{
+	sel := core.NewSelect(core.WithOptions([]core.SelectItem[string]{
 		{Label: "alpha", Value: "alpha"},
 		{Label: "beta", Value: "beta"},
 	}))
-	ok := widget.NewButton("ok", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
-	m := widget.NewModal(sel, widget.WithButtons(ok))
+	ok := core.NewButton("ok", core.WithRole(core.ButtonRoleAccept), core.WithDefault(true))
+	m := core.NewModal(sel, core.WithButtons(ok))
 
 	h, host, _ := modalFixture(t, m, 40, 12)
 	defer h.stop()

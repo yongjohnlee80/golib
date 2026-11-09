@@ -10,12 +10,12 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // pane is a plain focusable filler for Split focus/resize tests.
 type pane struct {
-	widget.Base
+	core.Base
 	fill string
 }
 
@@ -33,10 +33,10 @@ func (p *pane) Render(s tui.Surface) {
 func TestSplitLayoutAndKeyboardResize(t *testing.T) {
 	left := &pane{fill: "a"}
 	right := &pane{fill: "b"}
-	split := widget.NewSplit(widget.Horizontal, left, right, widget.WithRatio(0.5), widget.WithMinSizes(4, 4))
+	split := core.NewSplit(core.Horizontal, left, right, core.WithRatio(0.5), core.WithMinSizes(4, 4))
 	sh := newShell(split)
 	h := startApp(t, sh, 21, 5)
-	resized := record[widget.SplitResizedEvent](h)
+	resized := record[core.SplitResizedEvent](h)
 	h.inject(tab()) // focus the left box
 	h.barrier(sh)
 
@@ -65,7 +65,7 @@ func TestSplitLayoutAndKeyboardResize(t *testing.T) {
 }
 
 func TestSplitMouseDrag(t *testing.T) {
-	split := widget.NewSplit(widget.Horizontal, widget.NewText("L"), widget.NewText("R"))
+	split := core.NewSplit(core.Horizontal, core.NewText("L"), core.NewText("R"))
 	sh := newShell(split)
 	h := startApp(t, sh, 21, 3)
 	h.settle()
@@ -80,9 +80,9 @@ func TestSplitMouseDrag(t *testing.T) {
 // --- Zoom ---
 
 func TestSplitZoomHidesPaneAndTransfersFocus(t *testing.T) {
-	a := widget.NewTextInput()
-	b := widget.NewTextInput()
-	sp := widget.NewSplit(widget.Horizontal, a, b)
+	a := core.NewTextInput()
+	b := core.NewTextInput()
+	sp := core.NewSplit(core.Horizontal, a, b)
 	sh := newShell(sp)
 	h := startApp(t, sh, 41, 5)
 
@@ -91,8 +91,8 @@ func TestSplitZoomHidesPaneAndTransfersFocus(t *testing.T) {
 	h.inject(typeString("bbb")...)
 	h.barrier(sh)
 
-	zooms := record[widget.SplitZoomEvent](h)
-	h.onLoop(func() { sp.Zoom(widget.PaneA) })
+	zooms := record[core.SplitZoomEvent](h)
+	h.onLoop(func() { sp.Zoom(core.PaneA) })
 	h.barrier(sh)
 
 	// Pane B's content is gone from the grid; the divider too.
@@ -111,7 +111,7 @@ func TestSplitZoomHidesPaneAndTransfersFocus(t *testing.T) {
 	}
 
 	// Restore: prior ratio, pane B visible again, focus stays where it is.
-	h.onLoop(func() { sp.Zoom(widget.PaneNone) })
+	h.onLoop(func() { sp.Zoom(core.PaneNone) })
 	h.barrier(sh)
 	h.wantContains("bbb")
 	h.inject(typeString("!")...)
@@ -123,16 +123,16 @@ func TestSplitZoomHidesPaneAndTransfersFocus(t *testing.T) {
 }
 
 func TestSplitZoomWithUnfocusableRetainedPaneClearsFocus(t *testing.T) {
-	a := widget.NewText("static") // not focusable
-	b := widget.NewTextInput()
-	sp := widget.NewSplit(widget.Horizontal, a, b)
+	a := core.NewText("static") // not focusable
+	b := core.NewTextInput()
+	sp := core.NewSplit(core.Horizontal, a, b)
 	sh := newShell(sp)
 	h := startApp(t, sh, 41, 5)
 	h.inject(tab()) // focus the input in pane B
 	h.inject(typeString("x")...)
 	h.barrier(sh)
 
-	h.onLoop(func() { sp.Zoom(widget.PaneA) })
+	h.onLoop(func() { sp.Zoom(core.PaneA) })
 	h.barrier(sh)
 
 	// The hidden input must not receive keys (focus cleared, key bubbles).
@@ -150,14 +150,14 @@ func TestSplitZoomWithUnfocusableRetainedPaneClearsFocus(t *testing.T) {
 }
 
 func TestSplitSetRatio(t *testing.T) {
-	a := widget.NewText("A")
-	b := widget.NewText("B")
-	sp := widget.NewSplit(widget.Horizontal, a, b)
+	a := core.NewText("A")
+	b := core.NewText("B")
+	sp := core.NewSplit(core.Horizontal, a, b)
 	sh := newShell(sp)
 	h := startApp(t, sh, 41, 5)
 	h.barrier(sh)
 
-	resizes := record[widget.SplitResizedEvent](h)
+	resizes := record[core.SplitResizedEvent](h)
 	h.onLoop(func() { sp.SetRatio(0.25) })
 	h.barrier(sh)
 	var r float64

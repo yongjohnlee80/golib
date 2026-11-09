@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // modal_squeeze_test.go: a card taller than its host gives up its blank rows
@@ -12,11 +12,11 @@ import (
 
 func squeezeFixture(t *testing.T, h int) (*harness, []string) {
 	t.Helper()
-	yes := widget.NewButton("Yes", widget.WithRole(widget.ButtonRoleAccept))
-	no := widget.NewButton("No", widget.WithRole(widget.ButtonRoleReject))
-	md := widget.NewModal(widget.NewText("Leave now?"), widget.WithModalTitle("quit?"),
-		widget.WithModalRule(true), widget.WithButtons(yes, no))
-	host := widget.NewOverlayHost(widget.NewText(""))
+	yes := core.NewButton("Yes", core.WithRole(core.ButtonRoleAccept))
+	no := core.NewButton("No", core.WithRole(core.ButtonRoleReject))
+	md := core.NewModal(core.NewText("Leave now?"), core.WithModalTitle("quit?"),
+		core.WithModalRule(true), core.WithButtons(yes, no))
+	host := core.NewOverlayHost(core.NewText(""))
 	hh := startApp(t, host, 40, h)
 	hh.onLoop(func() {
 		if err := md.Open(host); err != nil {
@@ -74,10 +74,10 @@ func TestASqueezedCardKeepsItsHelpLine(t *testing.T) {
 	// beside the message and the button, and the help line — information —
 	// outlasts the rule, which is decoration.
 	for _, h := range []int{9, 8, 7, 6, 5} {
-		yes := widget.NewButton("Yes", widget.WithRole(widget.ButtonRoleAccept))
-		md := widget.NewModal(widget.NewText("Leave now?"), widget.WithModalTitle("quit?"),
-			widget.WithModalRule(true), widget.WithButtons(yes), widget.WithModalFooter("Esc closes"))
-		host := widget.NewOverlayHost(widget.NewText(""))
+		yes := core.NewButton("Yes", core.WithRole(core.ButtonRoleAccept))
+		md := core.NewModal(core.NewText("Leave now?"), core.WithModalTitle("quit?"),
+			core.WithModalRule(true), core.WithButtons(yes), core.WithModalFooter("Esc closes"))
+		host := core.NewOverlayHost(core.NewText(""))
 		hh := startApp(t, host, 40, h)
 		hh.onLoop(func() {
 			if err := md.Open(host); err != nil {
@@ -117,13 +117,13 @@ func TestASqueezedCardKeepsItsHelpLine(t *testing.T) {
 // question and its answers.
 func TestACardAtItsSmallestKeepsTheQuestionAndItsAnswers(t *testing.T) {
 	for _, footer := range []string{"", "Esc closes"} {
-		yes := widget.NewButton("Yes", widget.WithRole(widget.ButtonRoleAccept))
-		opts := []widget.ModalOption{widget.WithModalRule(true), widget.WithButtons(yes)}
+		yes := core.NewButton("Yes", core.WithRole(core.ButtonRoleAccept))
+		opts := []core.ModalOption{core.WithModalRule(true), core.WithButtons(yes)}
 		if footer != "" {
-			opts = append(opts, widget.WithModalFooter(footer))
+			opts = append(opts, core.WithModalFooter(footer))
 		}
-		md := widget.NewModal(widget.NewText("Leave now?"), opts...)
-		host := widget.NewOverlayHost(widget.NewText(""))
+		md := core.NewModal(core.NewText("Leave now?"), opts...)
+		host := core.NewOverlayHost(core.NewText(""))
 		hh := startApp(t, host, 40, 4)
 		hh.onLoop(func() {
 			if err := md.Open(host); err != nil {
@@ -147,11 +147,11 @@ func TestACardAroundAFillingBodySqueezesOnlyWhenItMust(t *testing.T) {
 		h        int
 		wantRule bool
 	}{{16, true}, {5, false}} {
-		list := widget.NewList(widget.WithItems([]string{"alpha", "beta", "gamma"}, func(s string) string { return s }))
-		yes := widget.NewButton("Yes", widget.WithRole(widget.ButtonRoleAccept))
-		md := widget.NewModal(list, widget.WithModalRule(true), widget.WithButtons(yes),
-			widget.WithModalFooter("Esc closes"))
-		host := widget.NewOverlayHost(widget.NewText(""))
+		list := core.NewList(core.WithItems([]string{"alpha", "beta", "gamma"}, func(s string) string { return s }))
+		yes := core.NewButton("Yes", core.WithRole(core.ButtonRoleAccept))
+		md := core.NewModal(list, core.WithModalRule(true), core.WithButtons(yes),
+			core.WithModalFooter("Esc closes"))
+		host := core.NewOverlayHost(core.NewText(""))
 		hh := startApp(t, host, 40, c.h)
 		hh.onLoop(func() {
 			if err := md.Open(host); err != nil {
@@ -173,10 +173,10 @@ func TestACardAroundAFillingBodySqueezesOnlyWhenItMust(t *testing.T) {
 // A message longer than the room is content, not a filler: squeezed, it keeps
 // as many of its lines as the card can hold once the decoration has yielded.
 func TestASqueezedCardKeepsAsMuchOfALongMessageAsFits(t *testing.T) {
-	yes := widget.NewButton("Yes", widget.WithRole(widget.ButtonRoleAccept))
-	md := widget.NewModal(widget.NewText("one\ntwo\nthree\nfour\nfive\nsix", widget.WithWrapMode(widget.Wrap)),
-		widget.WithModalRule(true), widget.WithButtons(yes))
-	host := widget.NewOverlayHost(widget.NewText(""))
+	yes := core.NewButton("Yes", core.WithRole(core.ButtonRoleAccept))
+	md := core.NewModal(core.NewText("one\ntwo\nthree\nfour\nfive\nsix", core.WithWrapMode(core.Wrap)),
+		core.WithModalRule(true), core.WithButtons(yes))
+	host := core.NewOverlayHost(core.NewText(""))
 	hh := startApp(t, host, 40, 8)
 	defer hh.stop()
 	hh.onLoop(func() {
@@ -195,14 +195,14 @@ func TestASqueezedCardKeepsAsMuchOfALongMessageAsFits(t *testing.T) {
 
 func openSmallCard(t *testing.T, title, footer string) *harness {
 	t.Helper()
-	yes := widget.NewButton("Yes", widget.WithRole(widget.ButtonRoleAccept))
-	no := widget.NewButton("No", widget.WithRole(widget.ButtonRoleReject))
-	opts := []widget.ModalOption{widget.WithModalTitle(title), widget.WithButtons(yes, no)}
+	yes := core.NewButton("Yes", core.WithRole(core.ButtonRoleAccept))
+	no := core.NewButton("No", core.WithRole(core.ButtonRoleReject))
+	opts := []core.ModalOption{core.WithModalTitle(title), core.WithButtons(yes, no)}
 	if footer != "" {
-		opts = append(opts, widget.WithModalFooter(footer))
+		opts = append(opts, core.WithModalFooter(footer))
 	}
-	md := widget.NewModal(widget.NewText("Leave now?"), opts...)
-	host := widget.NewOverlayHost(widget.NewText(""))
+	md := core.NewModal(core.NewText("Leave now?"), opts...)
+	host := core.NewOverlayHost(core.NewText(""))
 	hh := startApp(t, host, 40, 4)
 	hh.onLoop(func() {
 		if err := md.Open(host); err != nil {

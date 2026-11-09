@@ -14,14 +14,14 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // columnFixture is a VERTICAL menu — no bar. Its arrow vocabulary is the other
 // one: Up and Down move, Right descends into a submenu, Left comes back.
-func columnFixture(t *testing.T, m *widget.Menu, items []widget.MenuItemModel) *harness {
+func columnFixture(t *testing.T, m *core.Menu, items []core.MenuItemModel) *harness {
 	t.Helper()
-	host := widget.NewOverlayHost(m)
+	host := core.NewOverlayHost(m)
 	h := startApp(t, host, 50, 14)
 	h.onLoop(func() {
 		if err := m.SetModel(items); err != nil {
@@ -33,13 +33,13 @@ func columnFixture(t *testing.T, m *widget.Menu, items []widget.MenuItemModel) *
 	return h
 }
 
-func columnModel() []widget.MenuItemModel {
-	return []widget.MenuItemModel{
-		widget.NewCommand("one", "One", nil),
-		widget.NewSubmenu("deep", "Deep", []widget.MenuItemModel{
-			widget.NewCommand("leaf", "Leaf", nil),
+func columnModel() []core.MenuItemModel {
+	return []core.MenuItemModel{
+		core.NewCommand("one", "One", nil),
+		core.NewSubmenu("deep", "Deep", []core.MenuItemModel{
+			core.NewCommand("leaf", "Leaf", nil),
 		}),
-		widget.NewCommand("three", "Three", nil),
+		core.NewCommand("three", "Three", nil),
 	}
 }
 
@@ -55,15 +55,15 @@ func TestAVerticalMenuKeepsItsOwnArrowVocabulary(t *testing.T) {
 		h.settle()
 		h.settle()
 	}
-	selOf := func(t *testing.T, h *harness, m *widget.Menu) widget.ItemID {
+	selOf := func(t *testing.T, h *harness, m *core.Menu) core.ItemID {
 		t.Helper()
-		var id widget.ItemID
+		var id core.ItemID
 		h.onLoop(func() { id, _ = m.Selected() })
 		return id
 	}
 
 	t.Run("Down and Up move the selection", func(t *testing.T) {
-		m := widget.NewMenu()
+		m := core.NewMenu()
 		h := columnFixture(t, m, columnModel())
 		defer h.stop()
 		h.onLoop(func() { m.Select("one") })
@@ -79,7 +79,7 @@ func TestAVerticalMenuKeepsItsOwnArrowVocabulary(t *testing.T) {
 	})
 
 	t.Run("Right descends and Left returns", func(t *testing.T) {
-		m := widget.NewMenu()
+		m := core.NewMenu()
 		h := columnFixture(t, m, columnModel())
 		defer h.stop()
 		h.onLoop(func() { m.Select("deep") })
@@ -98,7 +98,7 @@ func TestAVerticalMenuKeepsItsOwnArrowVocabulary(t *testing.T) {
 	t.Run("Right on a plain row does nothing", func(t *testing.T) {
 		// The control for the case above: a column has no bar to walk to, so
 		// the key that descends must NOT quietly do something else instead.
-		m := widget.NewMenu()
+		m := core.NewMenu()
 		h := columnFixture(t, m, columnModel())
 		defer h.stop()
 		h.onLoop(func() { m.Select("one") })
@@ -113,7 +113,7 @@ func TestAVerticalMenuKeepsItsOwnArrowVocabulary(t *testing.T) {
 	})
 
 	t.Run("Left with nothing open does nothing", func(t *testing.T) {
-		m := widget.NewMenu()
+		m := core.NewMenu()
 		h := columnFixture(t, m, columnModel())
 		defer h.stop()
 		h.onLoop(func() { m.Select("one") })
@@ -131,14 +131,14 @@ func TestAVerticalMenuKeepsItsOwnArrowVocabulary(t *testing.T) {
 // row: a level that opens with a separator would otherwise need one extra Up
 // that appears to do nothing.
 func TestTheTopOfALevelSkipsRowsThatCannotBeSelected(t *testing.T) {
-	model := []widget.MenuItemModel{
-		widget.NewSubmenu("file", "File", []widget.MenuItemModel{
-			widget.NewSeparator("sep"),
-			widget.NewCommand("new", "New", nil),
-			widget.NewCommand("open", "Open", nil),
+	model := []core.MenuItemModel{
+		core.NewSubmenu("file", "File", []core.MenuItemModel{
+			core.NewSeparator("sep"),
+			core.NewCommand("new", "New", nil),
+			core.NewCommand("open", "Open", nil),
 		}),
 	}
-	m := widget.NewMenu()
+	m := core.NewMenu()
 	h, _ := barFixture(t, m, model, 50, 12)
 	defer h.stop()
 	h.onLoop(func() { m.Context().RequestFocus() })
@@ -147,7 +147,7 @@ func TestTheTopOfALevelSkipsRowsThatCannotBeSelected(t *testing.T) {
 	h.settle()
 	h.settle()
 
-	var sel widget.ItemID
+	var sel core.ItemID
 	h.onLoop(func() { sel, _ = m.Selected() })
 	if sel != "new" {
 		t.Fatalf("the level opened on %q; a separator is not selectable", sel)
@@ -166,13 +166,13 @@ func TestTheTopOfALevelSkipsRowsThatCannotBeSelected(t *testing.T) {
 // barNeighbour has to report "nowhere" rather than handing back the category
 // already open, which would reopen it and close its own cascade on every press.
 func TestABarWithOneCategoryHasNowhereToStep(t *testing.T) {
-	model := []widget.MenuItemModel{
-		widget.NewSubmenu("only", "Only", []widget.MenuItemModel{
-			widget.NewCommand("a", "A", nil),
-			widget.NewCommand("b", "B", nil),
+	model := []core.MenuItemModel{
+		core.NewSubmenu("only", "Only", []core.MenuItemModel{
+			core.NewCommand("a", "A", nil),
+			core.NewCommand("b", "B", nil),
 		}),
 	}
-	m := widget.NewMenu()
+	m := core.NewMenu()
 	h, _ := barFixture(t, m, model, 40, 12)
 	defer h.stop()
 	h.onLoop(func() { m.Context().RequestFocus() })
@@ -190,7 +190,7 @@ func TestABarWithOneCategoryHasNowhereToStep(t *testing.T) {
 		t.Errorf("Right in a one-category bar left %d levels open, want the cascade "+
 			"untouched", n)
 	}
-	var sel widget.ItemID
+	var sel core.ItemID
 	h.onLoop(func() { sel, _ = m.Selected() })
 	if sel != "b" {
 		t.Errorf("Right moved the selection to %q; there is nowhere to step", sel)
@@ -202,12 +202,12 @@ func TestABarWithOneCategoryHasNowhereToStep(t *testing.T) {
 // A title clipped to half a word on a frame is harder to read than no title, so
 // the frame goes bare rather than carrying "Prefere…".
 func TestALevelTooNarrowForItsNameDrawsNoTitle(t *testing.T) {
-	model := []widget.MenuItemModel{
-		widget.NewSubmenu("long", "AVeryLongCategoryName", []widget.MenuItemModel{
-			widget.NewCommand("a", "A", nil),
+	model := []core.MenuItemModel{
+		core.NewSubmenu("long", "AVeryLongCategoryName", []core.MenuItemModel{
+			core.NewCommand("a", "A", nil),
 		}),
 	}
-	m := widget.NewMenu()
+	m := core.NewMenu()
 	// Narrow enough that the level cannot hold its own name.
 	h, _ := barFixture(t, m, model, 14, 10)
 	defer h.stop()
@@ -231,22 +231,22 @@ func TestALevelTooNarrowForItsNameDrawsNoTitle(t *testing.T) {
 // this package answers on a nil style, because a menu with no style asks one
 // for values on every paint.
 func TestSelectedBlurredIsOverridableAndNilSafe(t *testing.T) {
-	var nilStyle *widget.MenuStyle
-	if got := nilStyle.SelectedBlurred(); got != widget.DefaultMenuStyle().SelectedBlurred() {
+	var nilStyle *core.MenuStyle
+	if got := nilStyle.SelectedBlurred(); got != core.DefaultMenuStyle().SelectedBlurred() {
 		t.Error("a nil MenuStyle did not answer with the default blurred look")
 	}
 
 	marker := style.New().Underline(true)
-	s := widget.DefaultMenuStyle().WithSelectedBlurred(marker)
+	s := core.DefaultMenuStyle().WithSelectedBlurred(marker)
 	if s.SelectedBlurred() != marker {
 		t.Errorf("WithSelectedBlurred stored %+v, want the supplied look", s.SelectedBlurred())
 	}
 	// A copy, never a mutation: these values are shared between menus.
-	if widget.DefaultMenuStyle().SelectedBlurred() == marker {
+	if core.DefaultMenuStyle().SelectedBlurred() == marker {
 		t.Error("WithSelectedBlurred mutated the value it was called on")
 	}
 	// And it leaves the other looks alone.
-	if s.Selected() != widget.DefaultMenuStyle().Selected() {
+	if s.Selected() != core.DefaultMenuStyle().Selected() {
 		t.Error("WithSelectedBlurred disturbed the focused selection look")
 	}
 }
@@ -255,19 +255,19 @@ func TestSelectedBlurredIsOverridableAndNilSafe(t *testing.T) {
 // reader has to go and decode.
 func TestButtonAlignNamesItself(t *testing.T) {
 	for _, tc := range []struct {
-		a    widget.ButtonAlign
+		a    core.ButtonAlign
 		want string
 	}{
-		{widget.ButtonsCenter, "center"},
-		{widget.ButtonsLeft, "left"},
-		{widget.ButtonsRight, "right"},
-		{widget.ButtonsRight + 1, "unknown"},
+		{core.ButtonsCenter, "center"},
+		{core.ButtonsLeft, "left"},
+		{core.ButtonsRight, "right"},
+		{core.ButtonsRight + 1, "unknown"},
 	} {
 		if got := tc.a.String(); got != tc.want {
 			t.Errorf("ButtonAlign(%d).String() = %q, want %q", tc.a, got, tc.want)
 		}
 	}
-	if widget.ButtonAlign(widget.ButtonsRight + 1).Valid() {
+	if core.ButtonAlign(core.ButtonsRight + 1).Valid() {
 		t.Error("an out-of-range ButtonAlign reported itself valid")
 	}
 }
@@ -285,30 +285,30 @@ func TestButtonAlignNamesItself(t *testing.T) {
 // "Still in the model" and "still on screen" are different questions, and only
 // the second one is what a selection has to satisfy.
 func TestClosingACascadeLeavesTheSelectionSomewhereVisible(t *testing.T) {
-	model := []widget.MenuItemModel{
-		widget.NewSubmenu("file", "File", []widget.MenuItemModel{
-			widget.NewCommand("new", "New", nil),
+	model := []core.MenuItemModel{
+		core.NewSubmenu("file", "File", []core.MenuItemModel{
+			core.NewCommand("new", "New", nil),
 		}),
-		widget.NewSubmenu("option", "Option", []widget.MenuItemModel{
-			widget.NewSubmenu("km", "Keymaps", []widget.MenuItemModel{
-				widget.NewCommand("vim", "Vim", nil),
+		core.NewSubmenu("option", "Option", []core.MenuItemModel{
+			core.NewSubmenu("km", "Keymaps", []core.MenuItemModel{
+				core.NewCommand("vim", "Vim", nil),
 			}),
 		}),
 	}
-	rootIDs := map[widget.ItemID]bool{"file": true, "option": true}
+	rootIDs := map[core.ItemID]bool{"file": true, "option": true}
 
 	for _, tc := range []struct {
 		name  string
-		close func(m *widget.Menu)
+		close func(m *core.Menu)
 	}{
-		{"Close from one level deep", func(m *widget.Menu) { m.Close() }},
-		{"Close from two levels deep", func(m *widget.Menu) {
+		{"Close from one level deep", func(m *core.Menu) { m.Close() }},
+		{"Close from two levels deep", func(m *core.Menu) {
 			_ = m.Open("km")
 			m.Close()
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			m := widget.NewMenu()
+			m := core.NewMenu()
 			h, _ := barFixture(t, m, model, 50, 14)
 			defer h.stop()
 			h.onLoop(func() { m.Context().RequestFocus() })
@@ -320,7 +320,7 @@ func TestClosingACascadeLeavesTheSelectionSomewhereVisible(t *testing.T) {
 			h.settle()
 			h.settle()
 
-			var sel widget.ItemID
+			var sel core.ItemID
 			var ok bool
 			h.onLoop(func() { sel, ok = m.Selected() })
 			if !ok {
@@ -354,7 +354,7 @@ func TestClosingACascadeLeavesTheSelectionSomewhereVisible(t *testing.T) {
 			h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyLeft})
 			h.settle()
 			h.settle()
-			var moved widget.ItemID
+			var moved core.ItemID
 			h.onLoop(func() { moved, _ = m.Selected() })
 			if moved != "file" {
 				t.Errorf("Left from the restored selection went to %q, want the "+
@@ -377,17 +377,17 @@ func TestClosingACascadeLeavesTheSelectionSomewhereVisible(t *testing.T) {
 // between. With the recursive lookup the selection stayed on a row that is now
 // neither visible nor reachable.
 func TestHidingAnOpenCategoryDoesNotStrandTheSelectionInsideIt(t *testing.T) {
-	model := []widget.MenuItemModel{
-		widget.NewSubmenu("file", "File", []widget.MenuItemModel{
-			widget.NewCommand("new", "New", nil),
+	model := []core.MenuItemModel{
+		core.NewSubmenu("file", "File", []core.MenuItemModel{
+			core.NewCommand("new", "New", nil),
 		}),
-		widget.NewSubmenu("option", "Option", []widget.MenuItemModel{
-			widget.NewSubmenu("km", "Keymaps", []widget.MenuItemModel{
-				widget.NewCommand("vim", "Vim", nil),
+		core.NewSubmenu("option", "Option", []core.MenuItemModel{
+			core.NewSubmenu("km", "Keymaps", []core.MenuItemModel{
+				core.NewCommand("vim", "Vim", nil),
 			}),
 		}),
 	}
-	m := widget.NewMenu()
+	m := core.NewMenu()
 	h, _ := barFixture(t, m, model, 50, 14)
 	defer h.stop()
 	h.onLoop(func() { m.Context().RequestFocus() })
@@ -402,7 +402,7 @@ func TestHidingAnOpenCategoryDoesNotStrandTheSelectionInsideIt(t *testing.T) {
 	h.settle()
 	h.settle()
 
-	var sel widget.ItemID
+	var sel core.ItemID
 	h.onLoop(func() { sel, _ = m.Selected() })
 	if sel != "vim" {
 		t.Fatalf("the cascade opened on %q; this test needs the selection two "+

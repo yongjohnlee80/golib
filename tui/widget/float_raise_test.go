@@ -5,13 +5,15 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
+	"github.com/yongjohnlee80/golib/tui/widget/table"
 )
 
 // panelFloat is a non-modal floating panel at r: a titled box around one button.
-func panelFloat(title string, r tui.Rect) (*widget.Float, *widget.Button) {
-	btn := widget.NewButton(title + "-btn")
-	return widget.NewFloat(widget.NewBox(btn, widget.WithTitle(title)), widget.WithAnchor(widget.AtRect(r))), btn
+func panelFloat(title string, r tui.Rect) (*core.Float, *core.Button) {
+	btn := core.NewButton(title + "-btn")
+	return core.NewFloat(core.NewBox(btn, core.WithTitle(title)), core.WithAnchor(core.AtRect(r))), btn
 }
 
 // clickUp is a left click at (x, y): the press and its release.
@@ -20,7 +22,7 @@ func clickUp(x, y int) []tui.Event {
 }
 
 // layerOrder is where each of cs is in the host's layers, bottom to top; -1 for one not there.
-func layerOrder(h *harness, host *widget.OverlayHost, cs ...tui.Component) []int {
+func layerOrder(h *harness, host *core.OverlayHost, cs ...tui.Component) []int {
 	out := make([]int, len(cs))
 	h.onLoop(func() {
 		layers := slices.Collect(func(yield func(tui.Component) bool) {
@@ -42,8 +44,8 @@ func layerOrder(h *harness, host *widget.OverlayHost, cs ...tui.Component) []int
 // part raises that one back; focus stays on what took it. A modal dialog stays above both,
 // whichever is raised, and a topmost notification stays above everything.
 func TestFocusRaisesANonModalFloat(t *testing.T) {
-	base := widget.NewButton("base")
-	host := widget.NewOverlayHost(base)
+	base := core.NewButton("base")
+	host := core.NewOverlayHost(base)
 	a, aBtn := panelFloat("A", tui.Rect{X: 2, Y: 1, W: 20, H: 6})
 	b, bBtn := panelFloat("B", tui.Rect{X: 12, Y: 4, W: 20, H: 6})
 	host.Attach(a)
@@ -83,10 +85,10 @@ func TestFocusRaisesANonModalFloat(t *testing.T) {
 	}
 
 	// A topmost notification, then a dialog over both panels.
-	toasts := widget.NewToasts(widget.WithToastWidth(12))
+	toasts := core.NewToasts(core.WithToastWidth(12))
 	h.onLoop(func() {
 		host.AttachTopmost(toasts.Float())
-		toasts.Post(widget.Toast{Text: "note", Ongoing: true})
+		toasts.Post(core.Toast{Text: "note", Ongoing: true})
 	})
 	h.settle()
 	h.inject(clickUp(4, 2)...) // into A's uncovered part: A comes up, still beneath the notification
@@ -98,7 +100,7 @@ func TestFocusRaisesANonModalFloat(t *testing.T) {
 		t.Fatalf("layers %v (A, B, toasts); want A above B and the notification above both", o)
 	}
 	h.onLoop(func() { host.Raise(b) })
-	m := widget.NewModal(widget.NewText("dialog"), widget.WithModalTitle("D"), widget.WithScrim(true))
+	m := core.NewModal(core.NewText("dialog"), core.WithModalTitle("D"), core.WithScrim(true))
 	openOn(t, h, m, host)
 	h.onLoop(func() { host.Raise(a) }) // the keyboard is in the dialog: raise A as a program would
 	h.settle()
@@ -115,7 +117,7 @@ func TestFocusRaisesANonModalFloat(t *testing.T) {
 	if top := host.TopModal(); top != m {
 		t.Fatal("the dialog is no longer the top modal")
 	}
-	h.onLoop(func() { m.Dismiss(widget.DismissProgrammatic) })
+	h.onLoop(func() { m.Dismiss(core.DismissProgrammatic) })
 }
 
 // TestAMoveInsideANonModalFloatLeavesTheOrder: the keyboard in panel A, and B raised above it by
@@ -123,11 +125,11 @@ func TestFocusRaisesANonModalFloat(t *testing.T) {
 // A's own nodes (an editor and its document view) is not the keyboard entering A, so B stays above
 // it. Leaving A and entering it again raises A, as before.
 func TestAMoveInsideANonModalFloatLeavesTheOrder(t *testing.T) {
-	base := widget.NewButton("base")
-	host := widget.NewOverlayHost(base)
-	one, two := widget.NewButton("one"), widget.NewButton("two")
-	a := widget.NewFloat(widget.NewBox(widget.NewSplit(widget.Horizontal, one, two), widget.WithTitle("A")),
-		widget.WithAnchor(widget.AtRect(tui.Rect{X: 2, Y: 1, W: 30, H: 6})))
+	base := core.NewButton("base")
+	host := core.NewOverlayHost(base)
+	one, two := core.NewButton("one"), core.NewButton("two")
+	a := core.NewFloat(core.NewBox(core.NewSplit(core.Horizontal, one, two), core.WithTitle("A")),
+		core.WithAnchor(core.AtRect(tui.Rect{X: 2, Y: 1, W: 30, H: 6})))
 	b, _ := panelFloat("B", tui.Rect{X: 12, Y: 4, W: 20, H: 6})
 	host.Attach(a)
 	host.Attach(b)
@@ -166,14 +168,14 @@ func TestAMoveInsideANonModalFloatLeavesTheOrder(t *testing.T) {
 // keyboard entering A, which raises it. A hidden and shown again holds nothing: the keyboard
 // entering it again raises it again.
 func TestFocusGivenToAnEditorShowingItsViewRaisesItsFloat(t *testing.T) {
-	base := widget.NewButton("base")
-	host := widget.NewOverlayHost(base)
-	ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText("a,b\n1,2\n")))
-	doc := widget.NewTableDocument(ed.Core(), ',')
+	base := core.NewButton("base")
+	host := core.NewOverlayHost(base)
+	ed := editor.NewEditor(editor.WithCore(editor.CoreInitialText("a,b\n1,2\n")))
+	doc := table.NewTableDocument(ed.Core(), ',')
 	ed.SetDocumentView(doc)
 	ed.SetRenderedDocument(true)
-	ed.SetView(widget.ViewRendered)
-	a := widget.NewFloat(widget.NewBox(ed, widget.WithTitle("A")), widget.WithAnchor(widget.AtRect(tui.Rect{X: 2, Y: 1, W: 30, H: 8})))
+	ed.SetView(editor.ViewRendered)
+	a := core.NewFloat(core.NewBox(ed, core.WithTitle("A")), core.WithAnchor(core.AtRect(tui.Rect{X: 2, Y: 1, W: 30, H: 8})))
 	b, _ := panelFloat("B", tui.Rect{X: 12, Y: 4, W: 20, H: 6})
 	host.Attach(a)
 	host.Attach(b)
@@ -209,14 +211,14 @@ func TestFocusGivenToAnEditorShowingItsViewRaisesItsFloat(t *testing.T) {
 // TestShowingAModalFloatPutsItAboveRaisedPanels: a modal Float attached before the panels is an
 // open dialog once shown, above a panel raised since, and beneath a topmost layer.
 func TestShowingAModalFloatPutsItAboveRaisedPanels(t *testing.T) {
-	base := widget.NewButton("base")
-	host := widget.NewOverlayHost(base)
-	dlgBtn := widget.NewButton("ok")
-	dlg := widget.NewFloat(widget.NewBox(dlgBtn, widget.WithTitle("Dialog")), widget.WithModal(true))
+	base := core.NewButton("base")
+	host := core.NewOverlayHost(base)
+	dlgBtn := core.NewButton("ok")
+	dlg := core.NewFloat(core.NewBox(dlgBtn, core.WithTitle("Dialog")), core.WithModal(true))
 	a, aBtn := panelFloat("A", tui.Rect{X: 2, Y: 1, W: 20, H: 6})
 	host.Attach(dlg)
 	host.Attach(a)
-	toasts := widget.NewToasts(widget.WithToastWidth(12))
+	toasts := core.NewToasts(core.WithToastWidth(12))
 	host.AttachTopmost(toasts.Float())
 	h := startApp(t, host, 40, 14)
 	defer h.stop()

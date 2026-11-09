@@ -14,14 +14,14 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 func TestModalDismissKeyClosesTheDialog(t *testing.T) {
-	md := widget.NewModal(widget.NewText("read me"),
-		widget.WithModalTitle("notice"),
-		widget.WithButtons(widget.NewButton("OK", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))),
-		widget.WithModalDismissKeys('q'))
+	md := core.NewModal(core.NewText("read me"),
+		core.WithModalTitle("notice"),
+		core.WithButtons(core.NewButton("OK", core.WithRole(core.ButtonRoleAccept), core.WithDefault(true))),
+		core.WithModalDismissKeys('q'))
 	h, host, _ := modalFixture(t, md, 40, 12)
 	openOn(t, h, md, host)
 
@@ -42,9 +42,9 @@ func TestModalDismissKeyClosesTheDialog(t *testing.T) {
 // A dialog that declares NO dismiss keys keeps `q`, so the cell above is about
 // the option rather than about Modal closing on any stray letter.
 func TestModalWithoutDismissKeysIgnoresQ(t *testing.T) {
-	md := widget.NewModal(widget.NewText("read me"),
-		widget.WithModalTitle("notice"),
-		widget.WithButtons(widget.NewButton("OK", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))))
+	md := core.NewModal(core.NewText("read me"),
+		core.WithModalTitle("notice"),
+		core.WithButtons(core.NewButton("OK", core.WithRole(core.ButtonRoleAccept), core.WithDefault(true))))
 	h, host, _ := modalFixture(t, md, 40, 12)
 	openOn(t, h, md, host)
 
@@ -62,14 +62,14 @@ func TestModalWithoutDismissKeysIgnoresQ(t *testing.T) {
 // author who declared it would have no way to know why.
 func TestModalDismissKeyLosesToAMnemonic(t *testing.T) {
 	activated := false
-	quit := widget.NewButton("Quit",
-		widget.WithMnemonic('q'),
-		widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true),
-		widget.WithOnActivate(func() { activated = true }))
-	md := widget.NewModal(widget.NewText("really?"),
-		widget.WithModalTitle("quit?"),
-		widget.WithButtons(quit),
-		widget.WithModalDismissKeys('q'))
+	quit := core.NewButton("Quit",
+		core.WithMnemonic('q'),
+		core.WithRole(core.ButtonRoleAccept), core.WithDefault(true),
+		core.WithOnActivate(func() { activated = true }))
+	md := core.NewModal(core.NewText("really?"),
+		core.WithModalTitle("quit?"),
+		core.WithButtons(quit),
+		core.WithModalDismissKeys('q'))
 	h, host, _ := modalFixture(t, md, 40, 12)
 	openOn(t, h, md, host)
 
@@ -87,11 +87,11 @@ func TestModalDismissKeyLosesToAMnemonic(t *testing.T) {
 // the dialog before the control would make `q` impossible to type into a form —
 // a CIDR, a note name, a passphrase.
 func TestModalDismissKeyDoesNotStealFromATextInput(t *testing.T) {
-	in := widget.NewTextInput()
-	md := widget.NewModal(in,
-		widget.WithModalTitle("name it"),
-		widget.WithButtons(widget.NewButton("OK", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))),
-		widget.WithModalDismissKeys('q'))
+	in := core.NewTextInput()
+	md := core.NewModal(in,
+		core.WithModalTitle("name it"),
+		core.WithButtons(core.NewButton("OK", core.WithRole(core.ButtonRoleAccept), core.WithDefault(true))),
+		core.WithModalDismissKeys('q'))
 	h, host, _ := modalFixture(t, md, 40, 12)
 	openOn(t, h, md, host)
 	h.onLoop(func() { in.Context().RequestFocus() })
@@ -121,12 +121,12 @@ func TestModalDismissKeyDoesNotStealFromATextInput(t *testing.T) {
 // listener to learn a second name for one meaning, and the ones that did not
 // would treat a `q` dismissal as unrecognised.
 func TestModalDismissKeyReportsEscapeExactlyOnce(t *testing.T) {
-	md := widget.NewModal(widget.NewText("read me"),
-		widget.WithModalTitle("notice"),
-		widget.WithButtons(widget.NewButton("OK", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))),
-		widget.WithModalDismissKeys('q'))
+	md := core.NewModal(core.NewText("read me"),
+		core.WithModalTitle("notice"),
+		core.WithButtons(core.NewButton("OK", core.WithRole(core.ButtonRoleAccept), core.WithDefault(true))),
+		core.WithModalDismissKeys('q'))
 	h, host, _ := modalFixture(t, md, 40, 12)
-	rec := record[widget.OverlayDismissedEvent](h)
+	rec := record[core.OverlayDismissedEvent](h)
 	openOn(t, h, md, host)
 
 	h.inject(key('q'))
@@ -136,7 +136,7 @@ func TestModalDismissKeyReportsEscapeExactlyOnce(t *testing.T) {
 	if len(evs) != 1 {
 		t.Fatalf("published %d dismissals, want exactly 1: %+v", len(evs), evs)
 	}
-	if evs[0].Reason != widget.DismissEscape {
+	if evs[0].Reason != core.DismissEscape {
 		t.Errorf("reason = %v, want DismissEscape", evs[0].Reason)
 	}
 }
@@ -146,15 +146,15 @@ func TestModalDismissKeyReportsEscapeExactlyOnce(t *testing.T) {
 // Cancel would be a second, quieter way out with different consequences.
 func TestModalDismissKeyActivatesCancelAndReportsIt(t *testing.T) {
 	cancelled := false
-	no := widget.NewButton("Cancel",
-		widget.WithRole(widget.ButtonRoleReject),
-		widget.WithOnActivate(func() { cancelled = true }))
-	md := widget.NewModal(widget.NewText("really?"),
-		widget.WithModalTitle("confirm"),
-		widget.WithButtons(no, widget.NewButton("OK", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))),
-		widget.WithModalDismissKeys('q'))
+	no := core.NewButton("Cancel",
+		core.WithRole(core.ButtonRoleReject),
+		core.WithOnActivate(func() { cancelled = true }))
+	md := core.NewModal(core.NewText("really?"),
+		core.WithModalTitle("confirm"),
+		core.WithButtons(no, core.NewButton("OK", core.WithRole(core.ButtonRoleAccept), core.WithDefault(true))),
+		core.WithModalDismissKeys('q'))
 	h, host, _ := modalFixture(t, md, 40, 12)
-	rec := record[widget.OverlayDismissedEvent](h)
+	rec := record[core.OverlayDismissedEvent](h)
 	openOn(t, h, md, host)
 
 	h.inject(key('q'))
@@ -169,7 +169,7 @@ func TestModalDismissKeyActivatesCancelAndReportsIt(t *testing.T) {
 	if len(evs) != 1 {
 		t.Fatalf("published %d dismissals, want exactly 1: %+v", len(evs), evs)
 	}
-	if evs[0].Reason != widget.DismissCancel {
+	if evs[0].Reason != core.DismissCancel {
 		t.Errorf("reason = %v, want DismissCancel — the same resolution Escape gets",
 			evs[0].Reason)
 	}
@@ -178,10 +178,10 @@ func TestModalDismissKeyActivatesCancelAndReportsIt(t *testing.T) {
 // A MODIFIED KEY IS NOT THE KEY. Ctrl-Q is not `q`, and a dialog that closed on
 // it would take a chord the application may have bound to something else.
 func TestModalDismissKeyIgnoresAModifiedKey(t *testing.T) {
-	md := widget.NewModal(widget.NewText("read me"),
-		widget.WithModalTitle("notice"),
-		widget.WithButtons(widget.NewButton("OK", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))),
-		widget.WithModalDismissKeys('q'))
+	md := core.NewModal(core.NewText("read me"),
+		core.WithModalTitle("notice"),
+		core.WithButtons(core.NewButton("OK", core.WithRole(core.ButtonRoleAccept), core.WithDefault(true))),
+		core.WithModalDismissKeys('q'))
 	h, host, _ := modalFixture(t, md, 40, 12)
 	openOn(t, h, md, host)
 

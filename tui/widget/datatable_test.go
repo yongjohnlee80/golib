@@ -7,21 +7,22 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/table"
 )
 
 // gridSource is an in-memory TableSource for DataTable's cases.
 type gridSource struct {
-	fields []widget.TableField
+	fields []core.TableField
 	rows   [][]string
 }
 
-func (g *gridSource) Fields() []widget.TableField { return g.fields }
-func (g *gridSource) Len() int                    { return len(g.rows) }
-func (g *gridSource) Cell(r, c int) string        { return g.rows[r][c] }
+func (g *gridSource) Fields() []core.TableField { return g.fields }
+func (g *gridSource) Len() int                  { return len(g.rows) }
+func (g *gridSource) Cell(r, c int) string      { return g.rows[r][c] }
 
 func numbered(n int) *gridSource {
-	g := &gridSource{fields: []widget.TableField{
+	g := &gridSource{fields: []core.TableField{
 		{Title: "id", Width: 4}, {Title: "name", Width: 8}, {Title: "n", Width: 5, Align: style.AlignRight},
 	}}
 	for i := range n {
@@ -30,16 +31,16 @@ func numbered(n int) *gridSource {
 	return g
 }
 
-func dataTable(t *testing.T, src widget.TableSource, w, h int, opts ...widget.TableOption) (*harness, *shell, *widget.DataTable) {
+func dataTable(t *testing.T, src table.TableSource, w, h int, opts ...table.TableOption) (*harness, *shell, *table.DataTable) {
 	t.Helper()
-	dt := widget.NewDataTable(widget.NewTableCore(src, opts...))
+	dt := table.NewDataTable(table.NewTableCore(src, opts...))
 	sh := newShell(dt)
 	hn := startApp(t, sh, w, h)
 	hn.barrier(sh)
 	return hn, sh, dt
 }
 
-func tableCursor(h *harness, dt *widget.DataTable) (pos widget.TablePos) {
+func tableCursor(h *harness, dt *table.DataTable) (pos table.TablePos) {
 	h.onLoop(func() { pos = dt.Core().Cursor() })
 	return pos
 }
@@ -74,7 +75,7 @@ func TestDataTable_ScrollsToTheCursor(t *testing.T) {
 		dt.HandleEvent(tui.KeyEvent{Kind: tui.KeyPress, Text: "G"})
 	})
 	h.barrier(sh)
-	if got := tableCursor(h, dt); got != (widget.TablePos{Row: 19, Col: 2}) {
+	if got := tableCursor(h, dt); got != (table.TablePos{Row: 19, Col: 2}) {
 		t.Fatalf("cursor %+v", got)
 	}
 	if !strings.Contains(h.row(0), "n") || strings.Contains(h.row(0), "id") {
@@ -92,7 +93,7 @@ func TestDataTable_AFilterScrollsBackToFitTheRows(t *testing.T) {
 	h.onLoop(func() { dt.HandleEvent(tui.KeyEvent{Kind: tui.KeyPress, Text: "G"}) })
 	h.barrier(sh)
 	h.onLoop(func() {
-		p, err := widget.ParseTableWhere("id >= 37", dt.Core().Fields())
+		p, err := table.ParseTableWhere("id >= 37", dt.Core().Fields())
 		if err != nil {
 			t.Error(err)
 		}
@@ -114,7 +115,7 @@ func TestDataTable_AFilterScrollsBackToFitTheRows(t *testing.T) {
 // (tui-widget-data-D4), as in List and Tree.
 func TestDataTable_ADoublePressPairsOnTheSameRowOnce(t *testing.T) {
 	var acts []int
-	h, _, _ := dataTable(t, numbered(20), 30, 6, widget.TableOnActivate(func(r int) { acts = append(acts, r) }))
+	h, _, _ := dataTable(t, numbered(20), 30, 6, table.TableOnActivate(func(r int) { acts = append(acts, r) }))
 	press := tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 1, Y: 3}
 	h.inject(press, press, press)
 	h.settle()
@@ -140,10 +141,10 @@ func TestDataTable_ADoublePressPairsOnTheSameRowOnce(t *testing.T) {
 // ancestors.
 func TestDataTable_PressesAndPassThrough(t *testing.T) {
 	activated := -1
-	h, sh, dt := dataTable(t, numbered(5), 30, 6, widget.TableOnActivate(func(r int) { activated = r }))
+	h, sh, dt := dataTable(t, numbered(5), 30, 6, table.TableOnActivate(func(r int) { activated = r }))
 	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 7, Y: 4})
 	h.settle()
-	if got := tableCursor(h, dt); got != (widget.TablePos{Row: 2, Col: 1}) {
+	if got := tableCursor(h, dt); got != (table.TablePos{Row: 2, Col: 1}) {
 		t.Errorf("press at (7,4): cursor %+v, want row 2 field 1", got)
 	}
 	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 1, Y: 3},
@@ -155,7 +156,7 @@ func TestDataTable_PressesAndPassThrough(t *testing.T) {
 	}
 	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 1, Y: 0})
 	h.settle()
-	if got := tableCursor(h, dt); got != (widget.TablePos{Row: 0, Col: 0}) {
+	if got := tableCursor(h, dt); got != (table.TablePos{Row: 0, Col: 0}) {
 		t.Errorf("a header press on the id field put the cursor on %+v, want its first row", got)
 	}
 	h.inject(tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 1, Y: 0})
@@ -207,7 +208,7 @@ func TestDataTable_ASelectionIsFilledAndTheRuleTakesNoPress(t *testing.T) {
 	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 1, Y: 1},
 		tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 1, Y: 1})
 	h.settle()
-	if got := tableCursor(h, dt); got != (widget.TablePos{Row: 1, Col: 1}) {
+	if got := tableCursor(h, dt); got != (table.TablePos{Row: 1, Col: 1}) {
 		t.Errorf("a press on the rule moved the cursor to %+v", got)
 	}
 	if _, _, ok := tableSelected(h, dt); ok {
@@ -216,7 +217,7 @@ func TestDataTable_ASelectionIsFilledAndTheRuleTakesNoPress(t *testing.T) {
 }
 
 func TestDataTable_SortMarkAndEmptyText(t *testing.T) {
-	h, sh, dt := dataTable(t, numbered(3), 40, 6, widget.TableSortable(true))
+	h, sh, dt := dataTable(t, numbered(3), 40, 6, table.TableSortable(true))
 	h.onLoop(func() {
 		dt.HandleEvent(tui.KeyEvent{Kind: tui.KeyPress, Text: "s"})
 		dt.HandleEvent(tui.KeyEvent{Kind: tui.KeyPress, Text: "s"})
@@ -226,7 +227,7 @@ func TestDataTable_SortMarkAndEmptyText(t *testing.T) {
 		t.Errorf("sorted by id descending: header %q, first row %q", h.row(0), h.row(2))
 	}
 	h.onLoop(func() {
-		dt.Core().SetSource(&gridSource{fields: []widget.TableField{{Title: "x"}}})
+		dt.Core().SetSource(&gridSource{fields: []core.TableField{{Title: "x"}}})
 		dt.SetEmptyText("Nothing here")
 	})
 	h.barrier(sh)
@@ -236,12 +237,12 @@ func TestDataTable_SortMarkAndEmptyText(t *testing.T) {
 // boundTable is a layout a native backend binds: it answers in its own units (ten per rune), and
 // records what the core asks of it. Read and written on the loop.
 type boundTable struct {
-	revealed []widget.TablePos
+	revealed []table.TablePos
 	changed  int
 }
 
 func (b *boundTable) Reveal(row, col int) {
-	b.revealed = append(b.revealed, widget.TablePos{Row: row, Col: col})
+	b.revealed = append(b.revealed, table.TablePos{Row: row, Col: col})
 }
 func (b *boundTable) PageRows() int        { return 7 }
 func (b *boundTable) Measure(s string) int { return 10 * len([]rune(s)) }
@@ -255,12 +256,12 @@ type placingTable struct {
 	scrolled int
 }
 
-func (p *placingTable) CellAt(x, y float32) (widget.TablePos, bool, bool) {
+func (p *placingTable) CellAt(x, y float32) (table.TablePos, bool, bool) {
 	p.at = append(p.at, [2]float32{x, y})
 	if y < 20 {
-		return widget.TablePos{}, true, true
+		return table.TablePos{}, true, true
 	}
-	return widget.TablePos{Row: int(y/20) - 1, Col: int(x / 100)}, false, x < 200
+	return table.TablePos{Row: int(y/20) - 1, Col: int(x / 100)}, false, x < 200
 }
 
 func (p *placingTable) ScrollRows(n int) { p.scrolled += n }
@@ -274,8 +275,8 @@ func (pixelBackend) CellPixels() tui.CellPixels { return tui.CellPixels{W: 10, H
 // backend to draw over, the core reveals and pages through the bound layout, and the widths are
 // measured in its units. A layout that does not place the pointer lets it go on.
 func TestDataTable_ABoundLayoutReplacesTheCells(t *testing.T) {
-	dt := widget.NewDataTable(widget.NewTableCore(numbered(20)))
-	if dt.BoundLayout() != widget.TableLayout(dt) {
+	dt := table.NewDataTable(table.NewTableCore(numbered(20)))
+	if dt.BoundLayout() != table.TableLayout(dt) {
 		t.Fatalf("an unbound table draws with %T, want its own cell layout", dt.BoundLayout())
 	}
 	b := &boundTable{}
@@ -288,7 +289,7 @@ func TestDataTable_ABoundLayoutReplacesTheCells(t *testing.T) {
 		t.Errorf("the cells under a bound layout hold text:\n%s", h.grid())
 	}
 	h.onLoop(func() {
-		if dt.BoundLayout() != widget.TableLayout(b) {
+		if dt.BoundLayout() != table.TableLayout(b) {
 			t.Errorf("the bound layout is %T", dt.BoundLayout())
 		}
 		if dt.Theme() == nil {
@@ -306,7 +307,7 @@ func TestDataTable_ABoundLayoutReplacesTheCells(t *testing.T) {
 			t.Errorf("PgDn moved to row %d, want the bound layout's page of 7", got.Row)
 		}
 		dt.HandleEvent(tui.KeyEvent{Kind: tui.KeyPress, Text: "G"})
-		if n := len(b.revealed); n != 2 || b.revealed[n-1] != (widget.TablePos{Row: 19}) {
+		if n := len(b.revealed); n != 2 || b.revealed[n-1] != (table.TablePos{Row: 19}) {
 			t.Errorf("the bound layout was asked to reveal %v, want rows 7 then 19", b.revealed)
 		}
 		if b.changed == 0 {
@@ -331,7 +332,7 @@ func TestDataTable_ABoundLayoutReplacesTheCells(t *testing.T) {
 // cell, a second activates, past the fields does nothing, and the wheel scrolls it.
 func TestDataTable_ABoundLayoutPlacesThePointer(t *testing.T) {
 	activated := -1
-	dt := widget.NewDataTable(widget.NewTableCore(numbered(20), widget.TableOnActivate(func(r int) { activated = r })))
+	dt := table.NewDataTable(table.NewTableCore(numbered(20), table.TableOnActivate(func(r int) { activated = r })))
 	p := &placingTable{}
 	dt.BindLayout(p)
 	sh := newShell(dt)
@@ -345,7 +346,7 @@ func TestDataTable_ABoundLayoutPlacesThePointer(t *testing.T) {
 		if len(p.at) != 1 || p.at[0] != [2]float32{125, 45} {
 			t.Errorf("the layout placed %v, want the press at (125, 45) pixels", p.at)
 		}
-		if got := dt.Core().Cursor(); got != (widget.TablePos{Row: 1, Col: 1}) {
+		if got := dt.Core().Cursor(); got != (table.TablePos{Row: 1, Col: 1}) {
 			t.Errorf("the press put the cursor on %+v, want row 1 field 1", got)
 		}
 	})
@@ -380,11 +381,11 @@ func TestDataTable_ABoundLayoutPlacesThePointer(t *testing.T) {
 // callback; the same-row control is TestDataTable_ADoublePressPairsOnTheSameRowOnce).
 func TestDataTable_APressDoesNotPairAcrossTheSourceItsCallbackReplaced(t *testing.T) {
 	var acts []int
-	var core *widget.TableCore
+	var core *table.TableCore
 	replaced := false
 	h, _, dt := dataTable(t, numbered(20), 30, 6,
-		widget.TableOnActivate(func(r int) { acts = append(acts, r) }),
-		widget.TableOnCursor(func(int) {
+		table.TableOnActivate(func(r int) { acts = append(acts, r) }),
+		table.TableOnCursor(func(int) {
 			if !replaced && core != nil {
 				replaced = true
 				core.SetSource(numbered(20))

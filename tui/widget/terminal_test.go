@@ -12,7 +12,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/pty"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/terminal"
 )
 
 // fakeProc is a program the test plays: what it writes to out shows on the
@@ -99,20 +99,20 @@ func (p *fakeProc) lastSize() [2]int {
 type termFixture struct {
 	h     *harness
 	sh    *shell
-	term  *widget.Terminal
+	term  *terminal.Terminal
 	procs []*fakeProc
 	cmds  []pty.Cmd
 	mu    sync.Mutex
 }
 
-func startTerm(t *testing.T, w, ht int, opts ...widget.TerminalOption) *termFixture {
+func startTerm(t *testing.T, w, ht int, opts ...terminal.TerminalOption) *termFixture {
 	return startTermApp(t, w, ht, nil, opts...)
 }
 
-func startTermApp(t *testing.T, w, ht int, appOpts []tui.AppOption, opts ...widget.TerminalOption) *termFixture {
+func startTermApp(t *testing.T, w, ht int, appOpts []tui.AppOption, opts ...terminal.TerminalOption) *termFixture {
 	t.Helper()
 	f := &termFixture{}
-	opts = append(opts, widget.WithStarter(func(c pty.Cmd) (widget.TerminalProcess, error) {
+	opts = append(opts, terminal.WithStarter(func(c pty.Cmd) (terminal.TerminalProcess, error) {
 		f.mu.Lock()
 		defer f.mu.Unlock()
 		p := newFakeProc()
@@ -120,7 +120,7 @@ func startTermApp(t *testing.T, w, ht int, appOpts []tui.AppOption, opts ...widg
 		f.cmds = append(f.cmds, c)
 		return p, nil
 	}))
-	f.term = widget.NewTerminal(opts...)
+	f.term = terminal.NewTerminal(opts...)
 	f.sh = newShell(f.term)
 	f.h = startAppOpts(t, f.sh, w, ht, appOpts...)
 	t.Cleanup(f.h.stop)
@@ -154,8 +154,8 @@ func (f *termFixture) waitSent(want string) {
 	})
 }
 
-func (f *termFixture) mode() widget.TerminalMode {
-	var m widget.TerminalMode
+func (f *termFixture) mode() terminal.TerminalMode {
+	var m terminal.TerminalMode
 	f.h.onLoop(func() { m = f.term.Mode() })
 	return m
 }
@@ -259,7 +259,7 @@ func TestTerminalHostKeyRepeatsAndAPendingPrefix(t *testing.T) {
 	}
 	f.h.inject(ctrl('\\'), key(tui.KeyF11), ctrl('n'))
 	f.waitSent("a\x1b[23~\x0e")
-	if m := f.mode(); m != widget.TerminalInput {
+	if m := f.mode(); m != terminal.TerminalInput {
 		t.Errorf("Ctrl+\\ F11 Ctrl+n left input mode: %v", m)
 	}
 }
@@ -297,7 +297,7 @@ func TestTerminalSendsAHostKeyAfterThePrefix(t *testing.T) {
 		t.Error("a host key with no encoding was consumed after Ctrl+\\")
 	}
 	f.waitSent("\x0cz\x1c")
-	if m := f.mode(); m != widget.TerminalInput {
+	if m := f.mode(); m != terminal.TerminalInput {
 		t.Errorf("the prefix and a host key left input mode: %v", m)
 	}
 }
@@ -307,21 +307,21 @@ func TestTerminalSendsAHostKeyAfterThePrefix(t *testing.T) {
 func TestTerminalSetsItsMode(t *testing.T) {
 	f := startTerm(t, 20, 4)
 	var normal, input, same bool
-	f.h.onLoop(func() { normal = f.term.SetMode(widget.TerminalNormal) })
-	if m := f.mode(); !normal || m != widget.TerminalNormal {
+	f.h.onLoop(func() { normal = f.term.SetMode(terminal.TerminalNormal) })
+	if m := f.mode(); !normal || m != terminal.TerminalNormal {
 		t.Fatalf("SetMode(Normal): %v, in %v", normal, m)
 	}
 	f.h.onLoop(func() {
-		input = f.term.SetMode(widget.TerminalInput)
-		same = f.term.SetMode(widget.TerminalInput)
+		input = f.term.SetMode(terminal.TerminalInput)
+		same = f.term.SetMode(terminal.TerminalInput)
 	})
-	if m := f.mode(); !input || !same || m != widget.TerminalInput {
+	if m := f.mode(); !input || !same || m != terminal.TerminalInput {
 		t.Fatalf("SetMode(Input): %v, again %v, in %v", input, same, m)
 	}
 	f.h.inject(key('q'))
 	f.waitSent("q")
-	idle := widget.NewTerminal()
-	if idle.SetMode(widget.TerminalNormal) || idle.Mode() != widget.TerminalInput {
+	idle := terminal.NewTerminal()
+	if idle.SetMode(terminal.TerminalNormal) || idle.Mode() != terminal.TerminalInput {
 		t.Errorf("a Terminal with no program took Normal mode: %v", idle.Mode())
 	}
 }
@@ -362,7 +362,7 @@ func TestTerminalSendsABracketedPasteOnly(t *testing.T) {
 	f := startTerm(t, 20, 4)
 	var err error
 	f.h.onLoop(func() { err = f.term.SendBracketedPaste("1y") })
-	if !errors.Is(err, widget.ErrTerminalPasteUnbracketed) {
+	if !errors.Is(err, terminal.ErrTerminalPasteUnbracketed) {
 		t.Fatalf("an unbracketed program's paste: %v, want ErrTerminalPasteUnbracketed", err)
 	}
 	f.h.inject(key('z'))
@@ -382,7 +382,7 @@ func TestTerminalPrefixWaysOut(t *testing.T) {
 	t.Run("Ctrl-\\ Ctrl-n reaches normal mode", func(t *testing.T) {
 		f := startTerm(t, 20, 4)
 		f.h.inject(ctrl('\\'), ctrl('n'))
-		f.h.waitFor("normal mode", func() bool { return f.mode() == widget.TerminalNormal })
+		f.h.waitFor("normal mode", func() bool { return f.mode() == terminal.TerminalNormal })
 		f.h.inject(key('x'), key('i'), key('Z'))
 		f.waitSent("Z")
 		if got := f.proc().sent(); got != "Z" {
@@ -443,16 +443,16 @@ func TestTerminalPrefixWaysOut(t *testing.T) {
 
 func TestTerminalEscape(t *testing.T) {
 	t.Run("vim keys on the primary screen", func(t *testing.T) {
-		f := startTerm(t, 20, 4, widget.WithVimKeys(true))
+		f := startTerm(t, 20, 4, terminal.WithVimKeys(true))
 		f.h.inject(key(tui.KeyEscape))
-		f.h.waitFor("normal mode", func() bool { return f.mode() == widget.TerminalNormal })
+		f.h.waitFor("normal mode", func() bool { return f.mode() == terminal.TerminalNormal })
 	})
 	t.Run("vim keys on the alternate screen", func(t *testing.T) {
-		f := startTerm(t, 20, 4, widget.WithVimKeys(true))
+		f := startTerm(t, 20, 4, terminal.WithVimKeys(true))
 		f.output("\x1b[?1049h")
 		f.h.inject(key(tui.KeyEscape))
 		f.waitSent("\x1b")
-		if f.mode() != widget.TerminalInput {
+		if f.mode() != terminal.TerminalInput {
 			t.Error("Esc left input mode on the alternate screen")
 		}
 	})
@@ -460,17 +460,17 @@ func TestTerminalEscape(t *testing.T) {
 		f := startTerm(t, 20, 4)
 		f.h.inject(key(tui.KeyEscape))
 		f.waitSent("\x1b")
-		if f.mode() != widget.TerminalInput {
+		if f.mode() != terminal.TerminalInput {
 			t.Error("Esc left input mode without vim keys")
 		}
 	})
 }
 
 func TestTerminalNormalModeYanks(t *testing.T) {
-	f := startTerm(t, 20, 4, widget.WithVimKeys(true))
+	f := startTerm(t, 20, 4, terminal.WithVimKeys(true))
 	f.output("first line\r\nsecond word here\r\n$ ")
 	f.h.inject(key(tui.KeyEscape))
-	f.h.waitFor("normal mode", func() bool { return f.mode() == widget.TerminalNormal })
+	f.h.waitFor("normal mode", func() bool { return f.mode() == terminal.TerminalNormal })
 	// Cursor at the prompt (row 2). Up to "second", then select a word.
 	f.h.inject(key('k'), key('0'), key('w'), key('v'), key('e'), key('y'))
 	f.h.waitFor("yank", func() bool { return string(f.h.tb.Clipboard()) == "word" })
@@ -489,14 +489,14 @@ func TestTerminalNormalModeYanks(t *testing.T) {
 		t.Error("Esc in normal mode with nothing to cancel did not reach the host")
 	}
 	f.h.inject(key('i'))
-	f.h.waitFor("input mode", func() bool { return f.mode() == widget.TerminalInput })
+	f.h.waitFor("input mode", func() bool { return f.mode() == terminal.TerminalInput })
 }
 
 func TestTerminalNormalModeSearches(t *testing.T) {
-	f := startTerm(t, 20, 5, widget.WithVimKeys(true))
+	f := startTerm(t, 20, 5, terminal.WithVimKeys(true))
 	f.output("alpha\r\nbeta\r\ngamma beta\r\n")
 	f.h.inject(key(tui.KeyEscape))
-	f.h.waitFor("normal mode", func() bool { return f.mode() == widget.TerminalNormal })
+	f.h.waitFor("normal mode", func() bool { return f.mode() == terminal.TerminalNormal })
 	f.h.inject(key('?'))
 	f.h.inject(typeString("beta")...)
 	f.h.inject(key(tui.KeyEnter))
@@ -508,10 +508,10 @@ func TestTerminalNormalModeSearches(t *testing.T) {
 func TestTerminalNormalModeKeepsItsGrammar(t *testing.T) {
 	// A command between g and g ends g's grammar: g k g k is two lines up, not the first line.
 	// Switching a char-wise selection to line-wise keeps where it started.
-	f := startTerm(t, 20, 5, widget.WithVimKeys(true))
+	f := startTerm(t, 20, 5, terminal.WithVimKeys(true))
 	f.output("one\r\ntwo\r\nthree\r\n$ ")
 	f.h.inject(key(tui.KeyEscape))
-	f.h.waitFor("normal mode", func() bool { return f.mode() == widget.TerminalNormal })
+	f.h.waitFor("normal mode", func() bool { return f.mode() == terminal.TerminalNormal })
 	f.h.inject(key('g'), key('k'), key('g'), key('k'))
 	f.h.waitFor("g k g k is two lines up", func() bool { _, y, _ := f.h.tb.CursorPos(); return y == 1 })
 	f.h.inject(key('v'), key('j'), key('V'), key('y'))
@@ -520,10 +520,10 @@ func TestTerminalNormalModeKeepsItsGrammar(t *testing.T) {
 
 func TestTerminalNormalModePrevGoesBack(t *testing.T) {
 	// N repeats the last search the other way: /x, n, N comes back to the first match.
-	f := startTerm(t, 20, 5, widget.WithVimKeys(true))
+	f := startTerm(t, 20, 5, terminal.WithVimKeys(true))
 	f.output("b1 x\r\nx\r\nx x\r\n$ ")
 	f.h.inject(key(tui.KeyEscape))
-	f.h.waitFor("normal mode", func() bool { return f.mode() == widget.TerminalNormal })
+	f.h.waitFor("normal mode", func() bool { return f.mode() == terminal.TerminalNormal })
 	at := func(x, y int) func() bool {
 		return func() bool { cx, cy, _ := f.h.tb.CursorPos(); return cx == x && cy == y }
 	}
@@ -541,7 +541,7 @@ func TestTerminalWheel(t *testing.T) {
 		f.output("line\r\n")
 	}
 	f.h.inject(tui.MouseEvent{Kind: tui.MouseWheel, Button: tui.WheelUp})
-	f.h.waitFor("wheel enters normal mode", func() bool { return f.mode() == widget.TerminalNormal })
+	f.h.waitFor("wheel enters normal mode", func() bool { return f.mode() == terminal.TerminalNormal })
 	f.h.inject(key('i'))
 	f.output("\x1b[?1049h")
 	f.h.inject(tui.MouseEvent{Kind: tui.MouseWheel, Button: tui.WheelDown})
@@ -553,7 +553,7 @@ func TestTerminalWheel(t *testing.T) {
 
 func TestTerminalExitAndRestart(t *testing.T) {
 	var codes []int
-	f := startTerm(t, 30, 4, widget.WithOnExit(func(c int) { codes = append(codes, c) }))
+	f := startTerm(t, 30, 4, terminal.WithOnExit(func(c int) { codes = append(codes, c) }))
 	f.proc().exit(3)
 	f.h.waitFor("exit shown", func() bool { return strings.Contains(f.h.grid(), "[process exited 3]") })
 	f.h.waitFor("the exited program's terminal released", f.proc().isClosed)
@@ -574,7 +574,7 @@ func TestTerminalExitAndRestart(t *testing.T) {
 
 func TestTerminalTitle(t *testing.T) {
 	var got []string
-	f := startTerm(t, 20, 3, widget.WithOnTitle(func(s string) { got = append(got, s) }))
+	f := startTerm(t, 20, 3, terminal.WithOnTitle(func(s string) { got = append(got, s) }))
 	f.output("\x1b]2;build\x07")
 	f.h.waitFor("title", func() bool {
 		var s string
@@ -604,7 +604,7 @@ func TestTerminalThemeColors(t *testing.T) {
 		t.Errorf("truecolor = %+v, want unchanged", a.FG)
 	}
 
-	f = startTermApp(t, 20, 3, []tui.AppOption{tui.WithTheme(&th)}, widget.WithThemeColors(false))
+	f = startTermApp(t, 20, 3, []tui.AppOption{tui.WithTheme(&th)}, terminal.WithThemeColors(false))
 	f.output("a")
 	f.h.waitFor("painted", func() bool { return strings.HasPrefix(f.h.row(0), "a") })
 	if a := cellAttrs(f.h, 0, 0); a.FG.Kind != tui.CellColorDefault {
@@ -613,11 +613,11 @@ func TestTerminalThemeColors(t *testing.T) {
 }
 
 func TestTerminalOptionsReachTheProgram(t *testing.T) {
-	var modes []widget.TerminalMode
+	var modes []terminal.TerminalMode
 	f := startTerm(t, 20, 4,
-		widget.WithCommand("/bin/prog", "-x", "y"), widget.WithDir("/work"),
-		widget.WithEnv("A=1", "B=2"), widget.WithScrollback(2),
-		widget.WithOnMode(func(m widget.TerminalMode) { modes = append(modes, m) }))
+		terminal.WithCommand("/bin/prog", "-x", "y"), terminal.WithDir("/work"),
+		terminal.WithEnv("A=1", "B=2"), terminal.WithScrollback(2),
+		terminal.WithOnMode(func(m terminal.TerminalMode) { modes = append(modes, m) }))
 	c := f.cmds[0]
 	if c.Path != "/bin/prog" || strings.Join(c.Args, " ") != "-x y" || c.Dir != "/work" {
 		t.Errorf("cmd = %+v", c)
@@ -646,7 +646,7 @@ func TestTerminalOptionsReachTheProgram(t *testing.T) {
 }
 
 func TestTerminalStartBeforeMountAndFailure(t *testing.T) {
-	term := widget.NewTerminal(widget.WithStarter(func(pty.Cmd) (widget.TerminalProcess, error) {
+	term := terminal.NewTerminal(terminal.WithStarter(func(pty.Cmd) (terminal.TerminalProcess, error) {
 		return nil, io.ErrClosedPipe
 	}))
 	if err := term.Start(); err != nil {
@@ -693,7 +693,7 @@ func TestTerminalAttributesAndCursor(t *testing.T) {
 		t.Error("cursor shown after DECTCEM off")
 	}
 	f.h.inject(ctrl('\\'), ctrl('n'))
-	f.h.waitFor("normal", func() bool { return f.mode() == widget.TerminalNormal })
+	f.h.waitFor("normal", func() bool { return f.mode() == terminal.TerminalNormal })
 	var shape tui.CursorShape
 	f.h.onLoop(func() { shape = f.term.CursorShape() })
 	if shape != tui.CursorShapeBlock {
@@ -702,13 +702,13 @@ func TestTerminalAttributesAndCursor(t *testing.T) {
 }
 
 func TestTerminalNormalModeMotions(t *testing.T) {
-	f := startTerm(t, 20, 4, widget.WithVimKeys(true), widget.WithScrollback(50))
+	f := startTerm(t, 20, 4, terminal.WithVimKeys(true), terminal.WithScrollback(50))
 	for i := 0; i < 20; i++ {
 		f.output("l" + strings.Repeat("x", i%5) + " word\r\n")
 	}
 	f.output("$ ")
 	f.h.inject(key(tui.KeyEscape))
-	f.h.waitFor("normal", func() bool { return f.mode() == widget.TerminalNormal })
+	f.h.waitFor("normal", func() bool { return f.mode() == terminal.TerminalNormal })
 	cur := func() (int, int) {
 		x, y, _ := f.h.tb.CursorPos()
 		return x, y
@@ -731,7 +731,7 @@ func TestTerminalNormalModeMotions(t *testing.T) {
 	f.h.inject(key('/'), key(tui.KeyBackspace), key('?'), key('q'), key(tui.KeyEscape), key('g'), key(tui.KeyEscape))
 	f.h.inject(key('v'), key('V'), key('V'), key(tui.KeyEscape), key('y'), ctrl('z'))
 	f.h.barrier(f.sh)
-	if f.mode() != widget.TerminalNormal {
+	if f.mode() != terminal.TerminalNormal {
 		t.Error("left normal mode")
 	}
 }
@@ -739,13 +739,13 @@ func TestTerminalNormalModeMotions(t *testing.T) {
 // Output while scrolled back keeps the view on the same text, even as the
 // oldest lines leave a full scrollback.
 func TestTerminalNormalModeFollowsDroppedLines(t *testing.T) {
-	f := startTerm(t, 20, 3, widget.WithVimKeys(true), widget.WithScrollback(6))
+	f := startTerm(t, 20, 3, terminal.WithVimKeys(true), terminal.WithScrollback(6))
 	for i := 0; i < 9; i++ {
 		f.output(fmt.Sprintf("line %d\r\n", i))
 	}
 	// The scrollback is full: the next lines drop the oldest.
 	f.h.inject(key(tui.KeyEscape))
-	f.h.waitFor("normal", func() bool { return f.mode() == widget.TerminalNormal })
+	f.h.waitFor("normal", func() bool { return f.mode() == terminal.TerminalNormal })
 	f.h.inject(key('?'))
 	f.h.inject(typeString("line 4")...)
 	f.h.inject(key(tui.KeyEnter))
@@ -762,7 +762,7 @@ func TestTerminalNormalModeFollowsDroppedLines(t *testing.T) {
 }
 
 func TestTerminalCommandAndDirApplyAtTheNextStart(t *testing.T) {
-	f := startTerm(t, 20, 3, widget.WithCommand("/bin/first"), widget.WithDir("/one"))
+	f := startTerm(t, 20, 3, terminal.WithCommand("/bin/first"), terminal.WithDir("/one"))
 	f.h.onLoop(func() {
 		f.term.SetCommand("/bin/second", "-l")
 		f.term.SetDir("/two")
@@ -824,7 +824,7 @@ func TestTerminalFailedStartCanBeRetried(t *testing.T) {
 		t.Run(fmt.Sprintf("deferred=%v", deferred), func(t *testing.T) {
 			var mu sync.Mutex
 			attempts := 0
-			term := widget.NewTerminal(widget.WithStarter(func(pty.Cmd) (widget.TerminalProcess, error) {
+			term := terminal.NewTerminal(terminal.WithStarter(func(pty.Cmd) (terminal.TerminalProcess, error) {
 				mu.Lock()
 				defer mu.Unlock()
 				attempts++
@@ -880,10 +880,10 @@ func TestATerminalsCursorShowsItsMode(t *testing.T) {
 	f.output("\x1b[0 q")
 	shown(tui.CursorShapeBar, "the bar again, the host's own asked for")
 	f.h.inject(ctrl('\\'), ctrl('n'))
-	f.h.waitFor("normal", func() bool { return f.mode() == widget.TerminalNormal })
+	f.h.waitFor("normal", func() bool { return f.mode() == terminal.TerminalNormal })
 	shown(tui.CursorShapeBlock, "the block in normal mode")
 	f.h.inject(key('i'))
-	f.h.waitFor("input", func() bool { return f.mode() == widget.TerminalInput })
+	f.h.waitFor("input", func() bool { return f.mode() == terminal.TerminalInput })
 	shown(tui.CursorShapeBar, "the bar back in input mode")
 
 	f.h.onLoop(func() { f.term.SetCursorColor(style.RGB(0xFF, 0x88, 0x00)) })
@@ -901,36 +901,36 @@ func ctrlT(e tui.KeyEvent) bool { return e.Code == 't' && e.Mods.Chord() == tui.
 // toggles once; a Ctrl+\ waiting for its second key is sent as itself.
 func TestTerminalModeKey(t *testing.T) {
 	t.Run("into normal mode and back", func(t *testing.T) {
-		f := startTerm(t, 20, 4, widget.WithModeKey(ctrlT))
+		f := startTerm(t, 20, 4, terminal.WithModeKey(ctrlT))
 		f.h.inject(ctrl('t'))
-		f.h.waitFor("normal mode", func() bool { return f.mode() == widget.TerminalNormal })
+		f.h.waitFor("normal mode", func() bool { return f.mode() == terminal.TerminalNormal })
 		f.h.inject(ctrl('t'))
-		f.h.waitFor("input mode again", func() bool { return f.mode() == widget.TerminalInput })
+		f.h.waitFor("input mode again", func() bool { return f.mode() == terminal.TerminalInput })
 		if strings.Contains(f.proc().sent(), "\x14") {
 			t.Error("the mode key reached the program")
 		}
 	})
 	t.Run("under a full-screen program", func(t *testing.T) {
-		f := startTerm(t, 20, 4, widget.WithModeKey(ctrlT))
+		f := startTerm(t, 20, 4, terminal.WithModeKey(ctrlT))
 		f.output("\x1b[?1049h")
 		f.h.inject(ctrl('t'))
-		f.h.waitFor("normal mode on the alternate screen", func() bool { return f.mode() == widget.TerminalNormal })
+		f.h.waitFor("normal mode on the alternate screen", func() bool { return f.mode() == terminal.TerminalNormal })
 	})
 	t.Run("Esc is the program's", func(t *testing.T) {
-		f := startTerm(t, 20, 4, widget.WithModeKey(ctrlT), widget.WithVimKeys(false))
+		f := startTerm(t, 20, 4, terminal.WithModeKey(ctrlT), terminal.WithVimKeys(false))
 		f.h.inject(key(tui.KeyEscape))
 		f.waitSent("\x1b")
-		if f.mode() != widget.TerminalInput {
+		if f.mode() != terminal.TerminalInput {
 			t.Error("Esc left input mode")
 		}
 	})
 	t.Run("a held key toggles once", func(t *testing.T) {
-		f := startTerm(t, 20, 4, widget.WithModeKey(ctrlT))
+		f := startTerm(t, 20, 4, terminal.WithModeKey(ctrlT))
 		held := ctrl('t')
 		held.Kind = tui.KeyRepeat
 		f.h.inject(ctrl('t'), held) // one repeat: toggling on it would end in input mode
 		f.h.settle()
-		if f.mode() != widget.TerminalNormal {
+		if f.mode() != terminal.TerminalNormal {
 			t.Error("a held mode key toggled more than once")
 		}
 		if strings.Contains(f.proc().sent(), "\x14") {
@@ -938,16 +938,16 @@ func TestTerminalModeKey(t *testing.T) {
 		}
 	})
 	t.Run("a pending Ctrl+\\ is sent as itself", func(t *testing.T) {
-		f := startTerm(t, 20, 4, widget.WithModeKey(ctrlT))
+		f := startTerm(t, 20, 4, terminal.WithModeKey(ctrlT))
 		f.h.inject(ctrl('\\'), ctrl('t'))
 		f.waitSent("\x1c")
-		f.h.waitFor("normal mode", func() bool { return f.mode() == widget.TerminalNormal })
+		f.h.waitFor("normal mode", func() bool { return f.mode() == terminal.TerminalNormal })
 	})
 	t.Run("without a mode key Ctrl+T is the program's", func(t *testing.T) {
 		f := startTerm(t, 20, 4)
 		f.h.inject(ctrl('t'))
 		f.waitSent("\x14")
-		if f.mode() != widget.TerminalInput {
+		if f.mode() != terminal.TerminalInput {
 			t.Error("Ctrl+T left input mode with no mode key")
 		}
 	})
@@ -962,7 +962,7 @@ func TestTerminalModeKey(t *testing.T) {
 		})
 		f.h.inject(ctrl('t'))
 		f.h.settle()
-		if f.mode() != widget.TerminalInput {
+		if f.mode() != terminal.TerminalInput {
 			t.Error("the mode key entered normal mode with nothing running")
 		}
 	})
@@ -971,10 +971,10 @@ func TestTerminalModeKey(t *testing.T) {
 // Normal mode's word motions are the editor's: w stops at punctuation, W only at blanks, w and ge
 // stop at an empty line, and a wide cluster is one cluster over two cells.
 func TestTerminalWordMotionsAreTheEditors(t *testing.T) {
-	f := startTerm(t, 20, 6, widget.WithVimKeys(true))
+	f := startTerm(t, 20, 6, terminal.WithVimKeys(true))
 	f.output("ab.cd ef\r\n\r\n界界 yz\r\n$")
 	f.h.inject(key(tui.KeyEscape))
-	f.h.waitFor("normal mode", func() bool { return f.mode() == widget.TerminalNormal })
+	f.h.waitFor("normal mode", func() bool { return f.mode() == terminal.TerminalNormal })
 	cur := func() [2]int {
 		x, y, _ := f.h.tb.CursorPos()
 		return [2]int{x, y}
@@ -1002,62 +1002,62 @@ func scrolledBack(f *termFixture) {
 		f.output("line\r\n")
 	}
 	f.h.inject(tui.MouseEvent{Kind: tui.MouseWheel, Button: tui.WheelUp})
-	f.h.waitFor("the wheel opens the scrollback view", func() bool { return f.mode() == widget.TerminalNormal })
+	f.h.waitFor("the wheel opens the scrollback view", func() bool { return f.mode() == terminal.TerminalNormal })
 }
 
 // With WithModelessScroll the wheel's scrollback view is no mode to leave: the next key goes back to
 // input and to the program, as if no view had opened, so a user who never learnt normal mode's i is
 // never left typing into nothing.
 func TestTerminalModelessScrollAKeyGoesBackToTheProgram(t *testing.T) {
-	f := startTerm(t, 20, 3, widget.WithModelessScroll())
+	f := startTerm(t, 20, 3, terminal.WithModelessScroll())
 	scrolledBack(f)
 	f.h.inject(key('x'))
 	f.waitSent("x")
-	if m := f.mode(); m != widget.TerminalInput {
+	if m := f.mode(); m != terminal.TerminalInput {
 		t.Errorf("after a key the mode is %v, want input", m)
 	}
 }
 
 // A paste in the scrollback view goes back to input and to the program too.
 func TestTerminalModelessScrollAPasteGoesBackToTheProgram(t *testing.T) {
-	f := startTerm(t, 20, 3, widget.WithModelessScroll())
+	f := startTerm(t, 20, 3, terminal.WithModelessScroll())
 	scrolledBack(f)
 	f.h.inject(tui.PasteEvent{Text: "pasted"})
 	f.waitSent("pasted")
-	if m := f.mode(); m != widget.TerminalInput {
+	if m := f.mode(); m != terminal.TerminalInput {
 		t.Errorf("after a paste the mode is %v, want input", m)
 	}
 }
 
 // Wheeling back down to the bottom closes the view: the terminal is in input again.
 func TestTerminalModelessScrollBackAtTheBottomIsInput(t *testing.T) {
-	f := startTerm(t, 20, 3, widget.WithModelessScroll())
+	f := startTerm(t, 20, 3, terminal.WithModelessScroll())
 	scrolledBack(f)
 	f.h.inject(tui.MouseEvent{Kind: tui.MouseWheel, Button: tui.WheelDown})
-	f.h.waitFor("back at the bottom, input again", func() bool { return f.mode() == widget.TerminalInput })
+	f.h.waitFor("back at the bottom, input again", func() bool { return f.mode() == terminal.TerminalInput })
 }
 
 // Normal mode asked for stays modal under WithModelessScroll: Ctrl+\ Ctrl+n and the mode key enter
 // it, and a key there is normal mode's, never the program's.
 func TestTerminalModelessScrollLeavesAskedNormalModeModal(t *testing.T) {
 	ctrlT := func(e tui.KeyEvent) bool { return e.Code == 't' && e.Mods.Chord() == tui.ModCtrl }
-	f := startTerm(t, 20, 3, widget.WithModelessScroll(), widget.WithModeKey(ctrlT))
+	f := startTerm(t, 20, 3, terminal.WithModelessScroll(), terminal.WithModeKey(ctrlT))
 	for _, enter := range [][]tui.Event{
 		{tui.KeyEvent{Code: '\\', Mods: tui.ModCtrl}, tui.KeyEvent{Code: 'n', Mods: tui.ModCtrl}},
 		{tui.KeyEvent{Code: 't', Mods: tui.ModCtrl}},
 	} {
 		f.h.inject(enter...)
-		f.h.waitFor("normal mode asked for", func() bool { return f.mode() == widget.TerminalNormal })
+		f.h.waitFor("normal mode asked for", func() bool { return f.mode() == terminal.TerminalNormal })
 		f.h.inject(key('x'))
 		f.h.settle()
-		if m := f.mode(); m != widget.TerminalNormal {
+		if m := f.mode(); m != terminal.TerminalNormal {
 			t.Fatalf("a key in normal mode asked for left it: %v", m)
 		}
 		if strings.Contains(f.proc().sent(), "x") {
 			t.Fatal("a key in normal mode asked for reached the program")
 		}
 		f.h.inject(key('i'))
-		f.h.waitFor("i: input again", func() bool { return f.mode() == widget.TerminalInput })
+		f.h.waitFor("i: input again", func() bool { return f.mode() == terminal.TerminalInput })
 	}
 }
 
@@ -1068,7 +1068,7 @@ func TestTerminalWheelWithoutModelessScrollIsNormalMode(t *testing.T) {
 	scrolledBack(f)
 	f.h.inject(key('x'))
 	f.h.settle()
-	if m := f.mode(); m != widget.TerminalNormal || strings.Contains(f.proc().sent(), "x") {
+	if m := f.mode(); m != terminal.TerminalNormal || strings.Contains(f.proc().sent(), "x") {
 		t.Fatalf("without the option a key left the wheel's view (%v) or reached the program", m)
 	}
 }

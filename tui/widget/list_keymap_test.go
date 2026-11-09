@@ -6,7 +6,8 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // mustKeymap builds golib's commands with a scheme over them.
@@ -16,7 +17,7 @@ func mustKeymap(t *testing.T, xml string) *keymap.Map {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := keymap.Build(widget.KeyCommands(), s)
+	m, err := keymap.Build(editor.KeyCommands(), s)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,12 +31,12 @@ func TestAListFollowsItsKeymap(t *testing.T) {
 <shortcut id="tui.list.down"><key value="Ctrl+N"/></shortcut>
 <shortcut id="tui.list.bottom"><key value=""/></shortcut>
 </mapping>`)
-	l := widget.NewList(widget.WithSource(widget.SliceSource([]string{"alpha", "beta", "gamma"}), func(s string) string { return s }))
+	l := core.NewList(core.WithSource(core.SliceSource([]string{"alpha", "beta", "gamma"}), func(s string) string { return s }))
 	sh := newShell(l)
 	h := startAppOpts(t, sh, 20, 5, tui.WithKeymap(m))
 	h.inject(tab())
 	h.barrier(sh)
-	sels := record[widget.SelectionChangedEvent](h)
+	sels := record[core.SelectionChangedEvent](h)
 	cursor := func() int {
 		ev, ok := sels.last()
 		if !ok {

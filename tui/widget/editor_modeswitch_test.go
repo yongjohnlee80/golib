@@ -10,7 +10,9 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
+	"github.com/yongjohnlee80/golib/tui/widget/table"
 )
 
 // updateSwitch rewrites the switch's theme goldens (testdata/modeswitch).
@@ -19,14 +21,14 @@ var updateSwitch = flag.Bool("update-modeswitch", false, "rewrite the mode switc
 // switchEditor is a terminal Editor holding a CSV text, its table its document view, turned on,
 // the switch shown, focused, at 40×10, under th (nil: the default theme), its text in page (as a
 // host's palette gives it: AutoDoc's Frame, palette.text on palette.base; zero: the default).
-func switchEditor(t *testing.T, th *style.Theme, page ...style.Style) (*harness, *shell, *widget.Editor) {
+func switchEditor(t *testing.T, th *style.Theme, page ...style.Style) (*harness, *shell, *editor.Editor) {
 	t.Helper()
-	opts := []widget.EditorOption{widget.WithCore(widget.CoreInitialText("name,n\nann,1\nbob,2\n")), widget.EditorModeSwitch(true)}
+	opts := []editor.EditorOption{editor.WithCore(editor.CoreInitialText("name,n\nann,1\nbob,2\n")), editor.EditorModeSwitch(true)}
 	if len(page) > 0 {
-		opts = append(opts, widget.WithEditorStyles(widget.TextInputStyles{Text: page[0]}))
+		opts = append(opts, editor.WithEditorStyles(core.TextInputStyles{Text: page[0]}))
 	}
-	ed := widget.NewEditor(opts...)
-	ed.SetDocumentView(widget.NewTableDocument(ed.Core(), ','))
+	ed := editor.NewEditor(opts...)
+	ed.SetDocumentView(table.NewTableDocument(ed.Core(), ','))
 	ed.SetRenderedDocument(true)
 	sh := newShell(ed)
 	var appOpts []tui.AppOption
@@ -40,13 +42,13 @@ func switchEditor(t *testing.T, th *style.Theme, page ...style.Style) (*harness,
 }
 
 // switchAt is the column of the switch's first cell in a 40-column editor.
-const switchAt = 40 - widget.ModeSwitchWidth
+const switchAt = 40 - editor.ModeSwitchWidth
 
 func pressAt(x, y int) tui.MouseEvent {
 	return tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: x, Y: y}
 }
 
-func chosen(h *harness, ed *widget.Editor) (v widget.EditorView) {
+func chosen(h *harness, ed *editor.Editor) (v editor.EditorView) {
 	h.onLoop(func() { v = ed.View() })
 	return
 }
@@ -76,9 +78,9 @@ func TestTheTerminalEditorsModeSwitch(t *testing.T) {
 	if ln != 2 || col != 2 {
 		t.Errorf("a press on row 3, column 2 put the cursor at %d:%d; want 2:2", ln, col)
 	}
-	h.inject(pressAt(switchAt+len(widget.ModeSwitchRaw)+3, 0))
+	h.inject(pressAt(switchAt+len(editor.ModeSwitchRaw)+3, 0))
 	h.barrier(sh)
-	if chosen(h, ed) != widget.ViewRendered || !strings.HasPrefix(strings.TrimSpace(h.row(1)), "name") {
+	if chosen(h, ed) != editor.ViewRendered || !strings.HasPrefix(strings.TrimSpace(h.row(1)), "name") {
 		t.Fatalf("a press on Rendered: %v, row 1 %q; want the table under the switch", chosen(h, ed), h.row(1))
 	}
 	if r := h.row(0); !strings.HasSuffix(r, "[ Raw | Rendered ]") {
@@ -86,14 +88,14 @@ func TestTheTerminalEditorsModeSwitch(t *testing.T) {
 	}
 	h.inject(pressAt(switchAt+2, 0))
 	h.barrier(sh)
-	if chosen(h, ed) != widget.ViewRaw {
+	if chosen(h, ed) != editor.ViewRaw {
 		t.Fatalf("a press on Raw: %v", chosen(h, ed))
 	}
 	// the mark follows the view, whoever chose it
 	mark := func() string {
 		cells := h.tb.Snapshot()[0]
 		raw := cells[switchAt+2].Attrs.Mask&tui.AttrBold != 0
-		ren := cells[switchAt+len(widget.ModeSwitchRaw)+3].Attrs.Mask&tui.AttrBold != 0
+		ren := cells[switchAt+len(editor.ModeSwitchRaw)+3].Attrs.Mask&tui.AttrBold != 0
 		return fmt.Sprintf("raw=%v rendered=%v", raw, ren)
 	}
 	if m := mark(); m != "raw=true rendered=false" {
@@ -101,10 +103,10 @@ func TestTheTerminalEditorsModeSwitch(t *testing.T) {
 	}
 	h.inject(ctrlEv('t'))
 	h.barrier(sh)
-	if m := mark(); chosen(h, ed) != widget.ViewRendered || m != "raw=false rendered=true" {
+	if m := mark(); chosen(h, ed) != editor.ViewRendered || m != "raw=false rendered=true" {
 		t.Errorf("after Ctrl+T: %v, %s", chosen(h, ed), m)
 	}
-	h.onLoop(func() { ed.SetView(widget.ViewRaw) })
+	h.onLoop(func() { ed.SetView(editor.ViewRaw) })
 	h.barrier(sh)
 	if m := mark(); m != "raw=true rendered=false" {
 		t.Errorf("after the host's SetView(Raw): %s", m)
@@ -119,15 +121,15 @@ func TestTheModeSwitchsFaintRendered(t *testing.T) {
 	h.onLoop(func() { ed.SetRenderedDocument(false) })
 	h.barrier(sh)
 	cells := h.tb.Snapshot()[0]
-	if c := cells[switchAt+len(widget.ModeSwitchRaw)+3]; c.Attrs.Mask&tui.AttrFaint == 0 {
+	if c := cells[switchAt+len(editor.ModeSwitchRaw)+3]; c.Attrs.Mask&tui.AttrFaint == 0 {
 		t.Errorf("Rendered unavailable is not faint: %+v", c.Attrs)
 	}
 	if c := cells[switchAt+2]; c.Attrs.Mask&tui.AttrFaint != 0 {
 		t.Errorf("Raw is faint: %+v", c.Attrs)
 	}
-	h.inject(pressAt(switchAt+len(widget.ModeSwitchRaw)+3, 0))
+	h.inject(pressAt(switchAt+len(editor.ModeSwitchRaw)+3, 0))
 	h.barrier(sh)
-	if chosen(h, ed) != widget.ViewRaw || !strings.HasPrefix(h.row(1), "name,n") {
+	if chosen(h, ed) != editor.ViewRaw || !strings.HasPrefix(h.row(1), "name,n") {
 		t.Errorf("a press on a faint Rendered: %v, row 1 %q; want Raw kept", chosen(h, ed), h.row(1))
 	}
 }
@@ -135,7 +137,7 @@ func TestTheModeSwitchsFaintRendered(t *testing.T) {
 // With no document view there is nothing to switch to: no row is given up, the text starts at the
 // top. The switch is the host's to turn on: off, a document view gives no row up either.
 func TestTheModeSwitchTakesNoRowWithoutADocumentView(t *testing.T) {
-	ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText("first\nsecond")), widget.EditorModeSwitch(true))
+	ed := editor.NewEditor(editor.WithCore(editor.CoreInitialText("first\nsecond")), editor.EditorModeSwitch(true))
 	sh := newShell(ed)
 	h := startApp(t, sh, 40, 4)
 	defer h.stop()
@@ -143,8 +145,8 @@ func TestTheModeSwitchTakesNoRowWithoutADocumentView(t *testing.T) {
 	if !strings.HasPrefix(h.row(0), "first") || strings.Contains(h.grid(), "Rendered") {
 		t.Errorf("no document view: row 0 %q, grid\n%s", h.row(0), h.grid())
 	}
-	off := widget.NewEditor(widget.WithCore(widget.CoreInitialText("first\nsecond")))
-	off.SetDocumentView(widget.NewTableDocument(off.Core(), ','))
+	off := editor.NewEditor(editor.WithCore(editor.CoreInitialText("first\nsecond")))
+	off.SetDocumentView(table.NewTableDocument(off.Core(), ','))
 	sh2 := newShell(off)
 	h2 := startApp(t, sh2, 40, 4)
 	defer h2.stop()
@@ -205,14 +207,14 @@ func TestTheModeSwitchReadsInEveryTheme(t *testing.T) {
 			look := func(state string) {
 				cells := h.tb.Snapshot()[0]
 				fmt.Fprintf(&b, "%s\n  Raw      %s\n  |        %s\n  Rendered %s\n  text     %s\n", state,
-					cellLook(cells[switchAt+2]), cellLook(cells[switchAt+len(widget.ModeSwitchRaw)]),
-					cellLook(cells[switchAt+len(widget.ModeSwitchRaw)+3]), cellLook(h.tb.Snapshot()[1][0]))
+					cellLook(cells[switchAt+2]), cellLook(cells[switchAt+len(editor.ModeSwitchRaw)]),
+					cellLook(cells[switchAt+len(editor.ModeSwitchRaw)+3]), cellLook(h.tb.Snapshot()[1][0]))
 			}
 			look("Raw chosen")
 			h.inject(ctrlEv('t'))
 			h.barrier(sh)
 			look("Rendered chosen")
-			h.onLoop(func() { ed.SetView(widget.ViewRaw); ed.SetRenderedDocument(false) })
+			h.onLoop(func() { ed.SetView(editor.ViewRaw); ed.SetRenderedDocument(false) })
 			h.barrier(sh)
 			look("Rendered unavailable")
 			got := b.String()
@@ -255,8 +257,8 @@ func TestTheWheelOnTheSwitchsRowScrollsWhatIsUnderIt(t *testing.T) {
 	for i := range 40 {
 		fmt.Fprintf(&csv, "row%02d,%d\n", i, i)
 	}
-	ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText(csv.String())), widget.EditorModeSwitch(true))
-	ed.SetDocumentView(widget.NewTableDocument(ed.Core(), ','))
+	ed := editor.NewEditor(editor.WithCore(editor.CoreInitialText(csv.String())), editor.EditorModeSwitch(true))
+	ed.SetDocumentView(table.NewTableDocument(ed.Core(), ','))
 	ed.SetRenderedDocument(true)
 	sh := newShell(ed)
 	h := startApp(t, sh, 40, 10)
@@ -274,7 +276,7 @@ func TestTheWheelOnTheSwitchsRowScrollsWhatIsUnderIt(t *testing.T) {
 
 	h.inject(ctrlEv('t'))
 	h.barrier(sh)
-	if chosen(h, ed) != widget.ViewRendered {
+	if chosen(h, ed) != editor.ViewRendered {
 		t.Fatal("Ctrl+T did not show the table")
 	}
 	before = h.grid()
@@ -289,12 +291,12 @@ func TestTheWheelOnTheSwitchsRowScrollsWhatIsUnderIt(t *testing.T) {
 // focus as it arrives, so a press that focused the editor first went nowhere. The switch is resolved
 // before focus moves, as a toolbar's control is, and leaves the focus where it was.
 func TestTheSwitchTakesAPressWithTheFocusElsewhere(t *testing.T) {
-	ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText("name,n\nann,1\n")), widget.EditorModeSwitch(true))
-	ed.SetDocumentView(widget.NewTableDocument(ed.Core(), ','))
+	ed := editor.NewEditor(editor.WithCore(editor.CoreInitialText("name,n\nann,1\n")), editor.EditorModeSwitch(true))
+	ed.SetDocumentView(table.NewTableDocument(ed.Core(), ','))
 	ed.SetRenderedDocument(true)
-	ed.SetView(widget.ViewRendered)
-	other := widget.NewTextInput()
-	sh := newShell(widget.NewSplit(widget.Horizontal, other, ed))
+	ed.SetView(editor.ViewRendered)
+	other := core.NewTextInput()
+	sh := newShell(core.NewSplit(core.Horizontal, other, ed))
 	h := startApp(t, sh, 80, 8)
 	defer h.stop()
 	h.onLoop(func() { h.app.FocusInto(other) })
@@ -311,7 +313,7 @@ func TestTheSwitchTakesAPressWithTheFocusElsewhere(t *testing.T) {
 	}
 	h.inject(pressAt(x+2, y))
 	h.barrier(sh)
-	if chosen(h, ed) != widget.ViewRaw {
+	if chosen(h, ed) != editor.ViewRaw {
 		t.Fatalf("a press on Raw with the focus in another widget: %v; want Raw", chosen(h, ed))
 	}
 	var stays bool
@@ -319,9 +321,9 @@ func TestTheSwitchTakesAPressWithTheFocusElsewhere(t *testing.T) {
 	if !stays {
 		t.Error("the press on the switch moved the focus")
 	}
-	h.inject(pressAt(x+len(widget.ModeSwitchRaw)+3, y))
+	h.inject(pressAt(x+len(editor.ModeSwitchRaw)+3, y))
 	h.barrier(sh)
-	if chosen(h, ed) != widget.ViewRendered {
+	if chosen(h, ed) != editor.ViewRendered {
 		t.Errorf("a press on Rendered: %v", chosen(h, ed))
 	}
 }
@@ -329,14 +331,14 @@ func TestTheSwitchTakesAPressWithTheFocusElsewhere(t *testing.T) {
 // An editor narrower than the switch shows as much of it as fits, from its left, and a press is hit
 // where it is drawn: on the visible Raw segment it chooses Raw.
 func TestANarrowEditorsSwitchIsHitWhereItIsDrawn(t *testing.T) {
-	ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText("a,b\n1,2\n")), widget.EditorModeSwitch(true))
-	ed.SetDocumentView(widget.NewTableDocument(ed.Core(), ','))
+	ed := editor.NewEditor(editor.WithCore(editor.CoreInitialText("a,b\n1,2\n")), editor.EditorModeSwitch(true))
+	ed.SetDocumentView(table.NewTableDocument(ed.Core(), ','))
 	ed.SetRenderedDocument(true)
-	ed.SetView(widget.ViewRendered)
+	ed.SetView(editor.ViewRendered)
 	sh := newShell(ed)
 	const w = 12
-	if w >= widget.ModeSwitchWidth {
-		t.Fatalf("precondition: %d is not narrower than the switch (%d)", w, widget.ModeSwitchWidth)
+	if w >= editor.ModeSwitchWidth {
+		t.Fatalf("precondition: %d is not narrower than the switch (%d)", w, editor.ModeSwitchWidth)
 	}
 	h := startApp(t, sh, w, 6)
 	defer h.stop()
@@ -346,7 +348,7 @@ func TestANarrowEditorsSwitchIsHitWhereItIsDrawn(t *testing.T) {
 	}
 	h.inject(pressAt(2, 0))
 	h.barrier(sh)
-	if chosen(h, ed) != widget.ViewRaw {
+	if chosen(h, ed) != editor.ViewRaw {
 		t.Errorf("a press on the visible Raw: %v; want Raw", chosen(h, ed))
 	}
 }

@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // visible_test.go holds Context.SetVisible — Qt's Item.visible — to what it
@@ -13,9 +13,9 @@ import (
 // hides its subtree, and comes back as it was.
 
 func TestAHiddenNodeTakesNoSpaceNoPaintAndNoFocus(t *testing.T) {
-	top := widget.NewText("TOP")
-	field := widget.NewTextInput(widget.WithInitialValue("FIELD"))
-	bottom := widget.NewText("BOTTOM")
+	top := core.NewText("TOP")
+	field := core.NewTextInput(core.WithInitialValue("FIELD"))
+	bottom := core.NewText("BOTTOM")
 	col := tui.NewFlex(tui.Vertical)
 	col.Add(top)
 	col.Add(field)
@@ -54,11 +54,11 @@ func TestAHiddenNodeTakesNoSpaceNoPaintAndNoFocus(t *testing.T) {
 
 func TestHidingAContainerHidesEverythingUnderIt(t *testing.T) {
 	inner := tui.NewFlex(tui.Vertical)
-	field := widget.NewTextInput(widget.WithInitialValue("INNER"))
+	field := core.NewTextInput(core.WithInitialValue("INNER"))
 	inner.Add(field)
 	col := tui.NewFlex(tui.Vertical)
 	col.Add(inner)
-	col.Add(widget.NewText("AFTER"))
+	col.Add(core.NewText("AFTER"))
 	h := startApp(t, col, 20, 5)
 	defer h.stop()
 	h.onLoop(func() { field.Context().RequestFocus() })
@@ -79,9 +79,9 @@ func TestHidingAContainerHidesEverythingUnderIt(t *testing.T) {
 // A container that gives a child a rect whatever its size — a Split pane —
 // still does not paint or focus a hidden one.
 func TestAHiddenSplitPaneIsNeitherPaintedNorFocused(t *testing.T) {
-	left := widget.NewTextInput(widget.WithInitialValue("LEFTPANE"))
-	right := widget.NewText("RIGHT")
-	split := widget.NewSplit(widget.Horizontal, left, right)
+	left := core.NewTextInput(core.WithInitialValue("LEFTPANE"))
+	right := core.NewText("RIGHT")
+	split := core.NewSplit(core.Horizontal, left, right)
 	h := startApp(t, split, 40, 3)
 	defer h.stop()
 	h.onLoop(func() { left.Context().RequestFocus() })
@@ -100,9 +100,9 @@ func TestAHiddenSplitPaneIsNeitherPaintedNorFocused(t *testing.T) {
 // the other pane takes the whole split — and showing it again restores the
 // division it had.
 func TestAHiddenSplitPaneGivesItsSpaceToTheOther(t *testing.T) {
-	left := widget.NewText("LEFT")
-	right := widget.NewText("RIGHT")
-	split := widget.NewSplit(widget.Horizontal, left, right)
+	left := core.NewText("LEFT")
+	right := core.NewText("RIGHT")
+	split := core.NewSplit(core.Horizontal, left, right)
 	h := startApp(t, split, 40, 3)
 	defer h.stop()
 	h.settle()

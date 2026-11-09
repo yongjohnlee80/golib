@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // A TextInput reports its selection at the cells it draws it on: after the scroll, clipped where the
@@ -19,7 +19,7 @@ func TestATextInputReportsItsSelectionWhereItDrawsIt(t *testing.T) {
 		"scrolled to the start": {key(tui.KeyEnd), tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyHome, Mods: tui.ModShift}},
 	} {
 		t.Run(name, func(t *testing.T) {
-			h, in, sh := focusedInput(t, widget.WithInitialValue(value))
+			h, in, sh := focusedInput(t, core.WithInitialValue(value))
 			defer h.stop()
 			h.inject(keys...)
 			h.barrier(sh)
@@ -52,7 +52,7 @@ func TestATextInputReportsItsSelectionWhereItDrawsIt(t *testing.T) {
 
 // With no selection, or the field unfocused, there are no cells: ok is false.
 func TestATextInputWithoutASelectionReportsNoCells(t *testing.T) {
-	in, other := widget.NewTextInput(widget.WithInitialValue("abc")), widget.NewTextInput()
+	in, other := core.NewTextInput(core.WithInitialValue("abc")), core.NewTextInput()
 	root := tui.NewFlex(tui.Vertical)
 	root.Add(in, other)
 	h := startApp(t, root, 20, 2)

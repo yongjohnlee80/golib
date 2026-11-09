@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // modal_answers_test.go: a dialog answers by its buttons' roles — Qt's
@@ -15,8 +15,8 @@ import (
 
 type answersFixture struct {
 	h    *harness
-	md   *widget.Modal
-	host *widget.OverlayHost
+	md   *core.Modal
+	host *core.OverlayHost
 	log  []string // loop-owned; read through read()
 }
 
@@ -43,23 +43,23 @@ func (f *answersFixture) open() bool {
 
 // newAnswers builds Save / Discard / Stay / Mark — the irreversible answer
 // FIRST, with no default unless saveIsDefault.
-func newAnswers(t *testing.T, saveIsDefault bool, opts ...widget.ModalOption) *answersFixture {
+func newAnswers(t *testing.T, saveIsDefault bool, opts ...core.ModalOption) *answersFixture {
 	t.Helper()
 	f := &answersFixture{}
 	note := func(s string) func() { return func() { f.log = append(f.log, s) } }
-	btn := func(label string, key rune, role widget.ButtonRole, extra ...widget.ButtonOption) *widget.Button {
-		return widget.NewButton(label, append([]widget.ButtonOption{widget.WithRole(role), widget.WithMnemonic(key),
-			widget.WithOnActivate(note(strings.ToLower(label)))}, extra...)...)
+	btn := func(label string, key rune, role core.ButtonRole, extra ...core.ButtonOption) *core.Button {
+		return core.NewButton(label, append([]core.ButtonOption{core.WithRole(role), core.WithMnemonic(key),
+			core.WithOnActivate(note(strings.ToLower(label)))}, extra...)...)
 	}
-	f.md = widget.NewModal(widget.NewText("Unsaved changes"), append([]widget.ModalOption{
-		widget.WithButtons(
-			btn("Save", 's', widget.ButtonRoleAccept, widget.WithDefault(saveIsDefault)),
-			btn("Discard", 'd', widget.ButtonRoleDestructive),
-			btn("Stay", 't', widget.ButtonRoleReject),
-			btn("Mark", 'm', widget.ButtonRoleAction)),
-		widget.WithOnDismiss(func(r widget.DismissReason) { f.log = append(f.log, "dismiss:"+r.String()) }),
+	f.md = core.NewModal(core.NewText("Unsaved changes"), append([]core.ModalOption{
+		core.WithButtons(
+			btn("Save", 's', core.ButtonRoleAccept, core.WithDefault(saveIsDefault)),
+			btn("Discard", 'd', core.ButtonRoleDestructive),
+			btn("Stay", 't', core.ButtonRoleReject),
+			btn("Mark", 'm', core.ButtonRoleAction)),
+		core.WithOnDismiss(func(r core.DismissReason) { f.log = append(f.log, "dismiss:"+r.String()) }),
 	}, opts...)...)
-	f.host = widget.NewOverlayHost(widget.NewText(""))
+	f.host = core.NewOverlayHost(core.NewText(""))
 	f.h = startApp(t, f.host, 60, 12)
 	f.h.onLoop(func() {
 		if err := f.md.Open(f.host); err != nil {
@@ -150,7 +150,7 @@ func TestEnterAndSpacePressTheFocusedButtonBeforeTheDefault(t *testing.T) {
 // The accept gate: a refused accept leaves the dialog open, the button's own
 // callback having run.
 func TestAnAcceptGateHoldsTheDialogOpen(t *testing.T) {
-	f := newAnswers(t, false, widget.WithAcceptGate(func() bool { return false }))
+	f := newAnswers(t, false, core.WithAcceptGate(func() bool { return false }))
 	defer f.h.stop()
 	f.h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: 's'})
 	f.mark(t)
@@ -164,7 +164,7 @@ func TestAnAcceptGateHoldsTheDialogOpen(t *testing.T) {
 func TestAButtonRemovedFromADialogAnswersNothing(t *testing.T) {
 	f := newAnswers(t, false)
 	defer f.h.stop()
-	var save *widget.Button
+	var save *core.Button
 	f.h.onLoop(func() {
 		save = f.md.Buttons()[0]
 		if err := f.md.SetButtons(f.md.Buttons()[1:]...); err != nil {
@@ -182,14 +182,14 @@ func TestAButtonRemovedFromADialogAnswersNothing(t *testing.T) {
 // answers nothing and Enter is its own — and a refused list takes no button.
 func TestOnlyTheValidatedFinalButtonListIsTheDialogs(t *testing.T) {
 	var ran []string
-	first := widget.NewButton("First", widget.WithRole(widget.ButtonRoleAccept),
-		widget.WithOnActivate(func() { ran = append(ran, "first") }))
-	second := widget.NewButton("Second", widget.WithRole(widget.ButtonRoleReject))
-	md := widget.NewModal(widget.NewText("body"), widget.WithButtons(first), widget.WithButtons(second))
+	first := core.NewButton("First", core.WithRole(core.ButtonRoleAccept),
+		core.WithOnActivate(func() { ran = append(ran, "first") }))
+	second := core.NewButton("Second", core.WithRole(core.ButtonRoleReject))
+	md := core.NewModal(core.NewText("body"), core.WithButtons(first), core.WithButtons(second))
 	if got := md.Buttons(); len(got) != 1 || got[0] != second {
 		t.Fatalf("buttons = %v, want the second list", got)
 	}
-	host := widget.NewOverlayHost(first) // first, standalone, has the keyboard
+	host := core.NewOverlayHost(first) // first, standalone, has the keyboard
 	h := startApp(t, host, 40, 8)
 	defer h.stop()
 	h.onLoop(func() {
@@ -207,15 +207,15 @@ func TestOnlyTheValidatedFinalButtonListIsTheDialogs(t *testing.T) {
 	// A refused list takes no button: the panic comes before any is adopted,
 	// so this one, standalone, keeps Enter.
 	var lonely []string
-	lone := widget.NewButton("Lone", widget.WithRole(widget.ButtonRoleAccept),
-		widget.WithOnActivate(func() { lonely = append(lonely, "lone") }))
+	lone := core.NewButton("Lone", core.WithRole(core.ButtonRoleAccept),
+		core.WithOnActivate(func() { lonely = append(lonely, "lone") }))
 	func() {
 		defer func() {
 			if recover() == nil {
 				t.Error("a list with a nil entry was accepted")
 			}
 		}()
-		widget.NewModal(widget.NewText("body"), widget.WithButtons(lone, nil))
+		core.NewModal(core.NewText("body"), core.WithButtons(lone, nil))
 	}()
 	h2 := startApp(t, lone, 20, 3)
 	defer h2.stop()

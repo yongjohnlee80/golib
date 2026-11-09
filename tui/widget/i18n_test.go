@@ -10,7 +10,8 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/i18n"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/files"
 )
 
 // Widgets showing a tui.Message read it in the App's language as they are laid out, follow
@@ -48,19 +49,19 @@ func TestMessages_EachWidgetFollowsTheLanguageAndPlainTextStaysPut(t *testing.T)
 		english, korean string
 	}{
 		{"Button", func() (tui.Component, func(), func()) {
-			b := widget.NewButton("before")
+			b := core.NewButton("before")
 			return b, func() { b.SetLabelMessage(tui.Msg("tui.button.cancel")) }, func() { b.SetLabel("plain") }
 		}, "[ Cancel ]", "[ 취소(c) ]"},
 		{"Text", func() (tui.Component, func(), func()) {
-			x := widget.NewText("before")
+			x := core.NewText("before")
 			return x, func() { x.SetTextMessage(tui.Msg("tui.files.preview")) }, func() { x.SetText("plain") }
 		}, "Preview", "미리 보기"},
 		{"StatusBar", func() (tui.Component, func(), func()) {
-			sb := widget.NewStatusBar()
+			sb := core.NewStatusBar()
 			return sb, func() { sb.SetLeftMessage(tui.Msg("tui.files.folder")) }, func() { sb.SetLeft("plain") }
 		}, "Folder", "폴더"},
 		{"Box", func() (tui.Component, func(), func()) {
-			bx := widget.NewBox(widget.NewText(""), widget.WithTitle("before"))
+			bx := core.NewBox(core.NewText(""), core.WithTitle("before"))
 			return bx, func() { bx.SetTitleMessage(tui.Msg("tui.files.fileName")) }, func() { bx.SetTitle("plain") }
 		}, "File name", "파일 이름"},
 	} {
@@ -84,7 +85,7 @@ func TestMessages_EachWidgetFollowsTheLanguageAndPlainTextStaysPut(t *testing.T)
 
 func TestMessages_APlaceholderFollowsTheLanguage(t *testing.T) {
 	t.Parallel()
-	in := widget.NewTextInput(widget.WithPlaceholderMessage(tui.Msg("tui.files.empty")))
+	in := core.NewTextInput(core.WithPlaceholderMessage(tui.Msg("tui.files.empty")))
 	h := startApp(t, in, 30, 1)
 	defer h.stop()
 	h.shows("(empty)")
@@ -94,10 +95,10 @@ func TestMessages_APlaceholderFollowsTheLanguage(t *testing.T) {
 
 func TestMessages_AnOpenDialogsTitleAndFooterFollowTheLanguage(t *testing.T) {
 	t.Parallel()
-	md := widget.NewModal(widget.NewText("body"),
-		widget.WithModalTitleMessage(tui.Msg("tui.files.folder")),
-		widget.WithButtons(widget.NewStandardButton(widget.StandardYes), widget.NewStandardButton(widget.StandardNo)))
-	host := widget.NewOverlayHost(widget.NewText(""))
+	md := core.NewModal(core.NewText("body"),
+		core.WithModalTitleMessage(tui.Msg("tui.files.folder")),
+		core.WithButtons(core.NewStandardButton(core.StandardYes), core.NewStandardButton(core.StandardNo)))
+	host := core.NewOverlayHost(core.NewText(""))
 	h := startApp(t, host, 60, 8)
 	defer h.stop()
 	h.onLoop(func() {
@@ -124,19 +125,19 @@ func TestMessages_AnOpenDialogsTitleAndFooterFollowTheLanguage(t *testing.T) {
 func TestStandardButtons_LabelRoleAndKeyInEnglishByteForByte(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
-		b      widget.StandardButton
+		b      core.StandardButton
 		shown  string
-		role   widget.ButtonRole
+		role   core.ButtonRole
 		hotkey rune
 	}{
-		{widget.StandardOk, "[ OK ]", widget.ButtonRoleAccept, 'o'},
-		{widget.StandardSave, "[ Save ]", widget.ButtonRoleAccept, 's'},
-		{widget.StandardYes, "[ Yes ]", widget.ButtonRoleAccept, 'y'},
-		{widget.StandardNo, "[ No ]", widget.ButtonRoleReject, 'n'},
-		{widget.StandardCancel, "[ Cancel ]", widget.ButtonRoleReject, 'c'},
-		{widget.StandardClose, "[ Close(q) ]", widget.ButtonRoleReject, 'q'},
+		{core.StandardOk, "[ OK ]", core.ButtonRoleAccept, 'o'},
+		{core.StandardSave, "[ Save ]", core.ButtonRoleAccept, 's'},
+		{core.StandardYes, "[ Yes ]", core.ButtonRoleAccept, 'y'},
+		{core.StandardNo, "[ No ]", core.ButtonRoleReject, 'n'},
+		{core.StandardCancel, "[ Cancel ]", core.ButtonRoleReject, 'c'},
+		{core.StandardClose, "[ Close(q) ]", core.ButtonRoleReject, 'q'},
 	} {
-		b := widget.NewStandardButton(tc.b)
+		b := core.NewStandardButton(tc.b)
 		// Before it is mounted the button already carries English and its key, so a dialog
 		// validating its buttons at construction sees the key it will answer to.
 		if b.Role() != tc.role || b.Mnemonic() != tc.hotkey {
@@ -150,7 +151,7 @@ func TestStandardButtons_LabelRoleAndKeyInEnglishByteForByte(t *testing.T) {
 
 func TestStandardButtons_KeepTheirEnglishKeyInEveryShippedLanguage(t *testing.T) {
 	t.Parallel()
-	b := widget.NewStandardButton(widget.StandardClose)
+	b := core.NewStandardButton(core.StandardClose)
 	h := startApp(t, b, 30, 1)
 	defer h.stop()
 	for _, tc := range []struct{ lang, shown string }{
@@ -184,7 +185,7 @@ func TestButton_UnderlinesTheMarkedLetterNotTheFirstMatch(t *testing.T) {
 		"en":    {"app.saveAs", "Save &As…"},
 		"pt_BR": {"app.saveAs", "Salvar como(&a)…"},
 	})
-	b := widget.NewButton("", widget.WithLabelMessage(tui.Msg("app.saveAs")))
+	b := core.NewButton("", core.WithLabelMessage(tui.Msg("app.saveAs")))
 	h := startAppOpts(t, b, 30, 1, tui.WithTranslations(s), tui.WithLanguage("pt_BR"))
 	defer h.stop()
 	h.shows("[ Salvar como(a)… ]")
@@ -212,7 +213,7 @@ func TestButton_AnExplicitMnemonicOutlivesTheTranslation(t *testing.T) {
 		"en":    {"app.saveAs", "Save &As…"},
 		"pt_BR": {"app.saveAs", "Salvar como(&a)…"},
 	})
-	b := widget.NewButton("", widget.WithLabelMessage(tui.Msg("app.saveAs")), widget.WithMnemonic('v'))
+	b := core.NewButton("", core.WithLabelMessage(tui.Msg("app.saveAs")), core.WithMnemonic('v'))
 	h := startAppOpts(t, b, 30, 1, tui.WithTranslations(s), tui.WithLanguage("pt_BR"))
 	defer h.stop()
 	h.shows("[ Salvar como(a)… ]")
@@ -230,7 +231,7 @@ func TestButton_AnExplicitMnemonicOutlivesTheTranslation(t *testing.T) {
 
 func TestButton_AKeyGivenAloneStillUnderlinesTheFirstMatch(t *testing.T) {
 	t.Parallel()
-	b := widget.NewButton("Salvar como", widget.WithMnemonic('a'))
+	b := core.NewButton("Salvar como", core.WithMnemonic('a'))
 	h := startApp(t, b, 30, 1)
 	defer h.stop()
 	h.shows("[ Salvar como ]")
@@ -247,18 +248,18 @@ func TestMenu_AMessageRowFollowsTheLanguageInAnOpenDropdownAndAnswersTheEnglishL
 		"en":    {"app.file", "&File", "app.quit", "E&xit"},
 		"ko_KR": {"app.file", "파일(&f)", "app.quit", "끝내기(&x)"},
 	})
-	file := widget.NewSubmenu("file", "", []widget.MenuItemModel{widget.NewCommand("quit", "", nil)})
+	file := core.NewSubmenu("file", "", []core.MenuItemModel{core.NewCommand("quit", "", nil)})
 	file.LabelMsg = tui.Msg("app.file")
 	file.Children[0].LabelMsg = tui.Msg("app.quit")
-	m := widget.NewMenu()
-	if err := m.SetModel([]widget.MenuItemModel{file}); err != nil {
+	m := core.NewMenu()
+	if err := m.SetModel([]core.MenuItemModel{file}); err != nil {
 		t.Fatal(err)
 	}
-	host := widget.NewOverlayHost(widget.NewMenuBar(m))
+	host := core.NewOverlayHost(core.NewMenuBar(m))
 	h := startAppOpts(t, host, 40, 8, tui.WithTranslations(s))
 	defer h.stop()
 	var activated atomic.Value
-	unsub := tui.Subscribe(h.app.Bus(), func(ev widget.MenuActivatedEvent) { activated.Store(ev.ItemID) })
+	unsub := tui.Subscribe(h.app.Bus(), func(ev core.MenuActivatedEvent) { activated.Store(ev.ItemID) })
 	defer unsub()
 
 	h.onLoop(func() { m.Context().RequestFocus() })
@@ -275,13 +276,13 @@ func TestMenu_AMessageRowFollowsTheLanguageInAnOpenDropdownAndAnswersTheEnglishL
 	h.wantNotContains("Exit")
 
 	h.inject(key('x'))
-	h.waitFor("the quit row's activation", func() bool { return activated.Load() == widget.ItemID("quit") })
+	h.waitFor("the quit row's activation", func() bool { return activated.Load() == core.ItemID("quit") })
 }
 
 func TestFileViews_HintsAndNotesFollowTheLanguage(t *testing.T) {
 	t.Parallel()
-	src := widget.FileSource{FS: fstest.MapFS{"docs/a.txt": {Data: []byte("a")}}, Root: "/"}
-	v := widget.NewFileOpenView(widget.WithFileViewSource(src), widget.WithFileViewDir("/"))
+	src := files.FileSource{FS: fstest.MapFS{"docs/a.txt": {Data: []byte("a")}}, Root: "/"}
+	v := files.NewFileOpenView(files.WithFileViewSource(src), files.WithFileViewDir("/"))
 	h := startBrowser(t, v)
 	defer h.stop()
 	var hint string
@@ -305,10 +306,10 @@ func TestFileViews_HintsAndNotesFollowTheLanguage(t *testing.T) {
 
 func TestFilePreview_ANoteReadsInTheNewLanguage(t *testing.T) {
 	t.Parallel()
-	p := widget.NewFilePreview(widget.FilePaneStyles{}, false)
+	p := files.NewFilePreview(files.FilePaneStyles{}, false)
 	h := startApp(t, p, 40, 6)
 	defer h.stop()
-	src := widget.FileSource{FS: fstest.MapFS{"docs/a.txt": {Data: []byte("a")}}, Root: "/"}
+	src := files.FileSource{FS: fstest.MapFS{"docs/a.txt": {Data: []byte("a")}}, Root: "/"}
 	h.onLoop(func() { p.Show(src, "docs", true) })
 	h.shows("(folder)")
 	h.app.SetLanguage("ko_KR")
@@ -322,7 +323,7 @@ func TestFilePreview_ANoteReadsInTheNewLanguage(t *testing.T) {
 
 func TestSelect_ALoadErrorReadsInTheNewLanguage(t *testing.T) {
 	t.Parallel()
-	s := widget.NewSelect(widget.WithWidth[int](24))
+	s := core.NewSelect(core.WithWidth[int](24))
 	h := startApp(t, s, 30, 1)
 	defer h.stop()
 	h.onLoop(func() { s.HandleEvent(tui.TaskResult{Owner: s.NodeID(), Err: errors.New("no route")}) })
@@ -333,15 +334,15 @@ func TestSelect_ALoadErrorReadsInTheNewLanguage(t *testing.T) {
 
 func TestList_AnEmptyListsTextFollowsTheLanguageAndPlainTextStaysPut(t *testing.T) {
 	t.Parallel()
-	l := widget.NewList(widget.WithItems[string](nil, func(s string) string { return s }), widget.WithEmptyTextMessage[string](tui.Msg("tui.files.empty")))
+	l := core.NewList(core.WithItems[string](nil, func(s string) string { return s }), core.WithEmptyTextMessage[string](tui.Msg("tui.files.empty")))
 	h := startApp(t, l, 30, 3)
 	defer h.stop()
 	h.shows("(empty)")
 	h.app.SetLanguage("ko_KR")
 	h.shows("(비어 있음)")
 
-	plain := widget.NewList(widget.WithItems[string](nil, func(s string) string { return s }), widget.WithEmptyTextMessage[string](tui.Msg("tui.files.empty")),
-		widget.WithEmptyText[string]("nothing here"))
+	plain := core.NewList(core.WithItems[string](nil, func(s string) string { return s }), core.WithEmptyTextMessage[string](tui.Msg("tui.files.empty")),
+		core.WithEmptyText[string]("nothing here"))
 	h2 := startAppOpts(t, plain, 30, 3, tui.WithLanguage("ko_KR"))
 	defer h2.stop()
 	h2.shows("nothing here")
@@ -349,8 +350,8 @@ func TestList_AnEmptyListsTextFollowsTheLanguageAndPlainTextStaysPut(t *testing.
 
 func TestFileSaveView_TheNamePaneAndHintsFollowTheLanguage(t *testing.T) {
 	t.Parallel()
-	src := widget.FileSource{FS: fstest.MapFS{"docs/a.txt": {Data: []byte("a")}}, Root: "/"}
-	v := widget.NewFileSaveView(widget.WithFileViewSource(src), widget.WithFileViewDir("/"))
+	src := files.FileSource{FS: fstest.MapFS{"docs/a.txt": {Data: []byte("a")}}, Root: "/"}
+	v := files.NewFileSaveView(files.WithFileViewSource(src), files.WithFileViewDir("/"))
 	h := startBrowser(t, v)
 	defer h.stop()
 	h.shows("File name")
@@ -371,8 +372,8 @@ func TestFileSaveView_TheNamePaneAndHintsFollowTheLanguage(t *testing.T) {
 // message: it stays as written whatever the language.
 func TestMessages_AnOpenModalsTitleBecomesAMessageAndPlainAgain(t *testing.T) {
 	t.Parallel()
-	md := widget.NewModal(widget.NewText("body"), widget.WithModalTitle("plain title"))
-	host := widget.NewOverlayHost(widget.NewText(""))
+	md := core.NewModal(core.NewText("body"), core.WithModalTitle("plain title"))
+	host := core.NewOverlayHost(core.NewText(""))
 	h := startApp(t, host, 60, 8)
 	defer h.stop()
 	h.onLoop(func() {
@@ -401,9 +402,9 @@ func TestMessages_AnOpenModalsTitleBecomesAMessageAndPlainAgain(t *testing.T) {
 // each names is the one it shows.
 func TestFileListAndPreview_HintsFollowTheLanguage(t *testing.T) {
 	t.Parallel()
-	src := widget.FileSource{FS: fstest.MapFS{"a.txt": {Data: []byte("a")}}, Root: "/"}
-	l := widget.NewFileList(widget.WithFileListSource(src), widget.WithFileListDir("/"))
-	p := widget.NewFilePreview(widget.FilePaneStyles{}, false)
+	src := files.FileSource{FS: fstest.MapFS{"a.txt": {Data: []byte("a")}}, Root: "/"}
+	l := files.NewFileList(files.WithFileListSource(src), files.WithFileListDir("/"))
+	p := files.NewFilePreview(files.FilePaneStyles{}, false)
 	for _, tc := range []struct {
 		name            string
 		root            tui.Component
@@ -452,7 +453,7 @@ func (s failingFS) Open(name string) (fs.File, error) {
 // App's language, with the reason as written.
 func TestFilePreview_NotesAboutAFileItCannotShowFollowTheLanguage(t *testing.T) {
 	t.Parallel()
-	src := widget.FileSource{FS: failingFS{fstest.MapFS{"empty.txt": {}, "bad.txt": {Data: []byte("x")}}}, Root: "/"}
+	src := files.FileSource{FS: failingFS{fstest.MapFS{"empty.txt": {}, "bad.txt": {Data: []byte("x")}}}, Root: "/"}
 	for _, tc := range []struct{ path, english, korean string }{
 		{"empty.txt", "(empty file)", "(빈 파일)"},
 		{"gone.txt", "(cannot read: open gone.txt: file does not exist)", "(읽을 수 없음: open gone.txt: file does not exist)"},
@@ -460,7 +461,7 @@ func TestFilePreview_NotesAboutAFileItCannotShowFollowTheLanguage(t *testing.T) 
 	} {
 		t.Run(tc.path, func(t *testing.T) {
 			t.Parallel()
-			p := widget.NewFilePreview(widget.FilePaneStyles{}, false)
+			p := files.NewFilePreview(files.FilePaneStyles{}, false)
 			h := startApp(t, p, 70, 4)
 			defer h.stop()
 			h.onLoop(func() { p.Show(src, tc.path, false) })

@@ -4,18 +4,18 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 const sampleTable = "| Column1 | Column2 |\n| --- | --- |\n| Item1.1 | Item2.1 |"
 
-func cellTab(c *widget.EditorCore) { c.HandleKey(tui.KeyEvent{Code: tui.KeyTab}) }
-func cellShiftTab(c *widget.EditorCore) {
+func cellTab(c *editor.EditorCore) { c.HandleKey(tui.KeyEvent{Code: tui.KeyTab}) }
+func cellShiftTab(c *editor.EditorCore) {
 	c.HandleKey(tui.KeyEvent{Code: tui.KeyTab, Mods: tui.ModShift})
 }
 
 func TestTabWalksATablesCellsAndTypingReplacesOne(t *testing.T) {
-	c, _ := coreWith(t, sampleTable, widget.CoreTableEditing(true))
+	c, _ := coreWith(t, sampleTable, editor.CoreTableEditing(true))
 	keys(c, "i") // Insert at the first column
 	cellTab(c)
 	if got := c.TextIn(cellSelection(t, c)); got != "Column2" {
@@ -53,7 +53,7 @@ func TestTabWalksATablesCellsAndTypingReplacesOne(t *testing.T) {
 }
 
 func TestOffATableTabDoesWhatItAlwaysDid(t *testing.T) {
-	c, _ := coreWith(t, "plain", widget.CoreTableEditing(true))
+	c, _ := coreWith(t, "plain", editor.CoreTableEditing(true))
 	keys(c, "i")
 	cellTab(c)
 	if got := c.Value(); got != "\tplain" {
@@ -68,7 +68,7 @@ func TestOffATableTabDoesWhatItAlwaysDid(t *testing.T) {
 }
 
 func TestAnArrowDropsTheCellsSelection(t *testing.T) {
-	c, _ := coreWith(t, sampleTable, widget.CoreTableEditing(true))
+	c, _ := coreWith(t, sampleTable, editor.CoreTableEditing(true))
 	keys(c, "i")
 	cellTab(c)
 	c.HandleKey(tui.KeyEvent{Code: tui.KeyLeft})
@@ -80,7 +80,7 @@ func TestAnArrowDropsTheCellsSelection(t *testing.T) {
 
 // cellSelection is a table cell's selection: in Insert mode it is the core's only selection, read
 // through Selected.
-func cellSelection(t *testing.T, c *widget.EditorCore) widget.TextRange {
+func cellSelection(t *testing.T, c *editor.EditorCore) editor.TextRange {
 	t.Helper()
 	ln := c.Cursor().Line
 	line := []rune(c.LineAt(ln))
@@ -96,7 +96,7 @@ func cellSelection(t *testing.T, c *widget.EditorCore) widget.TextRange {
 	if from < 0 {
 		t.Fatalf("no cell selected on line %d: %q", ln, c.LineAt(ln))
 	}
-	return widget.TextRange{From: widget.TextPos{Line: ln, Col: from}, To: widget.TextPos{Line: ln, Col: to}}
+	return editor.TextRange{From: editor.TextPos{Line: ln, Col: from}, To: editor.TextPos{Line: ln, Col: to}}
 }
 
 // Table editing turned on at run time walks the cells; turned off, it drops a cell's selection.

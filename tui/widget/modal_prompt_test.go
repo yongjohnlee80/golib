@@ -6,7 +6,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // modal_prompt_test.go holds a dialog shaped as a prompt — a field, no
@@ -15,10 +15,10 @@ import (
 // paints its whole box.
 
 func TestAModalWidthSetsTheCardWidthAndAFieldFillsIt(t *testing.T) {
-	field := widget.NewTextInput(widget.WithTextInputStyles(widget.TextInputStyles{
+	field := core.NewTextInput(core.WithTextInputStyles(core.TextInputStyles{
 		Text: style.New().Background(blue),
 	}))
-	m := widget.NewModal(field, widget.WithModalWidth(30), widget.WithModalTitle("Command"))
+	m := core.NewModal(field, core.WithModalWidth(30), core.WithModalTitle("Command"))
 	h, host, _ := modalFixture(t, m, 80, 12)
 	defer h.stop()
 	openOn(t, h, m, host)
@@ -46,7 +46,7 @@ func TestAModalWidthSetsTheCardWidthAndAFieldFillsIt(t *testing.T) {
 }
 
 func TestAModalWidthNeverExceedsTheHost(t *testing.T) {
-	m := widget.NewModal(widget.NewTextInput(), widget.WithModalWidth(500))
+	m := core.NewModal(core.NewTextInput(), core.WithModalWidth(500))
 	h, host, _ := modalFixture(t, m, 40, 10)
 	defer h.stop()
 	openOn(t, h, m, host)
@@ -56,8 +56,8 @@ func TestAModalWidthNeverExceedsTheHost(t *testing.T) {
 }
 
 func TestTheHelpLineOfAButtonlessDialogSitsUnderARule(t *testing.T) {
-	m := widget.NewModal(widget.NewText("body"),
-		widget.WithModalRule(true), widget.WithModalFooter("the help"))
+	m := core.NewModal(core.NewText("body"),
+		core.WithModalRule(true), core.WithModalFooter("the help"))
 	h, host, _ := modalFixture(t, m, 40, 12)
 	defer h.stop()
 	openOn(t, h, m, host)
@@ -69,8 +69,8 @@ func TestTheHelpLineOfAButtonlessDialogSitsUnderARule(t *testing.T) {
 }
 
 func TestAButtonlessDialogPutsTheKeyboardInItsField(t *testing.T) {
-	field := widget.NewTextInput()
-	m := widget.NewModal(field, widget.WithModalFooter("help"))
+	field := core.NewTextInput()
+	m := core.NewModal(field, core.WithModalFooter("help"))
 	h, host, _ := modalFixture(t, m, 40, 10)
 	defer h.stop()
 	openOn(t, h, m, host)
@@ -94,7 +94,7 @@ func TestAButtonlessDialogPutsTheKeyboardInItsField(t *testing.T) {
 }
 
 func TestAnEmptyFieldPaintsItsWholeBox(t *testing.T) {
-	field := widget.NewTextInput(widget.WithTextInputStyles(widget.TextInputStyles{
+	field := core.NewTextInput(core.WithTextInputStyles(core.TextInputStyles{
 		Text: style.New().Background(blue),
 	}))
 	h := startApp(t, field, 20, 1)
@@ -133,8 +133,8 @@ func cardWidth(t *testing.T, h *harness, title string) int {
 // help line still fits, as it does on a card sized to its content.
 func TestAModalWidthNeverClipsTheHelpLine(t *testing.T) {
 	help := "Enter runs the command, Esc closes"
-	m := widget.NewModal(widget.NewTextInput(), widget.WithModalWidth(20),
-		widget.WithModalTitle("Command"), widget.WithModalFooter(help))
+	m := core.NewModal(core.NewTextInput(), core.WithModalWidth(20),
+		core.WithModalTitle("Command"), core.WithModalFooter(help))
 	h, host, _ := modalFixture(t, m, 80, 12)
 	defer h.stop()
 	openOn(t, h, m, host)
@@ -149,15 +149,15 @@ func TestAModalWidthNeverClipsTheHelpLine(t *testing.T) {
 func TestTheBodysControlIsFoundWhereverItSits(t *testing.T) {
 	for _, c := range []struct {
 		name string
-		body func(field *widget.TextInput) tui.Component
+		body func(field *core.TextInput) tui.Component
 	}{
-		{"in a box", func(f *widget.TextInput) tui.Component { return widget.NewBox(f) }},
-		{"in a split", func(f *widget.TextInput) tui.Component {
-			return widget.NewSplit(widget.Horizontal, widget.NewText("label"), f)
+		{"in a box", func(f *core.TextInput) tui.Component { return core.NewBox(f) }},
+		{"in a split", func(f *core.TextInput) tui.Component {
+			return core.NewSplit(core.Horizontal, core.NewText("label"), f)
 		}},
 	} {
-		field := widget.NewTextInput()
-		m := widget.NewModal(c.body(field), widget.WithModalFooter("help"))
+		field := core.NewTextInput()
+		m := core.NewModal(c.body(field), core.WithModalFooter("help"))
 		h, host, _ := modalFixture(t, m, 60, 12)
 		openOn(t, h, m, host)
 		var inField, onModal bool
@@ -168,7 +168,7 @@ func TestTheBodysControlIsFoundWhereverItSits(t *testing.T) {
 		h.stop()
 	}
 
-	m := widget.NewModal(widget.NewText("nothing to type in"), widget.WithModalFooter("help"))
+	m := core.NewModal(core.NewText("nothing to type in"), core.WithModalFooter("help"))
 	h, host, _ := modalFixture(t, m, 60, 12)
 	defer h.stop()
 	openOn(t, h, m, host)
@@ -181,7 +181,7 @@ func TestTheBodysControlIsFoundWhereverItSits(t *testing.T) {
 
 // A dialog with no body at all still has a stop in its trap: the Modal node.
 func TestABodilessDialogIsItsOwnStop(t *testing.T) {
-	m := widget.NewModal(nil, widget.WithModalFooter("help"))
+	m := core.NewModal(nil, core.WithModalFooter("help"))
 	h, host, _ := modalFixture(t, m, 40, 8)
 	defer h.stop()
 	openOn(t, h, m, host)

@@ -7,7 +7,8 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // A Rendered view's pictures sit on the page. A diagram or a chart leaves cells unpainted (around a
@@ -24,13 +25,13 @@ func TestARenderedPicturesBlankCellsWearThePage(t *testing.T) {
 	page := style.New().Foreground(style.ANSI(0)).Background(style.ANSI(2)).Italic(true)
 	note := "intro\n\n```mermaid\nflowchart LR\n  Alpha --> Beta\n```\n\n" +
 		"```mermaid\npie title Pets\n  \"Dogs\" : 80\n  \"Cats\" : 20\n```\nafter\n"
-	ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText(note))).WithStyles(widget.TextInputStyles{Text: page})
+	ed := editor.NewEditor(editor.WithCore(editor.CoreInitialText(note))).WithStyles(core.TextInputStyles{Text: page})
 	sh := newShell(ed)
 	h := startAppOpts(t, sh, 60, 40, tui.WithTheme(&th))
 	defer h.stop()
 	h.onLoop(func() {
 		ed.SetRenderer(mdRenderer())
-		ed.SetView(widget.ViewRendered)
+		ed.SetView(editor.ViewRendered)
 		h.app.FocusInto(ed)
 	})
 	h.barrier(sh)

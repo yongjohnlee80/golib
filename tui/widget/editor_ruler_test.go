@@ -4,14 +4,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // TestTheRulerMarksItsColumnPastTheText: the guide stands in column 10 (the 10th) wherever a line
 // has ended — rows past the document too — and yields to a line that crosses it; 0 takes it away.
 func TestTheRulerMarksItsColumnPastTheText(t *testing.T) {
-	ed := widget.NewEditor(widget.WithRuler(10))
-	ed.Core().SetKeyset(widget.KeysetStandard)
+	ed := editor.NewEditor(editor.WithRuler(10))
+	ed.Core().SetKeyset(editor.KeysetStandard)
 	ed.SetValue("short\nthis line runs past the ruler")
 	h := startApp(t, ed, 40, 4)
 	defer h.stop()

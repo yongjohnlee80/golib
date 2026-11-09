@@ -4,18 +4,18 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 func TestVisualModesKeepTheNormalBlockCursor(t *testing.T) {
-	h, ed, sh := focusedEditor(t, 40, 10, widget.WithCore(widget.CoreInitialText("hello world")))
+	h, ed, sh := focusedEditor(t, 40, 10, editor.WithCore(editor.CoreInitialText("hello world")))
 	for _, step := range []struct {
 		key  rune
-		mode widget.EditorMode
+		mode editor.EditorMode
 	}{
-		{'v', widget.ModeVisual},
-		{'v', widget.ModeNormal},
-		{'V', widget.ModeVisualLine},
+		{'v', editor.ModeVisual},
+		{'v', editor.ModeNormal},
+		{'V', editor.ModeVisualLine},
 	} {
 		h.inject(key(step.key))
 		h.barrier(sh)
@@ -26,7 +26,7 @@ func TestVisualModesKeepTheNormalBlockCursor(t *testing.T) {
 }
 
 func TestEditorClipboardRegisters(t *testing.T) {
-	h, ed, sh := focusedEditor(t, 40, 10, widget.WithCore(widget.CoreInitialText("line 1\nline 2")))
+	h, ed, sh := focusedEditor(t, 40, 10, editor.WithCore(editor.CoreInitialText("line 1\nline 2")))
 
 	// Manual register set and inspection
 	ed.Core().SetRegister("custom content", false)
@@ -49,7 +49,7 @@ func TestEditorClipboardRegisters(t *testing.T) {
 }
 
 func TestEditorClipboardSelectionAndYank(t *testing.T) {
-	h, ed, sh := focusedEditor(t, 40, 10, widget.WithCore(widget.CoreInitialText("hello world")))
+	h, ed, sh := focusedEditor(t, 40, 10, editor.WithCore(editor.CoreInitialText("hello world")))
 
 	// Visual mode 'v', move 5 characters right, yank 'y'
 	h.inject(key('v'))
@@ -65,7 +65,7 @@ func TestEditorClipboardSelectionAndYank(t *testing.T) {
 	h.inject(key('y'))
 	h.barrier(sh)
 
-	if ed.Core().Mode() != widget.ModeNormal {
+	if ed.Core().Mode() != editor.ModeNormal {
 		t.Errorf("after yank: mode is %v, want ModeNormal", ed.Core().Mode())
 	}
 
@@ -78,8 +78,8 @@ func TestEditorClipboardSelectionAndYank(t *testing.T) {
 func TestEditorClipboardDisabledFeatures(t *testing.T) {
 	// Editor with selection disabled
 	h, ed, sh := focusedEditor(t, 40, 10,
-		widget.WithCore(widget.CoreInitialText("hello world")),
-		widget.WithCore(widget.CoreSelection(false)),
+		editor.WithCore(editor.CoreInitialText("hello world")),
+		editor.WithCore(editor.CoreSelection(false)),
 	)
 
 	h.inject(key('v'))
@@ -93,8 +93,8 @@ func TestEditorClipboardDisabledFeatures(t *testing.T) {
 
 func TestEditorClipboardDisabledYank(t *testing.T) {
 	h, ed, sh := focusedEditor(t, 40, 10,
-		widget.WithCore(widget.CoreInitialText("ab")),
-		widget.WithCore(widget.CoreYank(false)),
+		editor.WithCore(editor.CoreInitialText("ab")),
+		editor.WithCore(editor.CoreYank(false)),
 	)
 
 	h.inject(key('v'))
@@ -108,7 +108,7 @@ func TestEditorClipboardDisabledYank(t *testing.T) {
 	h.inject(key('y'))
 	h.barrier(sh)
 
-	if ed.Core().Mode() != widget.ModeNormal {
+	if ed.Core().Mode() != editor.ModeNormal {
 		t.Errorf("after yank: mode is %v, want ModeNormal", ed.Core().Mode())
 	}
 

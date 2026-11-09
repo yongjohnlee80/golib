@@ -3,7 +3,7 @@ package widget_test
 import (
 	"testing"
 
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // shrinkingRows is a source a test changes in place.
@@ -17,7 +17,7 @@ func (s *shrinkingRows) Item(i int) string { return s.rows[i] }
 // cursor follows the rows, the positive control (tui-widget-data-S5).
 func TestAListPaintChangesNothingItWasNotTold(t *testing.T) {
 	src := &shrinkingRows{rows: []string{"a", "b", "c", "d", "e"}}
-	l := widget.NewList(widget.WithSource[string](src, func(s string) string { return s }))
+	l := core.NewList(core.WithSource[string](src, func(s string) string { return s }))
 	sh := newShell(l)
 	h := startApp(t, sh, 20, 6)
 	h.barrier(sh)
