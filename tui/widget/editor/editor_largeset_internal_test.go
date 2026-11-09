@@ -88,8 +88,12 @@ func TestTallerThanAgreesWithTheWholeLayout(t *testing.T) {
 func TestAScrollingViewLaysNoBlockAgainUntilItsTextChanges(t *testing.T) {
 	e, c := cacheEditor(t, strings.Repeat("a paragraph long enough to wrap at forty columns, and then some more\n\n", 60))
 	e.cells.w, e.cells.h, e.cells.wrap = cacheWidth, 10, core.WrapSoft
+	e.laid, e.tall = [2]*renderedLayout{}, tallAnswer{} // as a view that scrolls keeps them: its narrower layout alone
 	if m := e.rowMap(); m.r == nil || m.r.key.width != cacheWidth-1 {
 		t.Fatalf("the long text's layout is not the scrolling one, one narrower than the view")
+	}
+	if e.laid[0] == nil || e.laid[0].key.width != cacheWidth-1 || (e.laid[1] != nil && e.laid[1].key.width == cacheWidth && e.laid[1].key.rev == e.laid[0].key.rev) {
+		t.Fatalf("the view keeps a layout at its own width too: the cell can't see the answer kept")
 	}
 	c.laid = nil
 	for range 3 {
