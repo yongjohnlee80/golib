@@ -2,9 +2,16 @@
 
 package local
 
-import "os"
+import (
+	"io/fs"
+	"os"
+)
 
 func (f *FS) lstat(name string) (os.FileInfo, error) { return f.root.Lstat(name) }
 
 // fileStat is file's Stat: its Sys is the Stat_t versionOf reads.
 func fileStat(file *os.File) (os.FileInfo, error) { return file.Stat() }
+
+// entryInfo is a listed entry's FileInfo, as Stat would give it: the entry's own, whose Sys is the
+// Stat_t versionOf reads.
+func (f *FS) entryInfo(_ string, e fs.DirEntry) (os.FileInfo, error) { return e.Info() }

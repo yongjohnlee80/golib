@@ -3,6 +3,7 @@
 package local
 
 import (
+	"io/fs"
 	"os"
 	"unsafe"
 
@@ -65,3 +66,8 @@ func fileStat(file *os.File) (os.FileInfo, error) {
 	}
 	return withHandle(fi, file), nil
 }
+
+// entryInfo is a listed entry's FileInfo, as Stat gives it: a listing carries no file index or
+// change time, so the entry is stat'ed through its handle, and the version ReadDir reports is the
+// one Stat and a conditional write compare against.
+func (f *FS) entryInfo(name string, _ fs.DirEntry) (os.FileInfo, error) { return f.lstat(name) }
