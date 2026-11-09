@@ -2,6 +2,7 @@ package controls_test
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -387,7 +388,8 @@ func TestATextFieldCompletesFromItsModel(t *testing.T) {
 // is not a TextField's widget, and a value that is not a model.
 func TestTheCompletionsSetterRefusesWhatItIsNotGiven(t *testing.T) {
 	set := controls.TextField.Setters["completions"]
-	if err := set(widget.NewButton("no"), qml.SpecValue{}); err == nil || !strings.Contains(err.Error(), "not a *widget.TextInput") {
+	notInput := fmt.Sprintf("not a %T", (*widget.TextInput)(nil)) // the type as the message prints it
+	if err := set(widget.NewButton("no"), qml.SpecValue{}); err == nil || !strings.Contains(err.Error(), notInput) {
 		t.Errorf("a component that is not a TextField: %v", err)
 	}
 	in := widget.NewTextInput()
