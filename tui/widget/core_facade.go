@@ -572,6 +572,12 @@ type PopupHost = core.PopupHost
 // one; golib's components draw through it; a widget outside golib rarely needs it.
 type ModalHost = core.ModalHost
 
+// ImageResolver opens a resource an HTMLView's page names, an image's src or a linked
+// stylesheet's href, for a layout that loads them. It is the application's: the view loads
+// nothing on its own, so a page cannot reach a file, or the network, the application did not hand
+// it. data: URIs never reach it; a layout decodes them itself.
+type ImageResolver = core.ImageResolver
+
 // ListSource is the data seam List renders through.
 // It is v1 API: the shape a windowed/lazy source implements later WITHOUT
 // List needing a v2. Sources are consulted only on the loop goroutine.
@@ -1398,6 +1404,9 @@ type StripAction = core.StripAction
 // TabStripMenuAction is a row of a TabStrip's menus: when the row is chosen, Run runs with the tab
 // the menu was opened for (SetMenu), or with "" (SetAddMenu's +).
 type TabStripMenuAction = core.TabStripMenuAction
+
+// TableField is one column as a source names it.
+type TableField = core.TableField
 
 // Multi-Tab Bar & Content Switcher Architecture
 //

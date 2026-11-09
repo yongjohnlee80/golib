@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 	"math/big"
 	"slices"
 	"strconv"
@@ -9,7 +10,7 @@ import (
 
 // THE SORT — the LOADED rows ordered by one or more fields, as a view of the source: the source
 // keeps its order, and rows that arrive later are merged in by Changed. A source that knows each
-// cell's kind (TableKinds) is ordered by those kinds; one that does not is ordered by compareCells.
+// cell's kind (TableKinds) is ordered by those kinds; one that does not is ordered by kit.CompareCells.
 
 // tableView is the order the rows are shown in: the sort and the filter over the loaded rows.
 type tableView struct {
@@ -29,7 +30,7 @@ type TableSortKey struct {
 }
 
 // TableKinds is a TableSource that knows each cell's kind; Kind is read on the loop, for a source
-// row and a field, as Cell is. Without it every cell is text, ordered by compareCells.
+// row and a field, as Cell is. Without it every cell is text, ordered by kit.CompareCells.
 type TableKinds interface {
 	Kind(row, col int) TableCellKind
 }
@@ -59,7 +60,7 @@ const (
 //   - a number or boolean whose text does not parse (NaN, Infinity) above the ones that do, by
 //     its text, as PostgreSQL orders NaN above every number.
 //
-// Without kinds each field orders by compareCells: two cells that are both decimals as numbers,
+// Without kinds each field orders by kit.CompareCells: two cells that are both decimals as numbers,
 // any others as text. Either way the sort is stable: rows equal on
 // every key keep the source's order.
 func (c *TableCore) SortKeys(keys []TableSortKey) {
@@ -112,12 +113,12 @@ func (c *TableCore) sorted() []int {
 		order[i] = i
 	}
 	if c.kinds == nil {
-		sortRows(order, c.keys, func(r, col int) plainCell { return readPlainCell(c.src.Cell(r, col)) },
-			func(a, b plainCell, desc bool) int {
+		sortRows(order, c.keys, func(r, col int) kit.PlainCell { return kit.ReadPlainCell(c.src.Cell(r, col)) },
+			func(a, b kit.PlainCell, desc bool) int {
 				if desc {
-					return comparePlain(b, a)
+					return kit.ComparePlain(b, a)
 				}
-				return comparePlain(a, b)
+				return kit.ComparePlain(a, b)
 			})
 		return order
 	}
@@ -169,7 +170,7 @@ func readSortCell(k TableCellKind, text string) sortCell {
 	case TableCellNull:
 		return sortCell{null: true}
 	case TableCellNumber:
-		n, ok := parseDecimal(strings.TrimSpace(text))
+		n, ok := kit.ParseDecimal(strings.TrimSpace(text))
 		return sortCell{rank: rankNumber, ok: ok, num: n, text: text}
 	case TableCellBool:
 		b, err := strconv.ParseBool(strings.TrimSpace(text))
