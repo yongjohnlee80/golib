@@ -73,8 +73,11 @@ func (s FileSource) Rooted(p string) string {
 }
 
 // local reports whether the source is the local disk, where a list starts in the working
-// directory: rooted at "/", or Windows' drives.
-func (s FileSource) local() bool { return s.drives || s.Root == "/" }
+// directory: Windows' drives, or one rooted at "/" where the OS's paths are slashed (on Windows a
+// source rooted at "/" is some other tree, and the working directory is no path in it).
+func (s FileSource) local() bool {
+	return s.drives || (s.Root == "/" && filepath.Separator == '/')
+}
 
 // absolute reports whether a typed path is rooted rather than relative to the listed folder: one
 // under Root or starting with /, or on Windows' local disk one naming its drive or starting with

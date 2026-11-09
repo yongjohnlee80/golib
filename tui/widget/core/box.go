@@ -325,7 +325,7 @@ func (x *Box) BottomSlot() tui.Component { return x.foot }
 
 // SetTitleElide sets where a title too wide for its row loses text, as Qt's Text.elide: the end
 // (ElideRight, the default), the start (ElideLeft: a path's tail, with the badges a host writes
-// after it, stays whole), the middle, or a path's start at a "/" (ElidePath). Measured in cells by
+// after it, stays whole), the middle, or a path's start at a separator (ElidePath). Measured in cells by
 // grapheme, as every border text is: a wide grapheme is never split, and "…" marks the cut. A title
 // that fits is drawn as it is. Repaint only.
 func (x *Box) SetTitleElide(e Elide) {
