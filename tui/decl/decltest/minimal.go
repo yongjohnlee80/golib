@@ -2,7 +2,7 @@ package decltest
 
 import (
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // MINIMAL DECLARATIONS — one per standard type: the smallest document that mounts it, for CheckStyle
@@ -63,7 +63,7 @@ var minimals = map[string]minimal{
 	"WindowButtons":    {body: `WindowMod { Flex { WindowButtons { id: subject } } }`},
 	"WindowTaskbar": {body: `WindowTaskbar { id: subject } Text { text: "x" }`,
 		opts: func() []tuidecl.ProgramOption {
-			return []tuidecl.ProgramOption{tuidecl.AdapterOptions(tuidecl.WithWindowCollector(widget.NewMinimizedWindows()))}
+			return []tuidecl.ProgramOption{tuidecl.AdapterOptions(tuidecl.WithWindowCollector(core.NewMinimizedWindows()))}
 		}},
 }
 
