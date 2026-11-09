@@ -1956,9 +1956,10 @@ type TextInputStyles = core.TextInputStyles
 // Elide is where a text too wide for its cell loses what does not fit, as Qt's
 // Qt::TextElideMode: the end (ElideRight, the zero value), the start
 // (ElideLeft), the middle, or nowhere (ElideNone: cut at the edge, no
-// ellipsis). ElidePath is golib's, for a path: the start, at a "/" so the
-// cut never falls inside a name (…/dao/name.go), and as ElideLeft when even
-// the last name does not fit.
+// ellipsis). ElidePath is golib's, for a path: the start, at a separator
+// ("/", or Windows' "\") so the cut never falls inside a name
+// (…/dao/name.go, …\dao\name.go), and as ElideLeft when even the last name
+// does not fit.
 //
 // Deprecated: use [core.Elide], from github.com/yongjohnlee80/golib/tui/widget/core.
 type Elide = core.Elide
