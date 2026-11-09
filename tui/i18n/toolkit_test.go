@@ -67,6 +67,7 @@ var toolkitEnglish = map[string]string{
 	"tui.cmdline.help":            "Enter runs · Tab completes · Esc closes",
 	"tui.cmdline.replaceTitle":    "Replace",
 	"tui.cmdline.replaceQuestion": "Replace this match?  y yes · n no · q stop",
+	"tui.gui.notInTerminal":       "Not available in the terminal",
 }
 
 var shippedLanguages = []string{"en", "ko_KR", "ja_JP", "zh_CN", "pt_BR", "es"}
