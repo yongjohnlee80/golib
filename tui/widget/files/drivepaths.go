@@ -11,6 +11,20 @@ import (
 // and a host read, is Windows' own ("C:\Users\me"). Plain string work, so it builds and is tested
 // on every OS; only listing the drives and opening a path are Windows' (drivesfs_windows.go).
 
+// winSep is Windows' separator. A path of the drives is written with it, and may be typed with it
+// or with a slash: this file is the one place the files widgets know it.
+const winSep = `\`
+
+// driveSlashed is a typed path of the drives with Windows' separators made slashes.
+func driveSlashed(typed string) string { return strings.ReplaceAll(typed, winSep, "/") }
+
+// driveAbsolute reports whether a typed path of the drives is rooted: it names a drive, or starts
+// at a separator (the current drive's root, which driveFSPath then refuses as naming none).
+func driveAbsolute(typed string) bool {
+	p := driveSlashed(typed)
+	return driveOf(p) != "" || strings.HasPrefix(p, "/")
+}
+
 // driveOf is p's drive, upper-cased with its colon ("C:"), when p, slash-separated, begins with one:
 // a letter, a colon, then nothing or a slash. "" otherwise.
 func driveOf(p string) string {
@@ -31,7 +45,7 @@ func driveRooted(p string) string {
 		return ""
 	}
 	vol, rest, _ := strings.Cut(p, "/")
-	return vol + `\` + strings.ReplaceAll(rest, "/", `\`)
+	return vol + winSep + strings.ReplaceAll(rest, "/", winSep)
 }
 
 // driveFSPath reads a Windows path back into an fs path of the drives ("C:\Users\..\me" →
@@ -39,7 +53,7 @@ func driveRooted(p string) string {
 // or holds what Windows would read as more than a name: a colon (an alternate data stream) past
 // the drive. The empty path is the list of drives.
 func driveFSPath(rooted string) (string, bool) {
-	p := strings.ReplaceAll(rooted, `\`, "/")
+	p := driveSlashed(rooted)
 	if p == "" {
 		return ".", true
 	}
@@ -61,7 +75,7 @@ func driveFSPath(rooted string) (string, bool) {
 // drivePath is an fs path of the drives as the OS opens it: "C:" → "C:\", "C:/Users" →
 // "C:\Users"; false for "." and for a path driveFSPath would refuse.
 func drivePath(name string) (string, bool) {
-	if name == "." || !fs.ValidPath(name) || strings.Contains(name, `\`) {
+	if name == "." || !fs.ValidPath(name) || strings.Contains(name, winSep) {
 		return "", false
 	}
 	if q, ok := driveFSPath(name); !ok || q != name {

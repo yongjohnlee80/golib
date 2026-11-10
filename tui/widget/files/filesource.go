@@ -84,7 +84,7 @@ func (s FileSource) local() bool {
 // a separator.
 func (s FileSource) absolute(typed string) bool {
 	if s.drives {
-		return driveOf(strings.ReplaceAll(typed, `\`, "/")) != "" || strings.HasPrefix(typed, "/") || strings.HasPrefix(typed, `\`)
+		return driveAbsolute(typed)
 	}
 	return (s.Root != "" && strings.HasPrefix(typed, s.Root)) || strings.HasPrefix(typed, "/")
 }
@@ -93,7 +93,7 @@ func (s FileSource) absolute(typed string) bool {
 // either is one; elsewhere a backslash is part of a name and stays.
 func (s FileSource) slashed(typed string) string {
 	if s.drives {
-		return strings.ReplaceAll(typed, `\`, "/")
+		return driveSlashed(typed)
 	}
 	return typed
 }
