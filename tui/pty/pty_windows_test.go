@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -206,8 +207,12 @@ func TestCloseReturnsWhenClosingTheConsoleBlocks(t *testing.T) {
 }
 
 // helperRole is how the test binary, started again on a console, knows what to be: "leaver"
-// starts a "late" child of its own and exits 5 at once; "late" waits, prints, and exits.
-const helperRole = "GOLIB_PTY_HELPER"
+// starts a "late" child of its own and exits 5 at once; "late" says it runs, waits until the file
+// helperRelease names exists (the test's release, never a timer), then prints and exits.
+const (
+	helperRole    = "GOLIB_PTY_HELPER"
+	helperRelease = "GOLIB_PTY_RELEASE"
+)
 
 func TestMain(m *testing.M) {
 	switch os.Getenv(helperRole) {
@@ -221,7 +226,13 @@ func TestMain(m *testing.M) {
 		fmt.Println("leaver-marker")
 		os.Exit(5)
 	case "late":
-		time.Sleep(1500 * time.Millisecond)
+		fmt.Println("late-ready")
+		for {
+			if _, err := os.Stat(os.Getenv(helperRelease)); err == nil {
+				break
+			}
+			time.Sleep(10 * time.Millisecond) // a poll for the release, which decides nothing by itself
+		}
 		fmt.Println("late-marker")
 		os.Exit(0)
 	}
@@ -250,23 +261,31 @@ func TestReadEndsOnceTheConsolesProgramsHaveExited(t *testing.T) {
 	}
 }
 
-// A child the program left running keeps the console: its output, printed after the program
-// exited, arrives before Read's end, and Wait's code is still the program's own.
+// A child the program left running keeps the console: Read doesn't end while it runs, however long
+// after the program's exit, its output arrives before the end, and Wait's code is the program's.
+// The child is held by the test, not a timer: it runs until the test, having seen the program's
+// exit and Read still open, releases it.
 func TestAChildLeftRunningKeepsTheConsoleUntilItEnds(t *testing.T) {
-	env := append(os.Environ(), helperRole+"=leaver")
+	release := filepath.Join(t.TempDir(), "release")
+	env := append(os.Environ(), helperRole+"=leaver", helperRelease+"="+release)
 	p, err := Start(Cmd{Path: os.Args[0], Env: env, Rows: 24, Cols: 80})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer p.Close()
+	defer os.WriteFile(release, nil, 0o600) // a failed cell never leaves the child waiting
 	o := readAll(p)
+	o.waitFor(t, "late-ready") // the child runs, held
 	if code := waitExit(t, p, 20*time.Second); code != 5 {
 		t.Errorf("exit code %d, want the program's 5", code)
 	}
 	select {
 	case <-o.done:
-		t.Fatalf("Read ended when the program exited, its child still running: %q", o.text())
-	case <-time.After(500 * time.Millisecond): // the child sleeps 1.5 s before it prints
+		t.Fatalf("Read ended when the program exited, its child still held: %q", o.text())
+	default:
+	}
+	if err := os.WriteFile(release, nil, 0o600); err != nil {
+		t.Fatal(err)
 	}
 	select {
 	case <-o.done:
