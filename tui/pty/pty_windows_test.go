@@ -4,8 +4,10 @@ package pty
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"strings"
 	"sync"
 	"syscall"
@@ -39,6 +41,13 @@ func readAll(p *PTY) *output {
 		}
 	}()
 	return o
+}
+
+// text is what has been read so far.
+func (o *output) text() string {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.b.String()
 }
 
 func (o *output) waitFor(t *testing.T, marker string) {
@@ -194,4 +203,77 @@ func TestCloseReturnsWhenClosingTheConsoleBlocks(t *testing.T) {
 		t.Fatal("Close did not return while closing the console blocked: it waited on the console, not on its grace")
 	}
 	waitExit(t, p, 5*time.Second)
+}
+
+// helperRole is how the test binary, started again on a console, knows what to be: "leaver"
+// starts a "late" child of its own and exits 5 at once; "late" waits, prints, and exits.
+const helperRole = "GOLIB_PTY_HELPER"
+
+func TestMain(m *testing.M) {
+	switch os.Getenv(helperRole) {
+	case "leaver":
+		late := exec.Command(os.Args[0])
+		late.Env = append(os.Environ(), helperRole+"=late")
+		late.Stdout, late.Stderr = os.Stdout, os.Stderr // the console, which it shares
+		if err := late.Start(); err != nil {
+			os.Exit(2)
+		}
+		fmt.Println("leaver-marker")
+		os.Exit(5)
+	case "late":
+		time.Sleep(1500 * time.Millisecond)
+		fmt.Println("late-marker")
+		os.Exit(0)
+	}
+	os.Exit(m.Run())
+}
+
+// Once every program of the console has exited, Read ends with io.EOF without a Close: a reader
+// that reads to the end, then waits for the code, sees the program end.
+func TestReadEndsOnceTheConsolesProgramsHaveExited(t *testing.T) {
+	p, err := Start(Cmd{Path: "cmd.exe", Args: []string{"/c", "echo ended-marker & exit 7"}, Rows: 24, Cols: 80})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+	o := readAll(p)
+	select {
+	case <-o.done:
+	case <-time.After(20 * time.Second):
+		t.Fatal("Read did not end once the program had exited")
+	}
+	if !strings.Contains(o.text(), "ended-marker") {
+		t.Errorf("the output before the end: %q", o.text())
+	}
+	if code := waitExit(t, p, 5*time.Second); code != 7 {
+		t.Errorf("exit code %d, want 7", code)
+	}
+}
+
+// A child the program left running keeps the console: its output, printed after the program
+// exited, arrives before Read's end, and Wait's code is still the program's own.
+func TestAChildLeftRunningKeepsTheConsoleUntilItEnds(t *testing.T) {
+	env := append(os.Environ(), helperRole+"=leaver")
+	p, err := Start(Cmd{Path: os.Args[0], Env: env, Rows: 24, Cols: 80})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+	o := readAll(p)
+	if code := waitExit(t, p, 20*time.Second); code != 5 {
+		t.Errorf("exit code %d, want the program's 5", code)
+	}
+	select {
+	case <-o.done:
+		t.Fatalf("Read ended when the program exited, its child still running: %q", o.text())
+	case <-time.After(500 * time.Millisecond): // the child sleeps 1.5 s before it prints
+	}
+	select {
+	case <-o.done:
+	case <-time.After(20 * time.Second):
+		t.Fatal("Read did not end once the child had exited too")
+	}
+	if !strings.Contains(o.text(), "late-marker") {
+		t.Errorf("the child's output did not arrive before the end: %q", o.text())
+	}
 }

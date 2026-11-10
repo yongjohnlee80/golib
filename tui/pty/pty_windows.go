@@ -31,6 +31,7 @@ type PTY struct {
 	out     *os.File // the console's output: what Read returns
 	process windows.Handle
 	job     windows.Handle
+	port    windows.Handle // the job's completion port: says when the job has no process left
 	pid     int
 	grace   time.Duration
 
@@ -43,7 +44,19 @@ type PTY struct {
 
 	closeOnce sync.Once
 	closeErr  error
+
+	consoleOnce   sync.Once
+	consoleClosed chan struct{} // closed once ClosePseudoConsole has returned
 }
+
+// jobAssociateCompletionPort is JOBOBJECT_ASSOCIATE_COMPLETION_PORT, which x/sys doesn't define.
+type jobAssociateCompletionPort struct {
+	CompletionKey  uintptr
+	CompletionPort windows.Handle
+}
+
+// jobMsgActiveProcessZero is JOB_OBJECT_MSG_ACTIVE_PROCESS_ZERO: the job's last process has ended.
+const jobMsgActiveProcessZero = 4
 
 // Start opens a pseudo-console of c's size and starts c on it.
 func Start(c Cmd) (*PTY, error) {
@@ -73,7 +86,7 @@ func Start(c Cmd) (*PTY, error) {
 		return nil, fmt.Errorf("pty: pseudo-console: %w", err)
 	}
 	p := &PTY{console: console, in: os.NewFile(uintptr(inW), "conpty-in"), out: os.NewFile(uintptr(outR), "conpty-out"),
-		grace: hangupGrace, done: make(chan struct{})}
+		grace: hangupGrace, done: make(chan struct{}), consoleClosed: make(chan struct{})}
 	if err := p.spawn(path, c); err != nil {
 		windows.ClosePseudoConsole(console)
 		p.in.Close()
@@ -81,6 +94,7 @@ func Start(c Cmd) (*PTY, error) {
 		return nil, err
 	}
 	go p.reap()
+	go p.watchJob()
 	return p, nil
 }
 
@@ -130,26 +144,40 @@ func (p *PTY) spawn(path string, c Cmd) error {
 		windows.CloseHandle(job)
 		return fmt.Errorf("pty: job: %w", err)
 	}
+	// told when the job's last process ends (watchJob), before the child can start one of its own
+	port, err := windows.CreateIoCompletionPort(windows.InvalidHandle, 0, 0, 1)
+	if err != nil {
+		windows.CloseHandle(job)
+		return fmt.Errorf("pty: job: %w", err)
+	}
+	assoc := jobAssociateCompletionPort{CompletionKey: uintptr(job), CompletionPort: port}
+	if _, err := windows.SetInformationJobObject(job, windows.JobObjectAssociateCompletionPortInformation,
+		uintptr(unsafe.Pointer(&assoc)), uint32(unsafe.Sizeof(assoc))); err != nil {
+		windows.CloseHandle(port)
+		windows.CloseHandle(job)
+		return fmt.Errorf("pty: job: %w", err)
+	}
+	fail := func() { windows.CloseHandle(port); windows.CloseHandle(job) }
 	var pi windows.ProcessInformation
 	flags := uint32(windows.EXTENDED_STARTUPINFO_PRESENT | windows.CREATE_UNICODE_ENVIRONMENT | windows.CREATE_SUSPENDED)
 	if err := windows.CreateProcess(nil, cmdline, nil, nil, false, flags, &block[0], dir, &si.StartupInfo, &pi); err != nil {
-		windows.CloseHandle(job)
+		fail()
 		return fmt.Errorf("pty: start %s: %w", path, err)
 	}
 	defer windows.CloseHandle(pi.Thread)
 	if err := windows.AssignProcessToJobObject(job, pi.Process); err != nil {
 		windows.TerminateProcess(pi.Process, 1)
 		windows.CloseHandle(pi.Process)
-		windows.CloseHandle(job)
+		fail()
 		return fmt.Errorf("pty: job: %w", err)
 	}
 	if _, err := windows.ResumeThread(pi.Thread); err != nil {
 		windows.TerminateJobObject(job, 1)
 		windows.CloseHandle(pi.Process)
-		windows.CloseHandle(job)
+		fail()
 		return fmt.Errorf("pty: resume: %w", err)
 	}
-	p.process, p.job, p.pid = pi.Process, job, int(pi.ProcessId)
+	p.process, p.job, p.port, p.pid = pi.Process, job, port, int(pi.ProcessId)
 	return nil
 }
 
@@ -172,7 +200,38 @@ func envBlock(env []string) []uint16 {
 	return append(b, 0)
 }
 
-// reap waits for the child and keeps its exit code.
+// watchJob closes the pseudo-console once the job has no process left: the child and whatever it
+// left running. Read then returns the rest of the output and io.EOF, as a Unix pty's does once its
+// last holder has closed it, so a reader that waits for the end sees the programs' end. It ends
+// with no close when Close shuts the port first.
+func (p *PTY) watchJob() {
+	for {
+		var msg uint32
+		var key uintptr
+		var ov *windows.Overlapped
+		if err := windows.GetQueuedCompletionStatus(p.port, &msg, &key, &ov, windows.INFINITE); err != nil {
+			return // the port is closed: Close is under way
+		}
+		if msg == jobMsgActiveProcessZero {
+			p.closeConsole()
+			return
+		}
+	}
+}
+
+// closeConsole closes the pseudo-console once, in the background: before Windows 11 24H2
+// ClosePseudoConsole returns only once the console's output is read.
+func (p *PTY) closeConsole() {
+	p.consoleOnce.Do(func() {
+		go func() {
+			closePseudoConsole(p.console)
+			close(p.consoleClosed)
+		}()
+	})
+}
+
+// reap waits for the child and keeps its exit code: the first child's, as on Unix, whatever else
+// in its job runs on.
 func (p *PTY) reap() {
 	defer close(p.done)
 	if _, err := windows.WaitForSingleObject(p.process, windows.INFINITE); err != nil {
@@ -188,8 +247,8 @@ func (p *PTY) reap() {
 	p.mu.Unlock()
 }
 
-// Read reads the program's output. Once the console is closed and the program has exited, Read
-// returns io.EOF.
+// Read reads the program's output. Once every program of the console has exited (watchJob closes
+// it then), or Close has closed it, Read returns the rest and io.EOF.
 func (p *PTY) Read(b []byte) (int, error) {
 	n, err := p.out.Read(b)
 	if err != nil && (errors.Is(err, windows.ERROR_BROKEN_PIPE) || errors.Is(err, os.ErrClosed)) {
@@ -253,11 +312,8 @@ var closePseudoConsole = windows.ClosePseudoConsole
 // the console is still waiting, which ends that wait, and waits for it one grace more at most.
 func (p *PTY) Close() error {
 	p.closeOnce.Do(func() {
-		closed := make(chan struct{})
-		go func() {
-			closePseudoConsole(p.console)
-			close(closed)
-		}()
+		p.closeConsole()
+		closed := p.consoleClosed
 		t := time.NewTimer(p.grace)
 		defer t.Stop()
 		select {
@@ -285,6 +341,7 @@ func (p *PTY) Close() error {
 		}
 		p.closeErr = errors.Join(inErr, outErr)
 		windows.CloseHandle(p.process)
+		windows.CloseHandle(p.port) // watchJob, still waiting if the job outlived the grace, ends
 		windows.CloseHandle(p.job)
 	})
 	return p.closeErr
