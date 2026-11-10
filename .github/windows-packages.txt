@@ -28,6 +28,7 @@
 ./internal/audit
 ./logger
 ./msgpack
+./paths
 ./parse
 ./parse/csscolor
 ./parse/html
