@@ -131,7 +131,9 @@ func stemOf(element string) string {
 	return stem
 }
 
-// isReservedStem is whether Windows reserves stem as a device, in any case.
+// isReservedStem is whether Windows reserves stem as a device, in any case: what [Encode] escapes.
+// Its ASCII names alone: a superscript (COM¹) is escaped by Encode as any non-plain byte is, so its
+// encoded form is never a device, and Encode's output stays as it was.
 func isReservedStem(stem string) bool {
 	s := strings.ToLower(strings.TrimRight(stem, " "))
 	switch s {
@@ -143,3 +145,25 @@ func isReservedStem(stem string) bool {
 	}
 	return false
 }
+
+// deviceStem is whether Windows opens a name of stem as a device, in any case, its trailing dots and
+// spaces dropped as Windows drops them: isReservedStem's names, and COM or LPT with a superscript
+// one, two or three (COM¹).
+func deviceStem(stem string) bool {
+	s := strings.ToLower(strings.TrimRight(stem, ". "))
+	if isReservedStem(s) {
+		return true
+	}
+	if len(s) < 4 || (s[:3] != "com" && s[:3] != "lpt") {
+		return false
+	}
+	n := s[3:]
+	return n == "\u00b9" || n == "\u00b2" || n == "\u00b3" // ¹ ² ³
+}
+
+// WindowsDevice reports whether Windows opens a path element named element as a device rather than
+// a file: CON, PRN, AUX, NUL, CONIN$, CONOUT$, COM0 to COM9 and LPT0 to LPT9 (and COM¹ to COM³,
+// LPT¹ to LPT³), in any case, with any extension ("nul.txt", "CON.tar.gz") and with trailing dots
+// or spaces ("NUL.", "nul .md"). A near name is a file: "CONSOLE", "nul_", "COM10", "LPT". It is
+// Windows' rule alone; on Unix every such name is an ordinary file.
+func WindowsDevice(element string) bool { return deviceStem(stemOf(element)) }

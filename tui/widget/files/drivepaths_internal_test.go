@@ -139,3 +139,27 @@ func TestASaveViewNamesAWindowsPathTypedEitherWay(t *testing.T) {
 		}
 	}
 }
+
+// A path of the drives holding an element Windows opens as a device (NUL, con.txt, COM1, in any
+// case, with an extension or trailing dots or spaces) names no file: driveFSPath and drivePath
+// refuse it, as its last element or a folder. A near name (CONSOLE, nul_, COM10, LPT) is a file.
+func TestADrivePathHoldingADeviceIsRefused(t *testing.T) {
+	for _, d := range []string{"NUL", "nul.txt", "Con", "CON.tar.gz", "NUL.", "nul .md", "COM1", "lpt9", "COM\u00b9", "conin$"} {
+		for _, rooted := range []string{`C:\a\` + d, `C:\a\` + d + `\x.md`, "C:/" + d} {
+			if got, ok := driveFSPath(rooted); ok {
+				t.Errorf("driveFSPath(%q) = %q, true; want refused: a device", rooted, got)
+			}
+		}
+		if got, ok := drivePath("C:/a/" + d); ok {
+			t.Errorf("drivePath(C:/a/%s) = %q, true; want refused: a device", d, got)
+		}
+	}
+	for _, n := range []string{"CONSOLE", "nul_", "COM10", "LPT", "anul"} {
+		if got, ok := driveFSPath(`C:\a\` + n); !ok || got != "C:/a/"+n {
+			t.Errorf("driveFSPath(C:\\a\\%s) = %q, %v; want the file C:/a/%s", n, got, ok, n)
+		}
+		if got, ok := drivePath("C:/a/" + n); !ok || got != `C:\a\`+n {
+			t.Errorf("drivePath(C:/a/%s) = %q, %v; want the file", n, got, ok)
+		}
+	}
+}

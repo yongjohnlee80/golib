@@ -1,6 +1,7 @@
 package paths
 
 import (
+	"errors"
 	"net/url"
 	"path"
 	"regexp"
@@ -43,25 +44,27 @@ func winVolume(p string) (vol string, ok bool) {
 
 func isDriveLetter(c byte) bool { return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' }
 
-// parts is p's volume and elements under the OS's rules; ok is false when p isn't absolute. On
-// Windows they are normalized as Windows does: either separator; "." and ".." resolved, never above
-// the volume; trailing dots and spaces dropped from each element. ".." is matched before the dots
-// come off, since it is itself all dots.
-func parts(p string, win bool) (vol string, elems []string, ok bool) {
+// parts is p's volume and elements under the OS's rules; err is ErrNotAbsolute when p isn't
+// absolute. On Windows they are normalized as Windows does: either separator; "." and ".." resolved,
+// never above the volume; trailing dots and spaces dropped from each element. ".." is matched before
+// the dots come off, since it is itself all dots. A path holding an element Windows opens as a
+// device (NUL, con.txt: WindowsDevice) names no file, and is refused (ErrRefused); on Unix such a
+// name is an ordinary file.
+func parts(p string, win bool) (vol string, elems []string, err error) {
 	if !win {
 		if !strings.HasPrefix(p, "/") {
-			return "", nil, false
+			return "", nil, ErrNotAbsolute
 		}
 		c := path.Clean(p)
 		if c == "/" {
-			return "", nil, true
+			return "", nil, nil
 		}
-		return "", strings.Split(c[1:], "/"), true
+		return "", strings.Split(c[1:], "/"), nil
 	}
 	raw := strings.ReplaceAll(p, "/", `\`)
-	vol, ok = winVolume(raw)
+	vol, ok := winVolume(raw)
 	if !ok {
-		return "", nil, false
+		return "", nil, ErrNotAbsolute
 	}
 	for _, e := range strings.Split(raw[len(vol):], `\`) {
 		switch e {
@@ -76,7 +79,12 @@ func parts(p string, win bool) (vol string, elems []string, ok bool) {
 			}
 		}
 	}
-	return vol, elems, true
+	for _, e := range elems {
+		if deviceStem(stemOf(e)) {
+			return "", nil, &refusedError{elem: e, why: "a reserved device name"}
+		}
+	}
+	return vol, elems, nil
 }
 
 // same is whether two volumes or elements are one under the OS's rules.
@@ -88,12 +96,12 @@ func same(a, b string, win bool) bool {
 }
 
 func within(root, p string, win bool) bool {
-	rv, re, ok := parts(root, win)
-	if !ok {
+	rv, re, err := parts(root, win)
+	if err != nil {
 		return false
 	}
-	pv, pe, ok := parts(p, win)
-	if !ok || !same(rv, pv, win) || len(pe) < len(re) {
+	pv, pe, err := parts(p, win)
+	if err != nil || !same(rv, pv, win) || len(pe) < len(re) {
 		return false
 	}
 	for i := range re {
@@ -105,6 +113,11 @@ func within(root, p string, win bool) bool {
 }
 
 func rel(root, p string, win bool) (Logical, error) {
+	for _, q := range []string{root, p} { // a device is refused as such, never only as outside
+		if _, _, err := parts(q, win); errors.Is(err, ErrRefused) {
+			return Logical{}, err
+		}
+	}
 	if !within(root, p, win) {
 		return Logical{}, ErrOutside
 	}
@@ -121,7 +134,7 @@ func refusedElement(e string) string {
 	switch {
 	case strings.HasSuffix(e, ".") || strings.HasSuffix(e, " "):
 		return "a trailing dot or space"
-	case isReservedStem(stemOf(e)):
+	case deviceStem(stemOf(e)):
 		return "a reserved device name"
 	case strings.ContainsAny(e, `<>:"|?*`) || strings.IndexFunc(e, func(r rune) bool { return r < 0x20 }) >= 0:
 		return "a character Windows does not allow"
@@ -132,8 +145,8 @@ func refusedElement(e string) string {
 }
 
 func under(root string, l Logical, win bool) (string, error) {
-	if _, _, ok := parts(root, win); !ok {
-		return "", ErrNotAbsolute
+	if _, _, err := parts(root, win); err != nil {
+		return "", err
 	}
 	sep := "/"
 	if win {
@@ -187,9 +200,9 @@ func expand(s, home string, win bool) (string, error) {
 }
 
 func toURL(p string, win bool) (string, error) {
-	vol, elems, ok := parts(p, win)
-	if !ok {
-		return "", ErrNotAbsolute
+	vol, elems, err := parts(p, win)
+	if err != nil {
+		return "", err
 	}
 	u := url.URL{Scheme: "file", Path: "/" + strings.Join(elems, "/")}
 	if win {
