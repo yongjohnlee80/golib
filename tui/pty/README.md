@@ -26,6 +26,10 @@ go get github.com/yongjohnlee80/golib/tui/pty
   tree ends with it.
   - `os.Interrupt` is Ctrl+C typed into the console, `os.Kill` ends the job, and any other signal is
     `errors.ErrUnsupported`.
+  - `Read` reaches `io.EOF` once the job has no process left, as a Unix terminal's does once its last
+    holder has closed it: the console is closed then, and its remaining output read first. A child
+    the program left running keeps it open until that child ends too. `Wait`'s code is the program's
+    own.
   - `Close` closes the console off the caller's path: the grace period and the job's end never wait
     on it. Before Windows 11 24H2, closing a console waits until its output is read; if it is still
     waiting once the program has exited, `Close` closes the output's read end, which ends the wait.
