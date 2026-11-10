@@ -238,6 +238,43 @@ func TestAPumpedWriteThatTimedOutBreaksTheSide(t *testing.T) {
 	}
 }
 
+// After Close nothing is served, on either path: not the rest of a chunk a read left, not the end
+// a read saw, and no write goes out.
+func TestAClosedStreamConnServesNothing(t *testing.T) {
+	eachStream(t, func(t *testing.T, f *streamFixture) {
+		if _, err := f.peerWrite.WriteString("abcdef"); err != nil {
+			t.Fatal(err)
+		}
+		b := make([]byte, 3)
+		if n, err := f.conn.Read(b); err != nil || string(b[:n]) != "abc" {
+			t.Fatalf("the first read = %q, %v; want \"abc\"", b[:n], err)
+		}
+		if err := f.conn.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if n, err := f.conn.Read(b); n != 0 || !errors.Is(err, net.ErrClosed) {
+			t.Fatalf("a read after Close, the chunk's rest unread = %q, %v; want net.ErrClosed", b[:n], err)
+		}
+		if n, err := f.conn.Write([]byte("x")); n != 0 || !errors.Is(err, net.ErrClosed) {
+			t.Fatalf("a write after Close = %d, %v; want net.ErrClosed", n, err)
+		}
+	})
+	eachStream(t, func(t *testing.T, f *streamFixture) {
+		if err := f.peerWrite.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.conn.Read(make([]byte, 1)); !errors.Is(err, io.EOF) {
+			t.Fatalf("the read at the end: %v", err)
+		}
+		if err := f.conn.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.conn.Read(make([]byte, 1)); !errors.Is(err, net.ErrClosed) {
+			t.Fatalf("a read after Close, the end already seen: %v; want net.ErrClosed", err)
+		}
+	})
+}
+
 func TestClosingAStreamConnEndsAWaitingRead(t *testing.T) {
 	f := newStreamFixture(t, true)
 	done := make(chan error, 1)
