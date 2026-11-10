@@ -39,6 +39,10 @@ func newStreamFixture(t *testing.T, hide bool) *streamFixture {
 		cr, cw = hiddenR{r}, hiddenW{w}
 	}
 	f := &streamFixture{conn: StreamConn(cr, cw), peerWrite: peerW, peerRead: peerR}
+	// every call is bounded, so a defect fails its cell with a message rather than hanging the run
+	if err := f.conn.SetDeadline(later()); err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(func() {
 		_ = peerW.Close() // first, so a read stuck in the OS comes back
 		_ = peerR.Close()
@@ -46,6 +50,9 @@ func newStreamFixture(t *testing.T, hide bool) *streamFixture {
 	})
 	return f
 }
+
+// later is a deadline no healthy call comes near: what a cell sets in place of none.
+func later() time.Time { return time.Now().Add(5 * time.Second) }
 
 // The contract, on both paths: on Unix the bare pipe has deadlines of its own, and on Windows it
 // has none, so there it is the goroutine path on a real anonymous pipe.
@@ -106,7 +113,7 @@ func TestAStreamConnReadPastItsDeadlineLosesNothing(t *testing.T) {
 		if _, err := f.conn.Read(b); !errors.Is(err, os.ErrDeadlineExceeded) {
 			t.Fatalf("a read with its deadline already past: %v", err)
 		}
-		if err := f.conn.SetReadDeadline(time.Time{}); err != nil {
+		if err := f.conn.SetReadDeadline(later()); err != nil {
 			t.Fatal(err)
 		}
 		n, err := f.conn.Read(b)
@@ -127,7 +134,7 @@ func TestAStreamConnSmallReadsGetTheWholeChunk(t *testing.T) {
 		for got.Len() < 7 {
 			n, err := f.conn.Read(b)
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("after %q the rest of the chunk never came: %v", got.String(), err)
 			}
 			got.Write(b[:n])
 		}
@@ -208,7 +215,7 @@ func TestAPumpedWriteThatTimedOutBreaksTheSide(t *testing.T) {
 	if _, err := f.conn.Write([]byte("x")); !errors.Is(err, os.ErrDeadlineExceeded) {
 		t.Fatalf("a write with its deadline already past: %v", err)
 	}
-	if err := f.conn.SetWriteDeadline(time.Time{}); err != nil {
+	if err := f.conn.SetWriteDeadline(later()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.conn.Write([]byte("y")); err != nil {
@@ -220,7 +227,7 @@ func TestAPumpedWriteThatTimedOutBreaksTheSide(t *testing.T) {
 	if _, err := f.conn.Write(bytes.Repeat([]byte("x"), 16<<20)); !errors.Is(err, os.ErrDeadlineExceeded) {
 		t.Fatalf("the blocked write: %v", err)
 	}
-	if err := f.conn.SetWriteDeadline(time.Time{}); err != nil {
+	if err := f.conn.SetWriteDeadline(later()); err != nil {
 		t.Fatal(err)
 	}
 	_, err := f.conn.Write([]byte("z"))
