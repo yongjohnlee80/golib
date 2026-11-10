@@ -221,10 +221,12 @@ func TestAPumpedWriteThatTimedOutBreaksTheSide(t *testing.T) {
 	if _, err := f.conn.Write([]byte("y")); err != nil {
 		t.Fatalf("a write that never started broke the side: %v", err)
 	}
-	if err := f.conn.SetWriteDeadline(time.Now().Add(50 * time.Millisecond)); err != nil {
+	// more than a pipe holds, made first: the write must start, then block, within its deadline
+	blocked := bytes.Repeat([]byte("x"), 1<<20)
+	if err := f.conn.SetWriteDeadline(time.Now().Add(300 * time.Millisecond)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.conn.Write(bytes.Repeat([]byte("x"), 16<<20)); !errors.Is(err, os.ErrDeadlineExceeded) {
+	if _, err := f.conn.Write(blocked); !errors.Is(err, os.ErrDeadlineExceeded) {
 		t.Fatalf("the blocked write: %v", err)
 	}
 	if err := f.conn.SetWriteDeadline(later()); err != nil {
