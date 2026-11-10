@@ -10,6 +10,10 @@ import (
 // begins with its drive ("C:/Users/me"), "." is the list of drives, and a rooted path, what a person
 // and a host read, is Windows' own ("C:\Users\me"). Plain string work, so it builds and is tested
 // on every OS; only listing the drives and opening a path are Windows' (drivesfs_windows.go).
+//
+// This file is the drive tree's one place for Windows' separator (winSep). The drive tree is fs
+// paths and their display form, not this host's OS paths, so it is not package paths' to own; it
+// moves into paths, as an API of its own, when a second consumer needs it.
 
 // winSep is Windows' separator. A path of the drives is written with it, and may be typed with it
 // or with a slash: this file is the one place the files widgets know it.
