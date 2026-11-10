@@ -4,6 +4,8 @@ import (
 	"io/fs"
 	"path"
 	"strings"
+
+	"github.com/yongjohnlee80/golib/paths"
 )
 
 // The paths of Windows' local disk as an fs.FS sees them, which [LocalFiles] reads there: an fs path
@@ -55,7 +57,8 @@ func driveRooted(p string) string {
 // driveFSPath reads a Windows path back into an fs path of the drives ("C:\Users\..\me" →
 // "C:/me"), reporting false for one that names no drive (a relative path, \\server\share, \rooted)
 // or holds what Windows would read as more than a name: a colon (an alternate data stream) past
-// the drive. The empty path is the list of drives.
+// the drive, or an element Windows opens as a device (NUL, con.txt: paths.WindowsDevice). The empty
+// path is the list of drives.
 func driveFSPath(rooted string) (string, bool) {
 	p := driveSlashed(rooted)
 	if p == "" {
@@ -71,6 +74,11 @@ func driveFSPath(rooted string) (string, bool) {
 	}
 	if strings.Contains(rest, ":") {
 		return "", false
+	}
+	for _, e := range strings.Split(rest, "/") {
+		if paths.WindowsDevice(e) {
+			return "", false
+		}
 	}
 	q := vol + "/" + rest
 	return q, fs.ValidPath(q)
