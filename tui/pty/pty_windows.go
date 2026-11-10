@@ -245,6 +245,7 @@ func (p *PTY) reap() {
 	p.exited = true
 	p.code = int(code)
 	p.mu.Unlock()
+	p.closeConsole()
 }
 
 // Read reads the program's output. Once every program of the console has exited (watchJob closes
