@@ -161,7 +161,7 @@ func TestAStreamConnsDeadlineWakesAWaitingRead(t *testing.T) {
 			if !errors.Is(err, os.ErrDeadlineExceeded) {
 				t.Fatalf("the woken read: %v", err)
 			}
-		case <-time.After(5 * time.Second):
+		case <-time.After(2 * time.Second):
 			t.Fatal("a deadline set during the read did not wake it")
 		}
 	})
@@ -253,7 +253,7 @@ func TestClosingAStreamConnEndsAWaitingRead(t *testing.T) {
 		if err == nil {
 			t.Fatal("the read returned no error")
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(2 * time.Second):
 		t.Fatal("Close did not end the read")
 	}
 	if err := f.conn.Close(); err != nil && !errors.Is(err, os.ErrClosed) {

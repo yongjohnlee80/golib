@@ -257,16 +257,26 @@ func (p *pumpedWriter) Write(b []byte) (int, error) {
 		return 0, net.ErrClosed
 	default:
 	}
-	if past, _, _, stop := p.dl.arm(); past {
-		stop()
-		return 0, os.ErrDeadlineExceeded // nothing was started, so nothing is broken
-	}
 	p.start.Do(func() { go p.pump() })
 	own := append([]byte(nil), b...) // the caller may reuse b once this returns, even on a timeout
-	select {
-	case p.jobs <- own:
-	case <-p.closed:
-		return 0, net.ErrClosed
+	for handed := false; !handed; {
+		// until the pump takes it, nothing was started, so a deadline here breaks nothing
+		past, fired, moved, stop := p.dl.arm()
+		if past {
+			stop()
+			return 0, os.ErrDeadlineExceeded
+		}
+		select {
+		case p.jobs <- own:
+			handed = true
+		case <-fired:
+			return 0, os.ErrDeadlineExceeded
+		case <-moved:
+		case <-p.closed:
+			stop()
+			return 0, net.ErrClosed
+		}
+		stop()
 	}
 	for {
 		past, fired, moved, stop := p.dl.arm()
