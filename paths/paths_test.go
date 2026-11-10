@@ -122,6 +122,10 @@ func TestRelAndUnder(t *testing.T) {
 		{true, `C:\r`, "a/b.md", `C:\r\a\b.md`},
 		{true, `C:\`, "a", `C:\a`},
 		{true, `\\s\share`, "a", `\\s\share\a`},
+		{false, `/r\`, "a", `/r\/a`}, // on Unix a backslash is part of the folder's name
+		{false, "/r//", "a", "/r/a"},
+		{true, `C:\r\`, "a", `C:\r\a`},
+		{true, "C:/r/", "a", `C:/r\a`},
 		{false, "/r", "con", "/r/con"}, // Unix reserves none of these
 		{false, "/r", "a./b ", "/r/a./b "},
 		{false, "/r", "PROGRA~1", "/r/PROGRA~1"},
@@ -157,6 +161,8 @@ func TestExpand(t *testing.T) {
 		{false, "~/x/y", "/h", "/h/x/y"},
 		{false, `~\x`, "/h", `~\x`}, // a backslash is part of a Unix name
 		{false, "~user/x", "/h", "~user/x"},
+		{false, "~/x", `/h\`, `/h\/x`}, // on Unix a backslash is part of the home's name
+		{false, "~/x", "/h/", "/h/x"},
 		{false, "/a", "", "/a"},
 		{true, "~", `C:\h`, `C:\h`},
 		{true, `~\x\y`, `C:\h`, `C:\h\x\y`},
@@ -197,6 +203,9 @@ func TestFileURLs(t *testing.T) {
 	if got, err := fromURL("file://localhost/a", false); err != nil || got != "/a" {
 		t.Errorf("localhost: %q, %v", got, err)
 	}
+	if got, err := fromURL("file://server/share", true); err != nil || got != `\\server\share` {
+		t.Errorf("a bare share: %q, %v", got, err)
+	}
 	if got, err := fromURL("file:///C:", true); err != nil || got != `C:\` {
 		t.Errorf("a bare drive: %q, %v", got, err)
 	}
@@ -207,6 +216,8 @@ func TestFileURLs(t *testing.T) {
 		{false, "http://x/a"}, {false, "file://server/a"}, {false, "file:///a?q=1"}, {false, "file:///a#f"},
 		{false, "file:///a%2Fb"}, {false, "file:///a%00b"},
 		{true, "file:///a/b"}, {true, "file:///C:/a%5Cb"}, {true, "file:///CC:/a"},
+		{true, "file://server"}, {true, "file://server/"}, // a host with no share is no Windows path
+		{true, "file://server/share:x"}, // nor is a stream on one
 	} {
 		if got, err := fromURL(c.u, c.win); !errors.Is(err, ErrNotFileURL) {
 			t.Errorf("fromURL(%q, win=%v) = %q, %v; want ErrNotFileURL", c.u, c.win, got, err)

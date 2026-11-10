@@ -26,7 +26,7 @@ func winVolume(p string) (vol string, ok bool) {
 			return "", false
 		}
 		share, _, _ := strings.Cut(after, `\`)
-		if share == "" {
+		if share == "" || strings.ContainsAny(server+share, ":") {
 			return "", false
 		}
 		vol = `\\` + server + `\` + share
@@ -147,7 +147,16 @@ func under(root string, l Logical, win bool) (string, error) {
 	if l.s == "" {
 		return root, nil
 	}
-	return strings.TrimRight(root, `/\`) + sep + strings.ReplaceAll(l.s, LogicalSep, sep), nil
+	return trimSeps(root, win) + sep + strings.ReplaceAll(l.s, LogicalSep, sep), nil
+}
+
+// trimSeps is p without its trailing separators, this OS's alone: on Unix a backslash is part of a
+// name.
+func trimSeps(p string, win bool) string {
+	if win {
+		return strings.TrimRight(p, `/\`)
+	}
+	return strings.TrimRight(p, "/")
 }
 
 type refusedError struct{ elem, why string }
@@ -174,7 +183,7 @@ func expand(s, home string, win bool) (string, error) {
 	if win {
 		sep, rest = `\`, strings.ReplaceAll(rest, "/", `\`)
 	}
-	return strings.TrimRight(home, `/\`) + sep + rest, nil
+	return trimSeps(home, win) + sep + rest, nil
 }
 
 func toURL(p string, win bool) (string, error) {
@@ -217,7 +226,11 @@ func fromURL(s string, win bool) (string, error) {
 		return "", ErrNotFileURL
 	}
 	if !local {
-		return `\\` + u.Host + strings.ReplaceAll(u.Path, "/", `\`), nil
+		p := `\\` + u.Host + strings.ReplaceAll(u.Path, "/", `\`)
+		if _, ok := winVolume(p); !ok {
+			return "", ErrNotFileURL
+		}
+		return p, nil
 	}
 	p := strings.TrimPrefix(u.Path, "/")
 	if len(p) < 2 || !isDriveLetter(p[0]) || p[1] != ':' || (len(p) > 2 && p[2] != '/') {
