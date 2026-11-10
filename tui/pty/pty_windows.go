@@ -94,7 +94,7 @@ func Start(c Cmd) (*PTY, error) {
 		return nil, err
 	}
 	go p.reap()
-	go p.watchJob()
+	_ = p.watchJob
 	return p, nil
 }
 
