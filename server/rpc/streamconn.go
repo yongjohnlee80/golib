@@ -26,7 +26,8 @@ import (
 //     write side is broken from then on: every later write fails the same way. Only Close ends the
 //     stuck call, when the OS lets it.
 //
-// A deadline changed during a read or write applies to it, as on a net.Conn.
+// A deadline changed during a read or write applies to it, as on a net.Conn. After Close, a read or
+// a write fails with net.ErrClosed, on both paths.
 //
 // Concurrency: a read and a write may run together; each side's own calls take turns. Deadlines and
 // Close may be called from any goroutine.
@@ -66,8 +67,30 @@ type streamConn struct {
 	closeErr  error
 }
 
-func (c *streamConn) Read(b []byte) (int, error)  { return c.read(b) }
-func (c *streamConn) Write(b []byte) (int, error) { return c.write(b) }
+// Read and Write after Close fail with net.ErrClosed on both paths, whatever a side still holds: a
+// remainder kept for the next read, or the end it saw, is not served once the connection is closed.
+func (c *streamConn) Read(b []byte) (int, error) {
+	if c.isClosed() {
+		return 0, net.ErrClosed
+	}
+	return c.read(b)
+}
+
+func (c *streamConn) Write(b []byte) (int, error) {
+	if c.isClosed() {
+		return 0, net.ErrClosed
+	}
+	return c.write(b)
+}
+
+func (c *streamConn) isClosed() bool {
+	select {
+	case <-c.closed:
+		return true
+	default:
+		return false
+	}
+}
 
 // Close closes both sides and ends any read or write waiting on one. It is safe to call twice.
 func (c *streamConn) Close() error {
