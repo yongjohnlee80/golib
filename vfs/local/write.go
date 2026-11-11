@@ -16,7 +16,7 @@ import (
 )
 
 // testHook, when set by this package's tests, is called at "precommit" and "postcommit" (a write),
-// "prerename" (a rename, its parents pinned, before its commit) and "preremove" (a conditional
+// "prerename" (a rename, its check made, before it pins its parents) and "preremove" (a conditional
 // removal, its check made, before the removal); a non-nil return is treated as a failure at that
 // point. Production code never sets it.
 var testHook func(point string) error
@@ -232,6 +232,9 @@ func (f *FS) rename(ctx context.Context, from, to string, noReplace bool) error 
 	if _, err := f.lstat(root, from); err != nil {
 		return err
 	}
+	if err := hook("prerename"); err != nil {
+		return &fs.PathError{Op: "rename", Path: to, Err: err}
+	}
 	fromDir, fromBase := vfs.Split(from)
 	toDir, toBase := vfs.Split(to)
 	src, err := f.pin(root, fromDir)
@@ -245,9 +248,6 @@ func (f *FS) rename(ctx context.Context, from, to string, noReplace bool) error 
 			return err
 		}
 		defer dst.close()
-	}
-	if err := hook("prerename"); err != nil {
-		return &fs.PathError{Op: "rename", Path: to, Err: err}
 	}
 	if noReplace {
 		err = src.renameNoReplace(fromBase, dst, toBase)
