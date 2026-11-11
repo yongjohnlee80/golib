@@ -19,18 +19,24 @@ import (
 // (renameAt), so no path is looked up again: a directory renamed, or a junction swapped in on its
 // path, after it was pinned can't redirect the move, as the fd keeps a Unix write in place.
 type parent struct {
-	root *os.Root
-	dir  string // root-relative, OS separators; "." for the root
-	d    *os.File
+	root    *os.Root
+	release func() // the root's, once the parent closes (RootPerOperation: the write's own root)
+	dir     string // root-relative, OS separators; "." for the root
+	d       *os.File
 }
 
 // pin opens dir through the root (so the jail resolves it) and keeps its handle.
 func (f *FS) pin(dir string) (*parent, error) {
-	d, err := f.root.Open(dir)
+	r, release, err := f.useRoot()
 	if err != nil {
 		return nil, err
 	}
-	return &parent{root: f.root, dir: filepath.FromSlash(dir), d: d}, nil
+	d, err := r.Open(dir)
+	if err != nil {
+		release()
+		return nil, err
+	}
+	return &parent{root: r, release: release, dir: filepath.FromSlash(dir), d: d}, nil
 }
 
 func (p *parent) handle() windows.Handle { return windows.Handle(p.d.Fd()) }
@@ -53,7 +59,11 @@ func (p *parent) unlink(name string) error { return p.root.Remove(p.path(name)) 
 // sync has nothing to flush: Windows can't flush a directory handle, and NTFS journals its metadata.
 func (p *parent) sync() error { return nil }
 
-func (p *parent) close() error { return p.d.Close() }
+func (p *parent) close() error {
+	err := p.d.Close()
+	p.release()
+	return err
+}
 
 func isExist(err error) bool { return errors.Is(err, fs.ErrExist) }
 

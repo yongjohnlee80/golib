@@ -20,7 +20,12 @@ type parent struct {
 
 // pin opens dir through the root (so the jail resolves it) and keeps its fd.
 func (f *FS) pin(dir string) (*parent, error) {
-	d, err := f.root.Open(dir)
+	r, release, err := f.useRoot()
+	if err != nil {
+		return nil, err
+	}
+	d, err := r.Open(dir)
+	release() // the fd pins the directory: every step of the write is relative to it
 	if err != nil {
 		return nil, err
 	}

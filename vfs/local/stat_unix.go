@@ -7,7 +7,14 @@ import (
 	"os"
 )
 
-func (f *FS) lstat(name string) (os.FileInfo, error) { return f.root.Lstat(name) }
+func (f *FS) lstat(name string) (os.FileInfo, error) {
+	r, release, err := f.useRoot()
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	return r.Lstat(name)
+}
 
 // fileStat is file's Stat: its Sys is the Stat_t versionOf reads.
 func fileStat(file *os.File) (os.FileInfo, error) { return file.Stat() }
