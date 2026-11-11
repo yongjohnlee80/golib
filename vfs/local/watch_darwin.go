@@ -66,6 +66,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"runtime/cgo"
 	"sync"
 	"sync/atomic"
@@ -128,14 +129,19 @@ func (f *FS) Watch(ctx context.Context, dir string, opts ...vfs.WatchOption) (<-
 		return nil, err
 	}
 	defer f.leave()
-	st, err := f.lstat(dir)
+	r, release, err := f.useRoot() // one root for the watch's setup; the watch keeps its own hold
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	st, err := f.lstat(r, dir)
 	if err != nil {
 		return nil, err
 	}
 	if !st.IsDir() {
 		return nil, &fs.PathError{Op: "watch", Path: dir, Err: errNotDir}
 	}
-	real, err := f.canonical(dir)
+	real, err := f.canonical(r, dir)
 	if err != nil {
 		return nil, &fs.PathError{Op: "watch", Path: dir, Err: err}
 	}
@@ -156,13 +162,8 @@ func (f *FS) Watch(ctx context.Context, dir string, opts ...vfs.WatchOption) (<-
 // canonical is dir's path as the kernel names it — /private/var, not /var; the volume's own case —
 // taken with F_GETPATH from the directory the jail opened, so no pathname is resolved again after the
 // jail checked it — a directory swapped for a symlink in between cannot move the watch outside.
-func (f *FS) canonical(dir string) (string, error) {
-	r, release, err := f.useRoot()
-	if err != nil {
-		return "", err
-	}
+func (f *FS) canonical(r *os.Root, dir string) (string, error) {
 	d, err := r.Open(dir)
-	release()
 	if err != nil {
 		return "", err
 	}
@@ -174,9 +175,14 @@ func (f *FS) canonical(dir string) (string, error) {
 	return C.GoString((*C.char)(unsafe.Pointer(&buf[0]))), nil
 }
 
-// presence lstats rel through the jail.
+// presence lstats rel through the jail: a probe of its own, through a root of its own.
 func (f *FS) presence(rel string) presence {
-	st, err := f.lstat(rel)
+	r, release, err := f.useRoot()
+	if err != nil {
+		return unknown
+	}
+	defer release()
+	st, err := f.lstat(r, rel)
 	switch {
 	case err == nil && st.IsDir():
 		return presentDir
