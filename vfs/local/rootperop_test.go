@@ -66,6 +66,9 @@ func TestARootPerOperationIsHeldByNothingBetweenOperations(t *testing.T) {
 		t.Fatal(err)
 	}
 	f := newPerOp(t, dir)
+	if err := f.MkdirAll(bg, "sub"); err != nil {
+		t.Fatal(err)
+	}
 	mustWrite(t, f, "sub/a.txt", "one")
 	if got := readAll(t, f, "sub/a.txt"); got != "one" {
 		t.Fatalf("read %q", got)
