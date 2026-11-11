@@ -90,7 +90,8 @@ func New(dir string, opts ...Option) (*FS, error) {
 	return &FS{root: root, absRoot: abs, log: cfg.log, done: make(chan struct{})}, nil
 }
 
-// useRoot is the root for one operation, and its release: the root held since New, or with
+// useRoot is the root for one operation, and its release: every step of the operation (its checks,
+// its pins, its commit, its readback) goes through the one root it answers. It is the root held since New, or with
 // RootPerOperation one opened for this operation, which release closes.
 func (f *FS) useRoot() (*os.Root, func(), error) {
 	if f.root != nil {
@@ -157,7 +158,12 @@ func (f *FS) Stat(ctx context.Context, name string) (vfs.FileInfo, error) {
 		return vfs.FileInfo{}, err
 	}
 	defer f.leave()
-	fi, err := f.lstat(name)
+	r, release, err := f.useRoot()
+	if err != nil {
+		return vfs.FileInfo{}, err
+	}
+	defer release()
+	fi, err := f.lstat(r, name)
 	if err != nil {
 		return vfs.FileInfo{}, err
 	}
@@ -177,8 +183,8 @@ func (f *FS) ReadDir(ctx context.Context, name string) ([]vfs.FileInfo, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer release() // the listing's entries are read through the same root
 	d, err := r.Open(name)
-	release() // the directory opened stays open, its listing its own
 	if err != nil {
 		return nil, err
 	}
@@ -192,7 +198,7 @@ func (f *FS) ReadDir(ctx context.Context, name string) ([]vfs.FileInfo, error) {
 		if vfs.IsTemp(e.Name()) {
 			continue
 		}
-		fi, err := f.entryInfo(vfs.Join(name, e.Name()), e)
+		fi, err := f.entryInfo(r, vfs.Join(name, e.Name()), e)
 		if err != nil {
 			if os.IsNotExist(err) {
 				continue // removed between the listing and the stat
@@ -281,22 +287,25 @@ func (f *FS) remove(ctx context.Context, name string, ifVersion bool, want vfs.V
 	defer f.leave()
 	unlock := f.locks.lock(name)
 	defer unlock()
-	if ifVersion {
-		if err := f.checkVersion(name, want); err != nil {
-			return err
-		}
-	}
-	r, release, err := f.useRoot()
+	r, release, err := f.useRoot() // one root for the check and the removal
 	if err != nil {
 		return err
 	}
 	defer release()
+	if ifVersion {
+		if err := f.checkVersion(r, name, want); err != nil {
+			return err
+		}
+		if err := hook("preremove"); err != nil {
+			return &fs.PathError{Op: "remove", Path: name, Err: err}
+		}
+	}
 	return r.Remove(name) // unlinkat: a symlink goes, its target stays
 }
 
 // checkVersion fails with a *vfs.ConflictError unless name's current version is want.
-func (f *FS) checkVersion(name string, want vfs.Version) error {
-	fi, err := f.lstat(name)
+func (f *FS) checkVersion(r *os.Root, name string, want vfs.Version) error {
+	fi, err := f.lstat(r, name)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return &vfs.ConflictError{Path: name, Want: want}

@@ -15,8 +15,10 @@ import (
 	"github.com/yongjohnlee80/golib/vfs"
 )
 
-// testHook, when set by this package's tests, is called at "precommit" and "postcommit"; a non-nil
-// return is treated as a failure at that point. Production code never sets it.
+// testHook, when set by this package's tests, is called at "precommit" and "postcommit" (a write),
+// "prerename" (a rename, its parents pinned, before its commit) and "preremove" (a conditional
+// removal, its check made, before the removal); a non-nil return is treated as a failure at that
+// point. Production code never sets it.
 var testHook func(point string) error
 
 func hook(point string) error {
@@ -65,10 +67,16 @@ func (f *FS) write(ctx context.Context, name string, r io.Reader, c cond, opts [
 	defer f.leave()
 	unlock := f.locks.lock(name)
 	defer unlock()
+	// one root for the whole write: its condition, its pinned parent, its commit and its readback
+	root, release, err := f.useRoot()
+	if err != nil {
+		return vfs.FileInfo{}, err
+	}
+	defer release()
 
 	// the condition, against the entry as it is now
 	var cur os.FileInfo
-	if fi, err := f.lstat(name); err == nil {
+	if fi, err := f.lstat(root, name); err == nil {
 		cur = fi
 	} else if !os.IsNotExist(err) {
 		return vfs.FileInfo{}, err
@@ -97,7 +105,7 @@ func (f *FS) write(ctx context.Context, name string, r io.Reader, c cond, opts [
 	}
 
 	dir, base := vfs.Split(name)
-	p, err := f.pin(dir)
+	p, err := f.pin(root, dir)
 	if err != nil {
 		return vfs.FileInfo{}, err
 	}
@@ -128,11 +136,11 @@ func (f *FS) write(ctx context.Context, name string, r io.Reader, c cond, opts [
 		err = p.rename(tmp, p, base)
 	}
 	if err != nil {
-		return vfs.FileInfo{}, f.commitFailed("write", name, err, c.exclusive, p)
+		return vfs.FileInfo{}, f.commitFailed(root, "write", name, err, c.exclusive, p)
 	}
 	committed = true
 
-	return f.afterCommit(name, p)
+	return f.afterCommit(root, name, p)
 }
 
 // fill copies r into t, fixes the mode (the umask applies at create), syncs and closes t.
@@ -155,11 +163,11 @@ func fill(ctx context.Context, t *os.File, r io.Reader, perm fs.FileMode) error 
 // EINVAL is unsupported only when a probe in dst shows the flag is refused there; otherwise it is the
 // kernel's path error (a directory moved into itself through a symlink alias). A plain rename's errors
 // are returned as they are.
-func (f *FS) commitFailed(op, name string, err error, noReplace bool, dst *parent) error {
+func (f *FS) commitFailed(root *os.Root, op, name string, err error, noReplace bool, dst *parent) error {
 	switch {
 	case noReplace && isExist(err):
 		cur := vfs.FileInfo{}
-		if fi, serr := f.lstat(name); serr == nil {
+		if fi, serr := f.lstat(root, name); serr == nil {
 			cur = info(name, fi)
 		}
 		return &vfs.ConflictError{Path: name, Current: cur}
@@ -171,7 +179,7 @@ func (f *FS) commitFailed(op, name string, err error, noReplace bool, dst *paren
 }
 
 // afterCommit runs the steps after the commit point; every failure is a *vfs.CommitError.
-func (f *FS) afterCommit(name string, parents ...*parent) (vfs.FileInfo, error) {
+func (f *FS) afterCommit(root *os.Root, name string, parents ...*parent) (vfs.FileInfo, error) {
 	if err := hook("postcommit"); err != nil {
 		return vfs.FileInfo{}, &vfs.CommitError{Path: name, Err: err}
 	}
@@ -180,7 +188,7 @@ func (f *FS) afterCommit(name string, parents ...*parent) (vfs.FileInfo, error) 
 			return vfs.FileInfo{}, &vfs.CommitError{Path: name, Err: err}
 		}
 	}
-	fi, err := f.lstat(name)
+	fi, err := f.lstat(root, name)
 	if err != nil {
 		return vfs.FileInfo{}, &vfs.CommitError{Path: name, Err: err}
 	}
@@ -214,23 +222,32 @@ func (f *FS) rename(ctx context.Context, from, to string, noReplace bool) error 
 	}
 	unlock := f.locks.lock(from, to)
 	defer unlock()
+	// one root for the whole rename: its check, both pinned parents, its commit and its readback
+	root, release, err := f.useRoot()
+	if err != nil {
+		return err
+	}
+	defer release()
 
-	if _, err := f.lstat(from); err != nil {
+	if _, err := f.lstat(root, from); err != nil {
 		return err
 	}
 	fromDir, fromBase := vfs.Split(from)
 	toDir, toBase := vfs.Split(to)
-	src, err := f.pin(fromDir)
+	src, err := f.pin(root, fromDir)
 	if err != nil {
 		return err
 	}
 	defer src.close()
 	dst := src
 	if toDir != fromDir {
-		if dst, err = f.pin(toDir); err != nil {
+		if dst, err = f.pin(root, toDir); err != nil {
 			return err
 		}
 		defer dst.close()
+	}
+	if err := hook("prerename"); err != nil {
+		return &fs.PathError{Op: "rename", Path: to, Err: err}
 	}
 	if noReplace {
 		err = src.renameNoReplace(fromBase, dst, toBase)
@@ -238,13 +255,13 @@ func (f *FS) rename(ctx context.Context, from, to string, noReplace bool) error 
 		err = src.rename(fromBase, dst, toBase)
 	}
 	if err != nil {
-		return f.commitFailed("rename", to, err, noReplace, dst)
+		return f.commitFailed(root, "rename", to, err, noReplace, dst)
 	}
 	parents := []*parent{src}
 	if dst != src {
 		parents = append(parents, dst)
 	}
-	_, err = f.afterCommit(to, parents...)
+	_, err = f.afterCommit(root, to, parents...)
 	return err
 }
 

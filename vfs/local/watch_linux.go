@@ -47,7 +47,12 @@ func (f *FS) Watch(ctx context.Context, dir string, opts ...vfs.WatchOption) (<-
 		return nil, err
 	}
 	defer f.leave()
-	st, err := f.lstat(dir)
+	r, release, err := f.useRoot() // one root for the watch's setup; the watch keeps its own hold
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	st, err := f.lstat(r, dir)
 	if err != nil {
 		return nil, err
 	}
