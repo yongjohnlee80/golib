@@ -169,9 +169,9 @@ func TestAWriteKeepsItsRootWhenTheRootIsReplaced(t *testing.T) {
 	}
 }
 
-// A rename across directories under RootPerOperation pins both parents through one root: the root
-// replaced between the pins and the commit, the file moves within the root it began in, and the
-// replacement is untouched (the mutant: the destination pinned through a root opened again).
+// A rename across directories under RootPerOperation checks and pins both parents through one root:
+// the root replaced between the check and the pins, the file moves within the root it began in, and
+// the replacement is untouched (the mutant: the destination pinned through a root opened again).
 func TestARenameKeepsItsRootWhenTheRootIsReplaced(t *testing.T) {
 	dir := rootDir(t)
 	f := newPerOp(t, dir)
