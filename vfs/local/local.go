@@ -57,8 +57,12 @@ func WithLogger(l logger.Logger) Option { return func(c *config) { c.log = l } }
 // RootPerOperation opens the root for each operation and closes it after, instead of holding it from
 // New to Close: nothing holds the directory between operations, so it can be removed or renamed
 // meanwhile (on Windows a directory an open handle holds can be neither). An operation keeps one
-// root for its whole length: a write's from its temporary file to its commit, a watch's setup until
-// its own handle is open. Confinement is the same: every name still resolves through an os.Root.
+// root for its whole length: a write's from its temporary file to its commit; on Windows and macOS, a
+// watch's setup until its own handle is open. On Linux each directory a watch attaches (the watched
+// one, and each one under it for a recursive watch) resolves through a root opened for that
+// directory. A directory moved between two of those attaches is reported, not missed: the watched
+// directory moving ends the watch, and a subdirectory moving is an event of its parent's watch.
+// Confinement is the same: every name still resolves through an os.Root.
 // Between operations the root is whatever directory is at its path: one moved away is no longer
 // reached, and one put in its place is. A watch stays on the directory it was set up on, and ends,
 // as it does without this option, when that directory goes.
