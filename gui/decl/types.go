@@ -105,9 +105,10 @@ func shapeType() tuidecl.Type {
 			return widget.NewShape(k, opts...), used, nil
 		},
 		Setters: map[string]tuidecl.Setter{
-			"fillColor":   fillColorSetter,
-			"radius":      tuidecl.NumberSetter(func(s *widget.Shape, r float64) { s.SetRadius(float32(r)) }),
-			"tuiFallback": fallbackSetter[*widget.Shape](),
+			"fillColor":      fillColorSetter,
+			"radius":         tuidecl.NumberSetter(func(s *widget.Shape, r float64) { s.SetRadius(float32(r)) }),
+			"acceptsPointer": tuidecl.BoolSetter(func(s *widget.Shape, on bool) { s.SetAcceptsPointer(on) }),
+			"tuiFallback":    fallbackSetter[*widget.Shape](),
 		},
 		Enums: []tuidecl.Enum{shapeEnum}, // Gui (tuiFallback's) is published once, by TitleBar's Type
 	}

@@ -22,6 +22,10 @@ const (
 // (color, radius, border) and an ellipse. On a terminal it draws its outline in box-drawing
 // characters, rounded for a rounded rectangle and an ellipse, with its fill as the inner cells'
 // background.
+//
+// Like Qt's Rectangle it takes no pointer events: a click on a shape reaches whatever lies beneath
+// it (a highlight over a button leaves the button clickable). WithAcceptsPointer makes a shape
+// take them, so that what lies beneath gets none.
 type Shape struct {
 	gui.Base
 	ctx         *tui.Context
@@ -31,6 +35,7 @@ type Shape struct {
 	strokeWidth float32
 	radius      float32
 	size        tui.Size // the cells it asks for; zero takes what the layout gives
+	pointer     bool     // it takes pointer events (WithAcceptsPointer); by default they pass through
 }
 
 // ShapeOption sets up a Shape under construction.
@@ -51,6 +56,10 @@ func WithRadius(r float32) ShapeOption { return func(s *Shape) { s.radius = max(
 func WithShapeSize(w, h int) ShapeOption {
 	return func(s *Shape) { s.size = tui.Size{W: max(w, 0), H: max(h, 0)} }
 }
+
+// WithAcceptsPointer makes the shape take pointer events, so a click on it reaches nothing beneath
+// it. Without it a shape is click-through, as Qt's Rectangle is.
+func WithAcceptsPointer(on bool) ShapeOption { return func(s *Shape) { s.pointer = on } }
 
 // NewShape is a shape of kind.
 func NewShape(kind ShapeKind, opts ...ShapeOption) *Shape {
@@ -75,6 +84,13 @@ func (s *Shape) SetStroke(c color.NRGBA, width float32) {
 
 // SetRadius changes a rectangle's corner radius.
 func (s *Shape) SetRadius(r float32) { s.radius = max(r, 0); s.dirty() }
+
+// SetAcceptsPointer changes whether the shape takes pointer events (WithAcceptsPointer).
+func (s *Shape) SetAcceptsPointer(on bool) { s.pointer = on }
+
+// ContainsPointer is false unless the shape takes pointer events: hit-testing then passes over it
+// to what lies beneath, at every point.
+func (s *Shape) ContainsPointer(int, int) bool { return s.pointer }
 
 func (s *Shape) dirty() {
 	if s.ctx != nil {
@@ -171,6 +187,7 @@ func (s *Shape) RenderTUI(surf tui.Surface) {
 }
 
 var (
-	_ tui.NativeReporter = (*Shape)(nil)
-	_ gui.TUIMock        = (*Shape)(nil)
+	_ tui.NativeReporter   = (*Shape)(nil)
+	_ gui.TUIMock          = (*Shape)(nil)
+	_ tui.PointerContainer = (*Shape)(nil)
 )

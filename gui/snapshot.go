@@ -57,6 +57,27 @@ func NewSnapshotter(size Size, scale int) (*Snapshotter, error) {
 // read-back failing.
 func (s *Snapshotter) Snap(v View) (*image.RGBA, error) { return snapshotOn(s.hw, v, s.size, s.scale) }
 
+// Placed is a view in a scene (SnapScene): over the one-dp cells X, Y to X+Cols, Y+Rows of the
+// Snapshotter's grid, with the cells inside it that are painted after it (Covered), as a window's
+// frame places a native view.
+type Placed struct {
+	View             View
+	X, Y, Cols, Rows int
+	Covered          []tui.Rect
+}
+
+// SnapScene renders views over the Snapshotter's empty grid as a window composites a frame's native
+// views: in the order given, a later view over an earlier one, and each under its Covered cells,
+// which show the grid's ground. It is Snap for a test of what overlaps what. An error is the
+// drawing or its read-back failing.
+func (s *Snapshotter) SnapScene(views ...Placed) (*image.RGBA, error) {
+	natives := make([]tui.NativePlacement, len(views))
+	for i, v := range views {
+		natives[i] = tui.NativePlacement{View: v.View, Layer: uint32(i + 1), X: v.X, Y: v.Y, Cols: v.Cols, Rows: v.Rows, Covered: v.Covered}
+	}
+	return sceneOn(s.hw, natives, s.size, s.scale)
+}
+
 // Release frees the window.
 func (s *Snapshotter) Release() { s.hw.Release() }
 
@@ -72,8 +93,14 @@ type snapshotTarget interface {
 // snapshotOn is Snapshot on t, a headless window of the snapshot's pixel size: a test drawing many
 // snapshots of one size reuses one window (EGL refuses some of many made in a row).
 func snapshotOn(t snapshotTarget, v View, size Size, scale int) (*image.RGBA, error) {
-	w, h := snapshotPixels(size, scale)
 	// one-dp cells, so the view's canvas is size, rounded up to whole dp
+	cols, rows := int(math.Ceil(float64(size.W))), int(math.Ceil(float64(size.H)))
+	return sceneOn(t, []tui.NativePlacement{{View: v, Cols: cols, Rows: rows}}, size, scale)
+}
+
+// sceneOn is a snapshot of natives over an empty grid of size's one-dp cells, on t.
+func sceneOn(t snapshotTarget, natives []tui.NativePlacement, size Size, scale int) (*image.RGBA, error) {
+	w, h := snapshotPixels(size, scale)
 	cols, rows := int(math.Ceil(float64(size.W))), int(math.Ceil(float64(size.H)))
 	m := metrics{window: image.Pt(w, h), cell: image.Pt(scale, scale), ppem: float32(14 * scale), baseline: scale,
 		scale: float32(scale), grid: tui.Size{W: cols, H: rows}}
@@ -81,7 +108,7 @@ func snapshotOn(t snapshotTarget, v View, size Size, scale int) (*image.RGBA, er
 	r.m = m
 	g := &grid{}
 	g.resize(cols, rows)
-	call := r.frame(g, m, cursorState{}, []tui.NativePlacement{{View: v, Cols: cols, Rows: rows}}, nil, true)
+	call := r.frame(g, m, cursorState{}, natives, nil, true)
 	ops := new(op.Ops)
 	call.Add(ops)
 	if err := t.Frame(ops); err != nil {
