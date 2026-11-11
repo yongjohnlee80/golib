@@ -42,7 +42,8 @@ func (t *Terminal) Signal(sig os.Signal) error {
 // once the Terminal is mounted. After an exit it starts a new one, below
 // what the last one left on the screen. A start that fails says so on the
 // screen and returns the error; Enter or i in the Terminal, or another
-// Start, tries again.
+// Start, tries again. The program is started on the UI loop, which waits for
+// it: StartAsync starts it off the loop.
 func (t *Terminal) Start() error {
 	t.procMu.Lock()
 	shuttingDown := t.shutdown != nil
@@ -50,7 +51,7 @@ func (t *Terminal) Start() error {
 	if shuttingDown {
 		return ErrTerminalShutdown
 	}
-	if t.running {
+	if t.running || t.starting != nil {
 		return nil
 	}
 	ctx := t.Context()
@@ -58,12 +59,20 @@ func (t *Terminal) Start() error {
 		t.pending = true
 		return nil
 	}
+	proc, err := t.cfg.start(t.startCmd())
+	return t.land(proc, err)
+}
+
+// startCmd is the program to start, at the terminal's size.
+func (t *Terminal) startCmd() pty.Cmd {
 	env := append(os.Environ(), t.cfg.env...)
 	env = append(env, "TERM=xterm-256color", "COLORTERM=truecolor")
-	proc, err := t.cfg.start(pty.Cmd{
-		Path: t.cfg.path, Args: t.cfg.args, Env: env, Dir: t.cfg.dir,
-		Rows: t.rows, Cols: t.cols,
-	})
+	return pty.Cmd{Path: t.cfg.path, Args: t.cfg.args, Env: env, Dir: t.cfg.dir, Rows: t.rows, Cols: t.cols}
+}
+
+// land takes a start's outcome on the UI loop: a failure said on the screen, or proc adopted as
+// the running program, its output read and its exit awaited. Start and StartAsync share it.
+func (t *Terminal) land(proc TerminalProcess, err error) error {
 	if err != nil {
 		// A failed start ends like an exit: it says so on the screen, and
 		// Enter or i tries again, whoever asked for this start.
@@ -75,20 +84,25 @@ func (t *Terminal) Start() error {
 		t.report(err)
 		return err
 	}
-	t.gen++
-	gen := t.gen
-	t.proc = proc
-	t.resizer = &ptyResizer{proc: proc}
-	t.running, t.exited = true, false
-	t.in = newInputQueue(proc)
-	t.wr = core.NewBufferWriter(func(b []byte) {
+	ctx := t.Context()
+	gen := t.gen + 1
+	in := newInputQueue(proc)
+	wr := core.NewBufferWriter(func(b []byte) {
 		if gen == t.gen { // hidden or not: the screen keeps taking output
 			t.ingest(b)
 		}
 	})
-	t.wr.Bind(ctx.App())
-	lifecycle := newTerminalStopResult(proc, gen, t.in, t.wr)
+	lifecycle := newTerminalStopResult(proc, gen, in, wr)
 	t.procMu.Lock()
+	if t.shutdown != nil {
+		// shut down since the spawn began (StartAsync's, off the loop): the program is closed,
+		// never adopted, or the shutdown, which joined the lifetimes it saw, would miss it
+		t.procMu.Unlock()
+		in.close()
+		wr.Close()
+		closeLate(proc)
+		return ErrTerminalShutdown
+	}
 	kept := t.lifetimes[:0]
 	for _, old := range t.lifetimes {
 		select {
@@ -103,8 +117,13 @@ func (t *Terminal) Start() error {
 	t.lifetimes = append(kept, lifecycle)
 	t.lifecycle = lifecycle
 	t.procMu.Unlock()
+	t.gen = gen
+	t.proc = proc
+	t.resizer = &ptyResizer{proc: proc}
+	t.running, t.exited = true, false
+	t.in, t.wr = in, wr
+	wr.Bind(ctx.App())
 	app := ctx.App()
-	wr := t.wr
 	t.pumps.Add(1)
 	go func() {
 		defer t.pumps.Done()
@@ -142,6 +161,7 @@ func (t *Terminal) Stop() { t.StopWithResult() }
 // Started false, with StartError distinguishing them; neither needs cleanup.
 func (t *Terminal) StopWithResult() *TerminalStopResult {
 	t.pending = false
+	t.cancelStart() // a start in flight never lands: its program, when it comes, is closed
 	t.flushPrefix()
 	r := t.CleanupResult()
 	if !t.running {
@@ -178,7 +198,10 @@ func (t *Terminal) ShutdownWithResult() *TerminalShutdownResult {
 		t.procMu.Unlock()
 		return r
 	}
-	t.shutdown = joinTerminalCleanup(append([]*TerminalStopResult(nil), t.lifetimes...))
+	// a start in flight is cancelled and joined too, boundedly: a spawn that never returns must not
+	// hold the shutdown for ever (startOutGrace)
+	flights := t.cancelFlightsLocked()
+	t.shutdown = joinShutdowns(append([]*TerminalShutdownResult{joinTerminalCleanup(append([]*TerminalStopResult(nil), t.lifetimes...))}, flights...))
 	r := t.shutdown
 	t.procMu.Unlock()
 	return r

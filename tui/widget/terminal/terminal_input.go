@@ -119,7 +119,7 @@ func (t *Terminal) inputKey(k tui.KeyEvent) bool {
 	case termNone:
 		return false
 	case termRestart:
-		_ = t.Start() // a failure shows on the screen again
+		t.retryStart() // a failure shows on the screen again
 	case termPrefix:
 		t.prefix = true
 	case termToNormal:
