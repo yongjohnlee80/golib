@@ -11,9 +11,11 @@ import (
 )
 
 // A watch under RootPerOperation keeps only its own hold on the directory it watches (its handle,
-// or its inotify or FSEvents watch), nothing on the root: while it runs and reports, the root, the
-// watched directory's parent, can be renamed and removed on every OS (Windows refuses either while
-// a root holds the directory), and on Linux no descriptor names it (the mutant: the root held).
+// or its inotify or FSEvents watch), nothing on the root, the watched directory's parent: on Linux
+// no descriptor names the parent while the watch runs; the watched directory removed ends the watch;
+// then the parent renames and goes, on every OS (Windows refuses either while a root holds it).
+// While the watch runs, Windows refuses to rename the parent all the same: no directory with an
+// open handle beneath it can be renamed there, so that is not asked (the mutant: the root held).
 func TestAWatchUnderRootPerOperationLeavesItsRootFree(t *testing.T) {
 	parent := filepath.Join(t.TempDir(), "parent")
 	if err := os.MkdirAll(filepath.Join(parent, "w"), 0o755); err != nil {
@@ -26,12 +28,19 @@ func TestAWatchUnderRootPerOperationLeavesItsRootFree(t *testing.T) {
 	if held := descriptorsUnder(t, parent); len(held) != 0 {
 		t.Fatalf("while the watch runs the process holds %v", held)
 	}
+	if err := os.RemoveAll(filepath.Join(parent, "w")); err != nil {
+		t.Fatalf("the watched directory can't be removed while the watch runs: %v", err)
+	}
+	seen := drainClosed(t, events)
+	if len(seen) == 0 || seen[len(seen)-1] != (vfs.Event{Path: "", Op: vfs.OpOverflow}) {
+		t.Fatalf("last event = %v, want OpOverflow{\"\"}", seen)
+	}
 	moved := parent + "-moved"
 	if err := os.Rename(parent, moved); err != nil {
-		t.Fatalf("the watched directory's parent can't be renamed while the watch runs: %v", err)
+		t.Fatalf("the watch ended, its root still can't be renamed: %v", err)
 	}
 	if err := os.RemoveAll(moved); err != nil {
-		t.Fatalf("the watched directory's parent can't be removed while the watch runs: %v", err)
+		t.Fatalf("the watch ended, its root still can't be removed: %v", err)
 	}
 }
 
