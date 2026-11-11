@@ -68,7 +68,7 @@ type Placed struct {
 
 // SnapScene renders views over the Snapshotter's empty grid as a window composites a frame's native
 // views: in the order given, a later view over an earlier one, and each under its Covered cells,
-// which show the grid's ground. It is Snap for a test of what overlaps what. An error is the
+// which show the grid's empty cells (the default theme's background). It is Snap for a test of what overlaps what. An error is the
 // drawing or its read-back failing.
 func (s *Snapshotter) SnapScene(views ...Placed) (*image.RGBA, error) {
 	natives := make([]tui.NativePlacement, len(views))

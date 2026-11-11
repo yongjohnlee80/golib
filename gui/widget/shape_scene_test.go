@@ -11,7 +11,8 @@ import (
 )
 
 // sceneColour reads a scene's pixel at (x, y) dp at scale 2 as one of the scene's known colours:
-// "red", "blue", "green", "ground", or "" for none of them.
+// "red", "blue", "green", "ground" (nothing drawn there), "cells" (the grid's empty cells, in the
+// theme's background), or "" for none of them.
 func sceneColour(img *image.RGBA, x, y float32, ground color.RGBA) string {
 	px := img.RGBAAt(int(x*2), int(y*2))
 	d := func(a, b uint8) int { return max(int(a)-int(b), int(b)-int(a)) }
@@ -24,6 +25,9 @@ func sceneColour(img *image.RGBA, x, y float32, ground color.RGBA) string {
 		return "green"
 	case d(px.R, ground.R) <= 16 && d(px.G, ground.G) <= 16 && d(px.B, ground.B) <= 16:
 		return "ground"
+	}
+	if bg := gui.DefaultTheme().BG; d(px.R, bg.R) <= 16 && d(px.G, bg.G) <= 16 && d(px.B, bg.B) <= 16 {
+		return "cells"
 	}
 	return ""
 }
@@ -77,7 +81,7 @@ func TestOverlappingShapesPaintInTheirOrder(t *testing.T) {
 		}, []point{{12, 8, "red"}, {2, 2, "green"}, {36, 20, "green"}}},
 		{"cells painted after a shape cover it", []gui.Placed{
 			{View: a(), X: 0, Y: 0, Cols: 40, Rows: 24, Covered: []tui.Rect{{X: 20, Y: 0, W: 20, H: 24}}},
-		}, []point{{10, 12, "red"}, {30, 12, "ground"}}},
+		}, []point{{10, 12, "red"}, {30, 12, "cells"}}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			img, err := snap.SnapScene(c.scene...)
