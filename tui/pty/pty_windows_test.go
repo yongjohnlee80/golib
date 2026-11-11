@@ -296,3 +296,23 @@ func TestAChildLeftRunningKeepsTheConsoleUntilItEnds(t *testing.T) {
 		t.Errorf("the child's output did not arrive before the end: %q", o.text())
 	}
 }
+
+// TestTheEnvBlockKeepsEachNamesLastSetting: the block a child is made with holds a name once, its
+// last setting, matched case-blind as Windows reads it: a caller's own USERPROFILE after the
+// inherited one is the child's, not the inherited one (Windows reads a name's first entry).
+func TestTheEnvBlockKeepsEachNamesLastSetting(t *testing.T) {
+	block := envBlock([]string{"USERPROFILE=C:\\inherited", "TEMP=t", "UserProfile=C:\\own"})
+	var got []string
+	for start, i := 0, 0; i < len(block); i++ {
+		if block[i] == 0 {
+			if i == start {
+				break
+			}
+			got = append(got, windows.UTF16ToString(block[start:i]))
+			start = i + 1
+		}
+	}
+	if want := []string{"TEMP=t", "UserProfile=C:\\own"}; strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("the block holds %q, want %q", got, want)
+	}
+}
