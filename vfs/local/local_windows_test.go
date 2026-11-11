@@ -25,7 +25,10 @@ func junction(t *testing.T, link, target string) {
 // junction to a folder outside the root swapped in on its path between the temp file and the
 // commit, the commit still lands in the directory pinned (now under its new name), never outside.
 func TestAWriteLandsInItsPinnedDirectoryWhenAJunctionIsSwappedIn(t *testing.T) {
-	f, dir := newLocal(t)
+	bothRoots(t, writeLandsInItsPinnedDirectory)
+}
+
+func writeLandsInItsPinnedDirectory(t *testing.T, f *FS, dir string) {
 	outside := t.TempDir()
 	if err := os.Mkdir(filepath.Join(dir, "d"), 0o755); err != nil {
 		t.Fatal(err)
@@ -66,7 +69,10 @@ func TestAWriteLandsInItsPinnedDirectoryWhenAJunctionIsSwappedIn(t *testing.T) {
 
 // A rename into a junction that leads outside the root is refused, and nothing leaves the root.
 func TestARenameThroughAJunctionOutsideTheRootIsRefused(t *testing.T) {
-	f, dir := newLocal(t)
+	bothRoots(t, renameThroughAJunctionIsRefused)
+}
+
+func renameThroughAJunctionIsRefused(t *testing.T, f *FS, dir string) {
 	outside := t.TempDir()
 	mustWrite(t, f, "a.md", "stays")
 	junction(t, filepath.Join(dir, "j"), outside)
@@ -130,4 +136,17 @@ func TestANoReplaceRenameMovesWholeAndRefusesAnExistingName(t *testing.T) {
 	if b, _ := os.ReadFile(filepath.Join(dir, "d3", "x.md")); string(b) != "x" {
 		t.Errorf("d3/x.md is %q, want the moved directory's file", b)
 	}
+}
+
+// bothRoots runs cell on an FS holding its root from New, then on one opening it per operation
+// (RootPerOperation): the jail confines either the same.
+func bothRoots(t *testing.T, cell func(t *testing.T, f *FS, dir string)) {
+	t.Run("held root", func(t *testing.T) {
+		f, dir := newLocal(t)
+		cell(t, f, dir)
+	})
+	t.Run("root per operation", func(t *testing.T) {
+		dir := t.TempDir()
+		cell(t, newPerOp(t, dir), dir)
+	})
 }

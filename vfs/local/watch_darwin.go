@@ -157,7 +157,12 @@ func (f *FS) Watch(ctx context.Context, dir string, opts ...vfs.WatchOption) (<-
 // taken with F_GETPATH from the directory the jail opened, so no pathname is resolved again after the
 // jail checked it — a directory swapped for a symlink in between cannot move the watch outside.
 func (f *FS) canonical(dir string) (string, error) {
-	d, err := f.root.Open(dir)
+	r, release, err := f.useRoot()
+	if err != nil {
+		return "", err
+	}
+	d, err := r.Open(dir)
+	release()
 	if err != nil {
 		return "", err
 	}

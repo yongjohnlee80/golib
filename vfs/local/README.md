@@ -17,6 +17,21 @@ and **pinned by fd**, and the temp file is created, committed and cleaned up rel
 base names only. A concurrent rename of the directory, or a symlink swapped in on its path, cannot
 split the temp file from its commit or move either outside the root.
 
+## The root's lifetime
+
+By default the root is opened once, by `New`, and held until `Close`: the directory stays the one
+opened even if its path changes. With `local.RootPerOperation()` each operation opens the root and
+closes it after, so nothing holds the directory between operations, and it can be removed or renamed
+meanwhile: on Windows a directory an open handle holds can be neither. An operation keeps one root
+for its whole length (a write's from its temp file to its commit), and every name still resolves
+through it. A watch keeps only its own hold on the directory it watches, and checks that directory's
+identity through a root of its own each time. Between operations the root is whatever directory is at
+the path.
+
+```go
+fsys, err := local.New(dir, local.RootPerOperation()) // nothing held between operations
+```
+
 ## Reads
 
 `Open` opens only a regular file. A directory, a FIFO, a socket or a device is refused, and a FIFO

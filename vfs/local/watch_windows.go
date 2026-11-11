@@ -96,7 +96,12 @@ type winWatch struct {
 // does) for listing and overlapped I/O: no path is looked up after the jail's, so a directory swapped
 // for a junction in between cannot move the watch outside.
 func (f *FS) newWinWatch(dir string, cfg vfs.WatchConfig) (*winWatch, error) {
-	d, err := f.root.Open(dir)
+	r, release, err := f.useRoot()
+	if err != nil {
+		return nil, err
+	}
+	d, err := r.Open(dir)
+	release() // the directory's handle, reopened below by handle, is all the watch keeps
 	if err != nil {
 		return nil, err
 	}
