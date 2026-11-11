@@ -238,6 +238,15 @@ var (
 	//
 	// Deprecated: use [terminal.ErrTerminalShutdown], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 	ErrTerminalShutdown = terminal.ErrTerminalShutdown
+	// ErrTerminalStartCancelled is a start that Stop, Shutdown or the tab's removal overtook.
+	//
+	// Deprecated: use [terminal.ErrTerminalStartCancelled], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+	ErrTerminalStartCancelled = terminal.ErrTerminalStartCancelled
+	// ErrTerminalStartStillOut is a shutdown that gave up waiting for a start in flight
+	// (five seconds): its spawn had not returned. The program it spawns is still closed when it does.
+	//
+	// Deprecated: use [terminal.ErrTerminalStartStillOut], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+	ErrTerminalStartStillOut = terminal.ErrTerminalStartStillOut
 	// Deprecated: use [terminal.ErrTerminalTabUnknown], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 	ErrTerminalTabUnknown = terminal.ErrTerminalTabUnknown
 	// Deprecated: use [terminal.ErrTerminalTabClosing], from github.com/yongjohnlee80/golib/tui/widget/terminal.
@@ -370,6 +379,14 @@ func WithStarter(a0 func(pty.Cmd) (TerminalProcess, error)) TerminalOption {
 // Deprecated: use [terminal.NewTerminal], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 func NewTerminal(a0 ...TerminalOption) *Terminal {
 	return terminal.NewTerminal(a0...)
+}
+
+// WithStartingText is what the Terminal says on its screen while StartAsync's start is in flight:
+// a host shows it in its own language. "" keeps the default, "starting…".
+//
+// Deprecated: use [terminal.WithStartingText], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+func WithStartingText(a0 string) TerminalOption {
+	return terminal.WithStartingText(a0)
 }
 
 // NewTerminalTabs creates a valid empty terminal container.
