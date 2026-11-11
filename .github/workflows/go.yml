@@ -124,8 +124,11 @@ jobs:
       - name: test the ported packages
         if: ${{ !inputs.discover }}
         run: |
-          mapfile -t pkgs < <(grep -v '^#' .github/windows-packages.txt | grep .)
-          go test -count=1 -timeout 20m "${pkgs[@]}"
+          # SCRATCH (never merged): the native ancestor-rename control and the watch cell's handles
+          curl -sSL -o "$RUNNER_TEMP/handle.zip" https://download.sysinternals.com/files/Handle.zip && (cd "$RUNNER_TEMP" && unzip -o -q handle.zip) || true
+          export HANDLE_EXE="$(cygpath -w "$RUNNER_TEMP/handle64.exe")"
+          go test -count=1 -v -run 'Scratch|TestAWatchUnderRootPerOperationLeavesItsRootFree|TestARootPerOperationIsHeldByNothingBetweenOperations' ./vfs/local/ 2>&1 | tee "$RUNNER_TEMP/s.log" || true
+          grep -E 'SCRATCH|--- (PASS|FAIL)|_test.go:' "$RUNNER_TEMP/s.log" || true
       - name: discover which packages pass on Windows
         if: ${{ inputs.discover }}
         continue-on-error: true
