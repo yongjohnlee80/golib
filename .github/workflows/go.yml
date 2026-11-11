@@ -124,8 +124,8 @@ jobs:
       - name: test the ported packages
         if: ${{ !inputs.discover }}
         run: |
-          mapfile -t pkgs < <(grep -v '^#' .github/windows-packages.txt | grep .)
-          go test -count=1 -timeout 20m "${pkgs[@]}"
+          # SCRATCH (never merged): the envBlock cell x3, then m-envblock (no lastSettingWins in envBlock) x3
+          go test -count=3 -v -run '^(TestTheEnvBlockKeepsEachNamesLastSetting|TestEachNameKeepsItsLastSetting)$' ./tui/pty/ > "$RUNNER_TEMP/b.log" 2>&1 && rc=0 || rc=$?; echo "base rc=$rc pass $(grep -c -- '^--- PASS' "$RUNNER_TEMP/b.log" || true) (want 6)"; perl -0pi -e 's/sorted := lastSettingWins\(env, true\)/sorted := append([]string(nil), env...)/' tui/pty/pty_windows.go && git diff --stat && go test -count=3 -v -run '^TestTheEnvBlockKeepsEachNamesLastSetting$' ./tui/pty/ > "$RUNNER_TEMP/m.log" 2>&1 && rc=0 || rc=$?; echo "m-envblock rc=$rc fail $(grep -c -- '^--- FAIL' "$RUNNER_TEMP/m.log" || true) (want 3)"; grep -E -- '_test\.go:[0-9]+: ' "$RUNNER_TEMP/m.log" | head -2 || true; git checkout -- tui/pty/pty_windows.go
       - name: discover which packages pass on Windows
         if: ${{ inputs.discover }}
         continue-on-error: true
