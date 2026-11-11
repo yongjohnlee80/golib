@@ -21,7 +21,7 @@ const titleAndShape = `import tui 1.0
 Flex {
   direction: Tui.Vertical
   TitleBar { title: "AutoDoc"; Text { text: "synced" } }
-  Shape { shape: Shape.Ellipse; fillColor: "#4080c0"; width: 5; height: 4 }
+  Shape { shape: Shape.Ellipse; fillColor: "#4080c0"; width: 5; height: 4; acceptsPointer: true }
 }`
 
 // The gui types are sound QML: every property and enum they declare checks.
