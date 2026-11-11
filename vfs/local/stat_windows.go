@@ -46,11 +46,16 @@ func withHandle(fi os.FileInfo, f *os.File) os.FileInfo {
 // lstat is the root's Lstat, with the entry's handle attributes for a file or a directory. A
 // symlink is reported as it is, its own: the handle would be its target's.
 func (f *FS) lstat(name string) (os.FileInfo, error) {
-	fi, err := f.root.Lstat(name)
+	r, release, err := f.useRoot()
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	fi, err := r.Lstat(name)
 	if err != nil || fi.Mode()&os.ModeSymlink != 0 {
 		return fi, err
 	}
-	file, err := f.root.Open(name)
+	file, err := r.Open(name)
 	if err != nil {
 		return fi, nil // the attributes stand without the handle's
 	}

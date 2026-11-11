@@ -127,7 +127,12 @@ func (w *watch) addDir(rel string) (int, error) {
 	if err := fault("addwatch", rel); err != nil {
 		return -1, err
 	}
-	d, err := w.f.root.Open(rel)
+	r, release, err := w.f.useRoot()
+	if err != nil {
+		return -1, err
+	}
+	d, err := r.Open(rel)
+	release()
 	if err != nil {
 		return -1, err
 	}
@@ -190,7 +195,12 @@ func (w *watch) list(rel string) ([]fs.DirEntry, error) {
 	if err := fault("readdir", rel); err != nil {
 		return nil, err
 	}
-	d, err := w.f.root.Open(rel)
+	r, release, err := w.f.useRoot()
+	if err != nil {
+		return nil, err
+	}
+	d, err := r.Open(rel)
+	release()
 	if err != nil {
 		return nil, err
 	}

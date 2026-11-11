@@ -33,8 +33,8 @@ var (
 // [vfs.Watcher] on Linux (inotify), on macOS built with cgo (FSEvents) and on Windows (ReadDirectoryChangesW). Conditions are exact among callers of one FS; a write by another process that
 // lands between the check and the commit is overwritten.
 type FS struct {
-	root    *os.Root
-	absRoot string // absolute path of the root at New, for messages only
+	root    *os.Root // held from New to Close; nil with RootPerOperation, each operation opens its own
+	absRoot string   // absolute path of the root at New: for messages, and with RootPerOperation the path each operation opens
 	log     logger.Logger
 	locks   pathLocks
 
@@ -44,7 +44,8 @@ type FS struct {
 }
 
 type config struct {
-	log logger.Logger
+	log   logger.Logger
+	perOp bool
 }
 
 // Option configures [New].
@@ -52,6 +53,16 @@ type Option func(*config)
 
 // WithLogger sets the logger for the driver's diagnostics. The default discards everything.
 func WithLogger(l logger.Logger) Option { return func(c *config) { c.log = l } }
+
+// RootPerOperation opens the root for each operation and closes it after, instead of holding it from
+// New to Close: nothing holds the directory between operations, so it can be removed or renamed
+// meanwhile (on Windows a directory an open handle holds can be neither). An operation keeps one
+// root for its whole length: a write's from its temporary file to its commit, a watch's setup until
+// its own handle is open. Confinement is the same: every name still resolves through an os.Root.
+// Between operations the root is whatever directory is at its path: one moved away is no longer
+// reached, and one put in its place is. A watch stays on the directory it was set up on, and ends,
+// as it does without this option, when that directory goes.
+func RootPerOperation() Option { return func(c *config) { c.perOp = true } }
 
 // New opens dir as the root of a filesystem. dir must be an existing directory.
 func New(dir string, opts ...Option) (*FS, error) {
@@ -72,7 +83,24 @@ func New(dir string, opts ...Option) (*FS, error) {
 	if err != nil {
 		return nil, err
 	}
+	if cfg.perOp {
+		_ = root.Close() // dir opens as a root: each operation opens it again (RootPerOperation)
+		root = nil
+	}
 	return &FS{root: root, absRoot: abs, log: cfg.log, done: make(chan struct{})}, nil
+}
+
+// useRoot is the root for one operation, and its release: the root held since New, or with
+// RootPerOperation one opened for this operation, which release closes.
+func (f *FS) useRoot() (*os.Root, func(), error) {
+	if f.root != nil {
+		return f.root, func() {}, nil
+	}
+	r, err := os.OpenRoot(f.absRoot)
+	if err != nil {
+		return nil, nil, err
+	}
+	return r, func() { _ = r.Close() }, nil
 }
 
 var (
@@ -145,7 +173,12 @@ func (f *FS) ReadDir(ctx context.Context, name string) ([]vfs.FileInfo, error) {
 		return nil, err
 	}
 	defer f.leave()
-	d, err := f.root.Open(name)
+	r, release, err := f.useRoot()
+	if err != nil {
+		return nil, err
+	}
+	d, err := r.Open(name)
+	release() // the directory opened stays open, its listing its own
 	if err != nil {
 		return nil, err
 	}
@@ -185,7 +218,12 @@ func (f *FS) Open(ctx context.Context, name string, offset int64) (io.ReadCloser
 	}
 	// readFlags (sys_unix_flags.go, sys_windows.go): a FIFO is refused below without waiting for a
 	// writer. The file opened is the one checked: no path is looked up twice.
-	file, err := f.root.OpenFile(name, readFlags, 0)
+	r, release, err := f.useRoot()
+	if err != nil {
+		return nil, err
+	}
+	file, err := r.OpenFile(name, readFlags, 0)
+	release() // the file opened stays open
 	if err != nil {
 		return nil, err
 	}
@@ -220,7 +258,12 @@ func (f *FS) MkdirAll(ctx context.Context, name string) error {
 	if name == "." {
 		return nil
 	}
-	return f.root.MkdirAll(name, 0o755)
+	r, release, err := f.useRoot()
+	if err != nil {
+		return err
+	}
+	defer release()
+	return r.MkdirAll(name, 0o755)
 }
 
 // Remove deletes the file, symlink or empty directory at name.
@@ -243,7 +286,12 @@ func (f *FS) remove(ctx context.Context, name string, ifVersion bool, want vfs.V
 			return err
 		}
 	}
-	return f.root.Remove(name) // unlinkat: a symlink goes, its target stays
+	r, release, err := f.useRoot()
+	if err != nil {
+		return err
+	}
+	defer release()
+	return r.Remove(name) // unlinkat: a symlink goes, its target stays
 }
 
 // checkVersion fails with a *vfs.ConflictError unless name's current version is want.
@@ -270,7 +318,12 @@ func (f *FS) RemoveAll(ctx context.Context, name string) error {
 	defer f.leave()
 	unlock := f.locks.lock(name)
 	defer unlock()
-	return f.root.RemoveAll(name)
+	r, release, err := f.useRoot()
+	if err != nil {
+		return err
+	}
+	defer release()
+	return r.RemoveAll(name)
 }
 
 // Close releases the root and ends every watch. It waits for operations in flight; later calls fail
@@ -283,5 +336,8 @@ func (f *FS) Close() error {
 	}
 	f.closed = true
 	close(f.done)
+	if f.root == nil {
+		return nil // RootPerOperation: nothing held
+	}
 	return f.root.Close()
 }
