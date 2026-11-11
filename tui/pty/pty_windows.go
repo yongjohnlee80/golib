@@ -182,9 +182,11 @@ func (p *PTY) spawn(path string, c Cmd) error {
 }
 
 // envBlock is env as CreateProcess takes it: NAME=value entries, each ended by a NUL, sorted by name
-// case-insensitively as Windows keeps them, the block ended by one more NUL.
+// case-insensitively as Windows keeps them, the block ended by one more NUL. A name set more than
+// once keeps its last setting alone (lastSettingWins): Windows reads the first of a name in the
+// block, so a caller's own setting after the inherited environment would otherwise lose to it.
 func envBlock(env []string) []uint16 {
-	sorted := append([]string(nil), env...)
+	sorted := lastSettingWins(env, true)
 	sort.SliceStable(sorted, func(i, j int) bool { return strings.ToUpper(sorted[i]) < strings.ToUpper(sorted[j]) })
 	var b []uint16
 	for _, kv := range sorted {
