@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -140,25 +139,6 @@ func (f *FS) newWinWatch(r *os.Root, dir string, cfg vfs.WatchConfig) (*winWatch
 		ov:  windows.Overlapped{HEvent: ev},
 		buf: make([]byte, winNotifyBuffer),
 	}, nil
-}
-
-// presence lstats rel through the jail: a probe of its own, through a root of its own.
-func (f *FS) presence(rel string) presence {
-	r, release, err := f.useRoot()
-	if err != nil {
-		return unknown
-	}
-	defer release()
-	st, err := f.lstat(r, rel)
-	switch {
-	case err == nil && st.IsDir():
-		return presentDir
-	case err == nil:
-		return presentFile
-	case errors.Is(err, fs.ErrNotExist):
-		return absent
-	}
-	return unknown
 }
 
 // rootDue is rootHere when winRootCheck has passed since the last check, else true. A directory
