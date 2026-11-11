@@ -52,6 +52,8 @@ func TestTheFacadeForwardsTerminalVars(t *testing.T) {
 		"TermSearchBackspace":          {widget.TermSearchBackspace, terminal.TermSearchBackspace},
 		"ErrTerminalSignalUnsupported": {widget.ErrTerminalSignalUnsupported, terminal.ErrTerminalSignalUnsupported},
 		"ErrTerminalShutdown":          {widget.ErrTerminalShutdown, terminal.ErrTerminalShutdown},
+		"ErrTerminalStartCancelled":    {widget.ErrTerminalStartCancelled, terminal.ErrTerminalStartCancelled},
+		"ErrTerminalStartStillOut":     {widget.ErrTerminalStartStillOut, terminal.ErrTerminalStartStillOut},
 		"ErrTerminalTabUnknown":        {widget.ErrTerminalTabUnknown, terminal.ErrTerminalTabUnknown},
 		"ErrTerminalTabClosing":        {widget.ErrTerminalTabClosing, terminal.ErrTerminalTabClosing},
 		"ErrTerminalTabsUnmounted":     {widget.ErrTerminalTabsUnmounted, terminal.ErrTerminalTabsUnmounted},

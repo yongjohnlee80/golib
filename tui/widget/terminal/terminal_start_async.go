@@ -17,7 +17,7 @@ import (
 var ErrTerminalStartCancelled = errs.Sentinel(errs.ErrPrecondition, "terminal start cancelled")
 
 // ErrTerminalStartStillOut is a shutdown that gave up waiting for a start in flight
-// (startOutGrace): its spawn had not returned. The program it spawns is still closed when it does.
+// (five seconds): its spawn had not returned. The program it spawns is still closed when it does.
 var ErrTerminalStartStillOut = errs.Sentinel(errs.ErrTimeout, "terminal start still in flight at shutdown")
 
 // startOutGrace bounds how long a shutdown waits for a start in flight: a spawn that never returns
