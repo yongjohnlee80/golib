@@ -74,6 +74,9 @@ func (s *heldStarter) closedOnce(t *testing.T) {
 			}
 			return
 		}
+		if n > 1 {
+			t.Fatalf("the late program was closed %d times, want once", n)
+		}
 		if time.Now().After(deadline) {
 			t.Fatalf("the late program was never closed (closes %d)", n)
 		}
