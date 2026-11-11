@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -53,14 +54,19 @@ func (f *FS) Watch(ctx context.Context, dir string, opts ...vfs.WatchOption) (<-
 		return nil, err
 	}
 	defer f.leave()
-	st, err := f.lstat(dir)
+	r, release, err := f.useRoot() // one root for the watch's setup; the watch keeps its own hold
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	st, err := f.lstat(r, dir)
 	if err != nil {
 		return nil, err
 	}
 	if !st.IsDir() {
 		return nil, &fs.PathError{Op: "watch", Path: dir, Err: errNotDir}
 	}
-	w, err := f.newWinWatch(dir, cfg)
+	w, err := f.newWinWatch(r, dir, cfg)
 	if err != nil {
 		return nil, &fs.PathError{Op: "watch", Path: dir, Err: err}
 	}
@@ -95,13 +101,8 @@ type winWatch struct {
 // that handle is opened again relative to itself (NtCreateFile with an empty name, as ReOpenFile
 // does) for listing and overlapped I/O: no path is looked up after the jail's, so a directory swapped
 // for a junction in between cannot move the watch outside.
-func (f *FS) newWinWatch(dir string, cfg vfs.WatchConfig) (*winWatch, error) {
-	r, release, err := f.useRoot()
-	if err != nil {
-		return nil, err
-	}
-	d, err := r.Open(dir)
-	release() // the directory's handle, reopened below by handle, is all the watch keeps
+func (f *FS) newWinWatch(r *os.Root, dir string, cfg vfs.WatchConfig) (*winWatch, error) {
+	d, err := r.Open(dir) // through the setup's root; the handle reopened below is all the watch keeps
 	if err != nil {
 		return nil, err
 	}
@@ -141,9 +142,14 @@ func (f *FS) newWinWatch(dir string, cfg vfs.WatchConfig) (*winWatch, error) {
 	}, nil
 }
 
-// presence lstats rel through the jail.
+// presence lstats rel through the jail: a probe of its own, through a root of its own.
 func (f *FS) presence(rel string) presence {
-	st, err := f.lstat(rel)
+	r, release, err := f.useRoot()
+	if err != nil {
+		return unknown
+	}
+	defer release()
+	st, err := f.lstat(r, rel)
 	switch {
 	case err == nil && st.IsDir():
 		return presentDir
@@ -169,7 +175,12 @@ func (w *winWatch) rootDue() bool {
 // pending its deletion), moved, or replaced, it is not.
 func (w *winWatch) rootHere() bool {
 	w.checked = time.Now()
-	fi, err := w.f.lstat(w.m.dir)
+	r, release, err := w.f.useRoot() // a probe of its own, through a root of its own
+	if err != nil {
+		return false
+	}
+	defer release()
+	fi, err := w.f.lstat(r, w.m.dir)
 	if err != nil {
 		return false
 	}

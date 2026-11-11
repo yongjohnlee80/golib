@@ -100,3 +100,123 @@ func TestARootPerOperationIsHeldByNothingBetweenOperations(t *testing.T) {
 		t.Fatalf("the directory put at the root's path: %q, %v", b, err)
 	}
 }
+
+// replaceRootAt, at the hook's point, moves the root at dir aside (to dir-old) and puts a
+// directory of files in its place, once: what a user's move and replacement do mid-operation.
+// Windows may refuse the move while the operation holds the root's handle: then nothing is
+// replaced, which confines the operation as well, and replaced reports false.
+func replaceRootAt(t *testing.T, point, dir string, files map[string]string) (replaced *bool) {
+	t.Helper()
+	replaced = new(bool)
+	t.Cleanup(func() { testHook = nil })
+	testHook = func(p string) error {
+		if p != point {
+			return nil
+		}
+		testHook = nil
+		if err := os.Rename(dir, dir+"-old"); err != nil {
+			t.Logf("the root can't be moved while the operation holds it (%v): nothing replaced", err)
+			return nil
+		}
+		for name, body := range files {
+			full := filepath.Join(dir, filepath.FromSlash(name))
+			if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(full, []byte(body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		*replaced = true
+		return nil
+	}
+	return replaced
+}
+
+// rootDir is a fresh root directory, root, under a temporary folder of t's.
+func rootDir(t *testing.T) string {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "root")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// A write under RootPerOperation goes through one root from its condition to its readback: the
+// root replaced between its temporary file and its commit, the write lands in the root it began in
+// (now moved aside), and the file it answers is the one it wrote, never the replacement's (the
+// mutant: the readback through a root opened again).
+func TestAWriteKeepsItsRootWhenTheRootIsReplaced(t *testing.T) {
+	dir := rootDir(t)
+	f := newPerOp(t, dir)
+	replaced := replaceRootAt(t, "precommit", dir, map[string]string{"a.md": "replacement"})
+	fi, err := f.WriteFile(bg, "a.md", strings.NewReader("new"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Size != 3 {
+		t.Errorf("the write answered a file of %d bytes, want its own 3", fi.Size)
+	}
+	if !*replaced {
+		return
+	}
+	if b, err := os.ReadFile(filepath.Join(dir+"-old", "a.md")); err != nil || string(b) != "new" {
+		t.Errorf("the root the write began in holds %q, %v; want the write", b, err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "a.md")); string(b) != "replacement" {
+		t.Errorf("the replacement holds %q; want it untouched", b)
+	}
+}
+
+// A rename across directories under RootPerOperation pins both parents through one root: the root
+// replaced between the pins and the commit, the file moves within the root it began in, and the
+// replacement is untouched (the mutant: the destination pinned through a root opened again).
+func TestARenameKeepsItsRootWhenTheRootIsReplaced(t *testing.T) {
+	dir := rootDir(t)
+	f := newPerOp(t, dir)
+	for _, d := range []string{"from", "to"} {
+		if err := f.MkdirAll(bg, d); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mustWrite(t, f, "from/a.md", "moved")
+	replaced := replaceRootAt(t, "prerename", dir, map[string]string{"from/a.md": "replacement", "to/keep": ""})
+	if err := f.Rename(bg, "from/a.md", "to/a.md"); err != nil {
+		t.Fatal(err)
+	}
+	if !*replaced {
+		return
+	}
+	if b, err := os.ReadFile(filepath.Join(dir+"-old", "to", "a.md")); err != nil || string(b) != "moved" {
+		t.Errorf("the root the rename began in: to/a.md %q, %v; want the file moved", b, err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "to", "a.md")); !os.IsNotExist(err) {
+		t.Errorf("the replacement gained to/a.md (%v); want it untouched", err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "from", "a.md")); string(b) != "replacement" {
+		t.Errorf("the replacement's from/a.md is %q; want it untouched", b)
+	}
+}
+
+// A conditional removal under RootPerOperation checks and removes through one root: the root
+// replaced between the check and the removal, the entry checked is the one removed, and the
+// replacement's entry of that name stays (the mutant: the removal through a root opened again).
+func TestAConditionalRemoveKeepsItsRootWhenTheRootIsReplaced(t *testing.T) {
+	dir := rootDir(t)
+	f := newPerOp(t, dir)
+	fi := mustWrite(t, f, "a.md", "checked")
+	replaced := replaceRootAt(t, "preremove", dir, map[string]string{"a.md": "replacement"})
+	if err := f.RemoveIf(bg, "a.md", fi.Version); err != nil {
+		t.Fatal(err)
+	}
+	if !*replaced {
+		return
+	}
+	if _, err := os.Stat(filepath.Join(dir+"-old", "a.md")); !os.IsNotExist(err) {
+		t.Errorf("the entry checked is still there (%v); want it removed", err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "a.md")); string(b) != "replacement" {
+		t.Errorf("the replacement's a.md is %q; want it untouched", b)
+	}
+}

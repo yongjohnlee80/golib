@@ -45,12 +45,7 @@ func withHandle(fi os.FileInfo, f *os.File) os.FileInfo {
 
 // lstat is the root's Lstat, with the entry's handle attributes for a file or a directory. A
 // symlink is reported as it is, its own: the handle would be its target's.
-func (f *FS) lstat(name string) (os.FileInfo, error) {
-	r, release, err := f.useRoot()
-	if err != nil {
-		return nil, err
-	}
-	defer release()
+func (f *FS) lstat(r *os.Root, name string) (os.FileInfo, error) {
 	fi, err := r.Lstat(name)
 	if err != nil || fi.Mode()&os.ModeSymlink != 0 {
 		return fi, err
@@ -75,4 +70,6 @@ func fileStat(file *os.File) (os.FileInfo, error) {
 // entryInfo is a listed entry's FileInfo, as Stat gives it: a listing carries no file index or
 // change time, so the entry is stat'ed through its handle, and the version ReadDir reports is the
 // one Stat and a conditional write compare against.
-func (f *FS) entryInfo(name string, _ fs.DirEntry) (os.FileInfo, error) { return f.lstat(name) }
+func (f *FS) entryInfo(r *os.Root, name string, _ fs.DirEntry) (os.FileInfo, error) {
+	return f.lstat(r, name)
+}
