@@ -175,25 +175,6 @@ func (f *FS) canonical(r *os.Root, dir string) (string, error) {
 	return C.GoString((*C.char)(unsafe.Pointer(&buf[0]))), nil
 }
 
-// presence lstats rel through the jail: a probe of its own, through a root of its own.
-func (f *FS) presence(rel string) presence {
-	r, release, err := f.useRoot()
-	if err != nil {
-		return unknown
-	}
-	defer release()
-	st, err := f.lstat(r, rel)
-	switch {
-	case err == nil && st.IsDir():
-		return presentDir
-	case err == nil:
-		return presentFile
-	case errors.Is(err, fs.ErrNotExist):
-		return absent
-	}
-	return unknown
-}
-
 // fseWatch is one Watch call: one FSEvents stream on a private serial queue. The callback appends to
 // pending under mu and signals wake; run maps and sends.
 type fseWatch struct {
