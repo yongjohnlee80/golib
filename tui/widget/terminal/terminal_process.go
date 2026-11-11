@@ -200,8 +200,12 @@ func (t *Terminal) ShutdownWithResult() *TerminalShutdownResult {
 	}
 	// a start in flight is cancelled and joined too, boundedly: a spawn that never returns must not
 	// hold the shutdown for ever (startOutGrace)
-	flights := t.cancelFlightsLocked()
-	t.shutdown = joinShutdowns(append([]*TerminalShutdownResult{joinTerminalCleanup(append([]*TerminalStopResult(nil), t.lifetimes...))}, flights...))
+	t.shutdown = joinTerminalCleanup(append([]*TerminalStopResult(nil), t.lifetimes...))
+	if flights := t.cancelFlightsLocked(); len(flights) > 0 {
+		// joined only when one is out: with none, the result is done as soon as its generations
+		// are (at once with none), which a never-started tab's removal counts on
+		t.shutdown = joinShutdowns(append([]*TerminalShutdownResult{t.shutdown}, flights...))
+	}
 	r := t.shutdown
 	t.procMu.Unlock()
 	return r
