@@ -471,6 +471,32 @@ func (t *TerminalTabs) Start(id TerminalTabID) error {
 	return err
 }
 
+// StartAsync starts an existing configured tab off the UI loop (Terminal.StartAsync): the loop
+// goes on drawing and taking keys while its program spawns. done, when not nil, runs on the loop
+// with the outcome: nil once it runs, the start's error, or why it never started (the tab unknown
+// or closing, the tabs unmounted, ErrTerminalStartCancelled when Stop or Remove overtook it).
+func (t *TerminalTabs) StartAsync(id TerminalTabID, done func(error)) {
+	answer := func(err error) {
+		if done != nil {
+			done(err)
+		}
+	}
+	e, err := t.openTab(id)
+	if err != nil {
+		answer(err)
+		return
+	}
+	if t.Context() == nil || !t.Context().Mounted() {
+		answer(ErrTerminalTabsUnmounted)
+		return
+	}
+	e.terminal.StartAsync(func(err error) {
+		t.changed()
+		answer(err)
+	})
+	t.changed()
+}
+
 // SendText queues literal text for this exact runtime identity. Closing,
 // removed and nonrunning targets reject the entire send without side effects.
 func (t *TerminalTabs) SendText(id TerminalTabID, text string) error {

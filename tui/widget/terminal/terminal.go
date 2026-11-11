@@ -64,6 +64,8 @@ type terminalConfig struct {
 	onTitle     func(string)
 	onMode      func(TerminalMode)
 	start       func(pty.Cmd) (TerminalProcess, error)
+	// startingText is what StartAsync's start in flight says on the screen (WithStartingText)
+	startingText string
 	// look set at construction (WithMinimumContrast, WithCursorColor); the setters change it later
 	minContrast   float64
 	cursorColor   style.Color
@@ -189,8 +191,16 @@ type Terminal struct {
 	exited    bool
 	exitCode  int
 	pending   bool // Start was asked before the mount
-	alive     bool // mounted
-	watching  bool // a goroutine ends the program with the App
+	// pendingDone are StartAsync's done callbacks for the start pending the mount
+	pendingDone []func(error)
+	// starting is StartAsync's start in flight, nil when none is; async says the last start was
+	// asked off the loop, so a retry (the mount, Enter or i) starts that way too
+	starting *startFlight
+	async    bool
+	// flights are the starts in flight a shutdown joins (guarded by procMu)
+	flights  []*startFlight
+	alive    bool // mounted
+	watching bool // a goroutine ends the program with the App
 
 	mode   TerminalMode
 	prefix bool // Ctrl-\ is pending
@@ -263,7 +273,7 @@ func (t *Terminal) Init(ctx *tui.Context) {
 	}
 	if t.pending {
 		t.pending = false
-		_ = t.Start() // a failure shows on the screen, and Enter retries
+		t.retryStart() // a failure shows on the screen, and Enter retries
 	}
 }
 
