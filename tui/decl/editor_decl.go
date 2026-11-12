@@ -133,7 +133,7 @@ type (
 	// titleModeSwitcher is an editor whose switch can sit on its frame's title row (the cell
 	// Editor); one without (a window's, whose switch is on its title bar) takes modeSwitch as a bool
 	titleModeSwitcher interface{ SetModeSwitchInTitle(bool) }
-	// frameTabsShower is an editor whose tabs can sit on its frame's title row (the cell Editor);
+	// frameTabsShower is an editor whose tabs can sit on its frame's first row (the cell Editor);
 	// one without (a window's, whose tabs are on its title bar) takes frameTabs and ignores it
 	frameTabsShower interface{ SetTabsInFrame(bool) }
 )
@@ -265,11 +265,10 @@ func EditorViewSetters() map[string]Setter {
 			}
 			e.SetModeSwitch(at != "")
 		}),
-		// golib's: the host's tabs (Editor.Tabs: its buffers, say) on the Editor's Frame's bottom
-		// border, at its left, as a window's editor has them on its title bar; the title row keeps
-		// the title and the switch. The Frame is the one modeSwitch's "title" names. A strip the host
-		// gives no tabs takes no room. A window's editor has its tabs on its title bar whatever this
-		// says.
+		// golib's: the host's tabs (Editor.Tabs: its buffers, say) on the first row inside the
+		// Editor's Frame, under its title row, as a panel of terminals carries its tabs; the title
+		// row keeps the title and the switch. The Frame is the one modeSwitch's "title" names. A
+		// window's editor has its tabs on its title bar whatever this says.
 		"frameTabs": setter("an Editor", boolOf, func(e modeSwitcher, on bool) {
 			if t, ok := e.(frameTabsShower); ok {
 				t.SetTabsInFrame(on)

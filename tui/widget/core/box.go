@@ -127,6 +127,8 @@ type Box struct {
 	// columns the last layout gave it, 0 while it takes none (hidden, or no room).
 	lead  tui.Component
 	leadW int
+	// head is the control on the first row inside the frame (SetHeaderSlot), nil for none.
+	head tui.Component
 }
 
 // SetMaximumWidth caps the box at w columns, border included, centred in what it is given — CSS's
@@ -328,6 +330,30 @@ func (x *Box) SetTitleLeadSlot(c tui.Component) {
 // TitleLeadSlot is the control at the title row's left, nil for none.
 func (x *Box) TitleLeadSlot() tui.Component { return x.lead }
 
+// SetHeaderSlot puts c on the first row inside the box's frame, under the title row and over the
+// content child, which is a row shorter for it: a row of tabs, say, as a panel of terminals carries
+// its tabs on its first row, the title row keeping the title and its slot whole. c is laid the
+// row's whole width, one row tall (a tab strip narrower than its tabs scrolls them in it). One that
+// is hidden takes no row, and the child has the box's whole inside; so does a box with no row
+// inside its frame to spare. c is a child, mounted, hit-tested and repainted as any, and its rect
+// never meets the content child's. nil removes it.
+func (x *Box) SetHeaderSlot(c tui.Component) {
+	if c == x.head {
+		return
+	}
+	if old := x.head; old != nil && x.ctx != nil {
+		x.ctx.Unmount(old)
+	}
+	x.head = c
+	if c != nil && x.ctx != nil {
+		x.ctx.Mount(c)
+	}
+	x.RequestLayout()
+}
+
+// HeaderSlot is the control on the first row inside the frame, nil for none.
+func (x *Box) HeaderSlot() tui.Component { return x.head }
+
 // SetBottomSlot puts c on the box's bottom border row, at its left, a border cell after the
 // corner: a row of tabs, say, kept off the title row, which keeps the title and its slot whole. It
 // is one row tall at its own width, given the row's room up to the status text (SetStatus) and a
@@ -384,6 +410,9 @@ func (x *Box) Init(ctx *tui.Context) {
 	if x.lead != nil {
 		ctx.Mount(x.lead)
 	}
+	if x.head != nil {
+		ctx.Mount(x.head)
+	}
 }
 
 // AcceptsFocus implements tui.Focusable per WithFocusable.
@@ -436,6 +465,10 @@ func (x *Box) Remove(child tui.Component) {
 		x.SetTitleLeadSlot(nil)
 		return
 	}
+	if child != nil && child == x.head {
+		x.SetHeaderSlot(nil)
+		return
+	}
 	if child == nil || x.child != child {
 		return
 	}
@@ -445,8 +478,8 @@ func (x *Box) Remove(child tui.Component) {
 	}
 }
 
-// Children enumerates the content child, then the title slot, the bottom slot and the title row's
-// lead slot, each if any.
+// Children enumerates the content child, then the title slot, the bottom slot, the title row's lead
+// slot and the header slot, each if any.
 func (x *Box) Children() iter.Seq[tui.Component] {
 	return func(yield func(tui.Component) bool) {
 		if x.child != nil && !yield(x.child) {
@@ -458,8 +491,11 @@ func (x *Box) Children() iter.Seq[tui.Component] {
 		if x.foot != nil && !yield(x.foot) {
 			return
 		}
-		if x.lead != nil {
-			yield(x.lead)
+		if x.lead != nil && !yield(x.lead) {
+			return
+		}
+		if x.head != nil {
+			yield(x.head)
 		}
 	}
 }
@@ -619,6 +655,7 @@ func (x *Box) layoutFrame(c tui.Constraints) (sz tui.Size, inL, inR int) {
 	fh := x.base.GetHorizontalFrameSize()
 	fv := x.base.GetVerticalFrameSize()
 	if x.child == nil {
+		x.placeHead(0, tui.Rect{}) // no child, no row over it
 		w := kit.BoundedMax(c.MaxW, max(c.MinW, fh))
 		h := kit.BoundedMax(c.MaxH, max(c.MinH, fv))
 		return c.Constrain(tui.Size{W: w, H: h}), 0, 0
@@ -626,24 +663,54 @@ func (x *Box) layoutFrame(c tui.Constraints) (sz tui.Size, inL, inR int) {
 	// The insets Render centres a capped box by are committed after layout, so a measure moves
 	// nothing on screen.
 	defer func() { x.ctx.AfterLayout(boxCommitKey, func() { x.inL, x.inR = inL, inR }) }()
+	hr := x.headerRows(subFrame(c.MaxH, fv)) // the header slot's row, over the child
+	ft, _, _, fl := x.frame()
 	if x.maxW > 0 && c.MaxW != tui.Unbounded && c.MaxW > x.maxW {
 		// capped: the box is maxW wide, centred; it keeps what it was given, so nothing beside it moves
 		extra := c.MaxW - x.maxW
 		inL, inR = extra/2, extra-extra/2
-		cc := tui.Constraints{MinW: x.maxW - fh, MaxW: x.maxW - fh, MinH: max(c.MinH-fv, 0), MaxH: subFrame(c.MaxH, fv)}
+		cc := tui.Constraints{MinW: x.maxW - fh, MaxW: x.maxW - fh, MinH: max(c.MinH-fv-hr, 0), MaxH: subFrame(c.MaxH, fv+hr)}
 		csz := x.ctx.LayoutChild(x.child, cc)
-		ft, _, _, fl := x.frame()
-		x.ctx.PlaceChild(x.child, tui.Rect{X: inL + fl, Y: ft, W: csz.W, H: csz.H})
-		return c.Constrain(tui.Size{W: c.MaxW, H: csz.H + fv}), inL, inR
+		x.ctx.PlaceChild(x.child, tui.Rect{X: inL + fl, Y: ft + hr, W: csz.W, H: csz.H})
+		x.placeHead(hr, tui.Rect{X: inL + fl, Y: ft, W: csz.W, H: 1})
+		return c.Constrain(tui.Size{W: c.MaxW, H: csz.H + fv + hr}), inL, inR
 	}
 	cc := tui.Constraints{
 		MinW: max(c.MinW-fh, 0), MaxW: subFrame(c.MaxW, fh),
-		MinH: max(c.MinH-fv, 0), MaxH: subFrame(c.MaxH, fv),
+		MinH: max(c.MinH-fv-hr, 0), MaxH: subFrame(c.MaxH, fv+hr),
 	}
 	csz := x.ctx.LayoutChild(x.child, cc)
-	ft, _, _, fl := x.frame()
-	x.ctx.PlaceChild(x.child, tui.Rect{X: fl, Y: ft, W: csz.W, H: csz.H})
-	return c.Constrain(tui.Size{W: csz.W + fh, H: csz.H + fv}), inL, inR
+	x.ctx.PlaceChild(x.child, tui.Rect{X: fl, Y: ft + hr, W: csz.W, H: csz.H})
+	x.placeHead(hr, tui.Rect{X: fl, Y: ft, W: csz.W, H: 1})
+	return c.Constrain(tui.Size{W: csz.W + fh, H: csz.H + fv + hr}), inL, inR
+}
+
+// headerRows is the rows the header slot takes over the content child, in a box with inner rows
+// inside its frame (tui.Unbounded for no bound): one while it is set and shown and there is a row
+// for it, none otherwise.
+func (x *Box) headerRows(inner int) int {
+	if x.head == nil || inner < 1 {
+		return 0
+	}
+	if h, ok := x.head.(tui.Hideable); ok && !h.Visible() {
+		return 0
+	}
+	return 1
+}
+
+// placeHead lays the header slot out at r, the first row inside the frame and as wide as the
+// child, while it takes its row (hr, headerRows), and places it nowhere (a zero rect: never hit)
+// while it takes none.
+func (x *Box) placeHead(hr int, r tui.Rect) {
+	if x.head == nil {
+		return
+	}
+	if hr == 0 || r.W <= 0 {
+		x.ctx.PlaceChild(x.head, tui.Rect{})
+		return
+	}
+	x.ctx.LayoutChild(x.head, tui.Tight(tui.Size{W: r.W, H: 1}))
+	x.ctx.PlaceChild(x.head, r)
 }
 
 // HandleEvent consumes nothing (bubbling continues); it only observes
