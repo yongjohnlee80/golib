@@ -72,8 +72,9 @@ func TestANarrowTitleRowKeepsTheSwitchWhole(t *testing.T) {
 	if sw != 34-2-editor.ModeSwitchWidth {
 		t.Fatalf("the title row %q; want the switch whole at its right (column %d), at %d", top, 34-2-editor.ModeSwitchWidth, sw)
 	}
-	if a := col(h, 0, "alpha"); a < 2 || a >= sw {
-		t.Fatalf("the title row %q; want the active tab at the row's left, before the switch", top)
+	// the strip scrolls in the room left: its arrows at the row's left, before the switch
+	if l, r := col(h, 0, "←"), col(h, 0, "→"); l < 2 || r <= l || r >= sw {
+		t.Fatalf("the title row %q; want the strip scrolling (← … →) at the row's left, before the switch", top)
 	}
 }
 
