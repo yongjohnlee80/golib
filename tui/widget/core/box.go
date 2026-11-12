@@ -335,7 +335,8 @@ func (x *Box) TitleLeadSlot() tui.Component { return x.lead }
 // its tabs on its first row, the title row keeping the title and its slot whole. c is laid the
 // row's whole width, one row tall (a tab strip narrower than its tabs scrolls them in it). One that
 // is hidden takes no row, and the child has the box's whole inside; so does a box with no row
-// inside its frame to spare. c is a child, mounted, hit-tested and repainted as any, and its rect
+// inside its frame at all. With one row inside, c takes it and the child gets none, as
+// TerminalTabs gives its strip its first row before its terminals. c is a child, mounted, hit-tested and repainted as any, and its rect
 // never meets the content child's. nil removes it.
 func (x *Box) SetHeaderSlot(c tui.Component) {
 	if c == x.head {
