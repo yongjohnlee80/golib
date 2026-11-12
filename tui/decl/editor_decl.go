@@ -133,8 +133,8 @@ type (
 	// titleModeSwitcher is an editor whose switch can sit on its frame's title row (the cell
 	// Editor); one without (a window's, whose switch is on its title bar) takes modeSwitch as a bool
 	titleModeSwitcher interface{ SetModeSwitchInTitle(bool) }
-	// frameTabsShower is an editor whose tabs can sit on its frame's bottom border (the cell
-	// Editor); one without (a window's, whose tabs are on its title bar) takes frameTabs and ignores it
+	// frameTabsShower is an editor whose tabs can sit on its frame's title row (the cell Editor);
+	// one without (a window's, whose tabs are on its title bar) takes frameTabs and ignores it
 	frameTabsShower interface{ SetTabsInFrame(bool) }
 )
 
