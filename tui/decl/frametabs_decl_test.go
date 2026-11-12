@@ -23,9 +23,10 @@ func withTabs(p *tuidecl.Program) error {
 	return nil
 }
 
-// An Editor's frameTabs puts its tabs on its Frame's bottom border, however deep the Editor sits;
-// the title row keeps the title and the switch as without them. Without it, no tabs are drawn.
-func TestAnEditorsFrameTabsSitOnItsFramesBottomBorder(t *testing.T) {
+// An Editor's frameTabs puts its tabs at its Frame's title row's left, however deep the Editor sits,
+// where a panel carries its tabs: the title follows them, the switch keeps the row's right, and the
+// bottom border is a plain border. Without it, no tabs are drawn.
+func TestAnEditorsFrameTabsSitAtItsFramesTitleRowsLeft(t *testing.T) {
 	const page = `Frame {
     title: "notes.csv"
     Flex {
@@ -47,11 +48,12 @@ func TestAnEditorsFrameTabsSitOnItsFramesBottomBorder(t *testing.T) {
 				bottom = row
 			}
 		}
-		if !strings.HasPrefix(r[0], "┌ notes.csv ") || !strings.Contains(r[0], sw) || strings.Contains(r[0], "alpha") {
-			t.Fatalf("row 0 %q; want the title and the switch, no tabs:\n%s", r[0], s)
+		a, b, title := strings.Index(r[0], "alpha"), strings.Index(r[0], "beta"), strings.Index(r[0], "notes.csv")
+		if !strings.HasPrefix(r[0], "┌─") || !(a > 0 && a < b && b < title) || !strings.Contains(r[0], sw) {
+			t.Fatalf("row 0 %q; want ┌─, the tabs, the title, then the switch:\n%s", r[0], s)
 		}
-		if a, b := strings.Index(bottom, "alpha"), strings.Index(bottom, "beta"); !strings.HasPrefix(bottom, "└─") || !(a > 0 && a < b) {
-			t.Fatalf("the bottom border %q; want └─, then the tabs:\n%s", bottom, s)
+		if strings.Contains(bottom, "alpha") || strings.Contains(bottom, "beta") {
+			t.Fatalf("the bottom border %q; want a plain border, the tabs on the title row:\n%s", bottom, s)
 		}
 	})
 	t.Run("off", func(t *testing.T) {

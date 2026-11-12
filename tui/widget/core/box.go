@@ -123,6 +123,10 @@ type Box struct {
 	// columns the last layout gave it, 0 while it is hidden.
 	foot  tui.Component
 	footW int
+	// lead is the control at the title row's left (SetTitleLeadSlot), nil for none; leadW is the
+	// columns the last layout gave it, 0 while it takes none (hidden, or no room).
+	lead  tui.Component
+	leadW int
 }
 
 // SetMaximumWidth caps the box at w columns, border included, centred in what it is given — CSS's
@@ -299,6 +303,31 @@ func (x *Box) SetTitleSlot(c tui.Component) {
 // TitleSlot is the control on the title row, nil for none.
 func (x *Box) TitleSlot() tui.Component { return x.slot }
 
+// SetTitleLeadSlot puts c on the box's top border row, at its left, a border cell after the
+// corner: a row of tabs, say, as a panel carries its tabs on its top border. The title follows it,
+// truncated to the room left, and the title slot (SetTitleSlot) keeps its place at the row's right.
+// c is one row tall, given the row's room up to the title slot and a border cell either side; one
+// wider than that gets that room (a tab strip scrolls in it), and one that takes no width (a strip
+// with no tabs, or hidden) takes no room, the title then where it always is. c is a child, mounted,
+// hit-tested and repainted as any, and its rect never meets the content child's. A box with no top
+// border hides it. nil removes it.
+func (x *Box) SetTitleLeadSlot(c tui.Component) {
+	if c == x.lead {
+		return
+	}
+	if old := x.lead; old != nil && x.ctx != nil {
+		x.ctx.Unmount(old)
+	}
+	x.lead = c
+	if c != nil && x.ctx != nil {
+		x.ctx.Mount(c)
+	}
+	x.RequestLayout()
+}
+
+// TitleLeadSlot is the control at the title row's left, nil for none.
+func (x *Box) TitleLeadSlot() tui.Component { return x.lead }
+
 // SetBottomSlot puts c on the box's bottom border row, at its left, a border cell after the
 // corner: a row of tabs, say, kept off the title row, which keeps the title and its slot whole. It
 // is one row tall at its own width, given the row's room up to the status text (SetStatus) and a
@@ -352,6 +381,9 @@ func (x *Box) Init(ctx *tui.Context) {
 	if x.foot != nil {
 		ctx.Mount(x.foot)
 	}
+	if x.lead != nil {
+		ctx.Mount(x.lead)
+	}
 }
 
 // AcceptsFocus implements tui.Focusable per WithFocusable.
@@ -400,6 +432,10 @@ func (x *Box) Remove(child tui.Component) {
 		x.SetBottomSlot(nil)
 		return
 	}
+	if child != nil && child == x.lead {
+		x.SetTitleLeadSlot(nil)
+		return
+	}
 	if child == nil || x.child != child {
 		return
 	}
@@ -409,7 +445,8 @@ func (x *Box) Remove(child tui.Component) {
 	}
 }
 
-// Children enumerates the content child, then the title slot, then the bottom slot, each if any.
+// Children enumerates the content child, then the title slot, the bottom slot and the title row's
+// lead slot, each if any.
 func (x *Box) Children() iter.Seq[tui.Component] {
 	return func(yield func(tui.Component) bool) {
 		if x.child != nil && !yield(x.child) {
@@ -418,8 +455,11 @@ func (x *Box) Children() iter.Seq[tui.Component] {
 		if x.slot != nil && !yield(x.slot) {
 			return
 		}
-		if x.foot != nil {
-			yield(x.foot)
+		if x.foot != nil && !yield(x.foot) {
+			return
+		}
+		if x.lead != nil {
+			yield(x.lead)
 		}
 	}
 }
@@ -465,17 +505,18 @@ const boxCommitKey tui.CommitKey = "widget.box"
 // border rows.
 func (x *Box) Layout(c tui.Constraints) tui.Size {
 	sz, inL, inR := x.layoutFrame(c)
-	x.placeSlot(sz.W, inL, inR)
+	sw := x.placeSlot(sz.W, inL, inR)
 	x.placeFoot(sz, inL, inR)
+	x.placeLead(sz.W, inL, inR, sw)
 	return sz
 }
 
 // placeSlot lays the title slot out on the top border row of a box w columns wide and places it,
 // or places it nowhere (a zero rect: never hit) while it doesn't fit; the width it took is
 // committed after layout, for Render to truncate the title by.
-func (x *Box) placeSlot(w, inL, inR int) {
+func (x *Box) placeSlot(w, inL, inR int) int {
 	if x.slot == nil {
-		return
+		return 0
 	}
 	mt, mr, _, ml := x.base.GetMargin()
 	bt, br, _, bl := borderEdgeSizes(x.base)
@@ -489,7 +530,7 @@ func (x *Box) placeSlot(w, inL, inR int) {
 	if sw <= 0 || inner < sw+4 {
 		x.ctx.PlaceChild(x.slot, tui.Rect{})
 		x.ctx.AfterLayout(boxSlotKey, func() { x.slotW = 0 })
-		return
+		return 0
 	}
 	at := bx + bl + inner - 1 - sw // a border cell between it and the corner
 	if x.titleAlign == style.AlignRight {
@@ -497,7 +538,44 @@ func (x *Box) placeSlot(w, inL, inR int) {
 	}
 	x.ctx.PlaceChild(x.slot, tui.Rect{X: at, Y: mt, W: sw, H: 1})
 	x.ctx.AfterLayout(boxSlotKey, func() { x.slotW = sw })
+	return sw
 }
+
+// placeLead lays the title row's lead slot out on the top border row of a box w columns wide, at
+// its left after a border cell, in the room the title slot (sw columns, 0 for none) leaves with a
+// border cell either side, and places it, or places it nowhere while it takes no width or has no
+// room; the width it took is committed after layout, for Render to start the title after. A
+// right-aligned title has its slot at the row's left: the lead follows it.
+func (x *Box) placeLead(w, inL, inR, sw int) {
+	if x.lead == nil {
+		return
+	}
+	mt, mr, _, ml := x.base.GetMargin()
+	bt, br, _, bl := borderEdgeSizes(x.base)
+	bx, bw := ml+inL, w-ml-mr-inL-inR
+	room := bw - bl - br - 2 // a border cell after the corner, and one before the other
+	at := bx + bl + 1
+	if sw > 0 {
+		room -= sw + 1
+		if x.titleAlign == style.AlignRight {
+			at += sw + 1
+		}
+	}
+	lw := 0
+	if bt == 1 && room > 0 {
+		lw = min(x.ctx.LayoutChild(x.lead, tui.Constraints{MaxW: room, MinH: 1, MaxH: 1}).W, room)
+	}
+	if lw <= 0 {
+		x.ctx.PlaceChild(x.lead, tui.Rect{})
+		x.ctx.AfterLayout(boxLeadKey, func() { x.leadW = 0 })
+		return
+	}
+	x.ctx.PlaceChild(x.lead, tui.Rect{X: at, Y: mt, W: lw, H: 1})
+	x.ctx.AfterLayout(boxLeadKey, func() { x.leadW = lw })
+}
+
+// boxLeadKey is the title row's lead slot's width commit (tui.Context.AfterLayout).
+const boxLeadKey tui.CommitKey = "widget.box.lead"
 
 // placeFoot lays the bottom slot out on the bottom border row of a box sz big, at its left, in the
 // room the status text leaves with a border cell either side, and places it, or places it nowhere
@@ -639,6 +717,10 @@ func (x *Box) Render(s tui.Surface) {
 		if x.titleAlign == style.AlignRight {
 			tx += x.slotW + 1
 		}
+	}
+	// the lead slot's columns, and the border cell after them, are its: the title follows them
+	if x.lead != nil && x.leadW > 0 {
+		tx, tw = tx+x.leadW+1, tw-x.leadW-1
 	}
 	if sl, ok := x.slot.(slotStyler); ok && x.slotW > 0 {
 		// the slot wears the title row's look: the title's colour on the row's, its own marks over

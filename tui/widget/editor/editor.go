@@ -209,7 +209,7 @@ type Editor struct {
 	swOn    bool
 	swTitle bool            // the switch is a frame's, on its title row (SetModeSwitchInTitle)
 	swSlot  *ModeSwitchSlot // the switch as a frame's title slot holds it (TitleSwitch)
-	// tabs is the host's strip for the frame's bottom border (Tabs, FrameTabs), made when first
+	// tabs is the host's strip for the frame's title row (Tabs, FrameTabs), made when first
 	// asked for; tabsFrame shows it there (SetTabsInFrame)
 	tabs      *core.TabStrip
 	tabsFrame bool
