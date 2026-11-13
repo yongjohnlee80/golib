@@ -86,13 +86,13 @@ func (e *Editor) renderText(s tui.Surface) {
 		return
 	}
 	w := e.wrapWidth()
-	p := &textPaint{e: e, s: s, hlf: e.beginHighlightFrame(), styledLn: -1, markedLn: -1}
+	p := &textPaint{e: e, s: s, hlf: e.beginHighlightFrame(), styledLn: -1, markedLn: -1, lookLn: -1}
 	defer finishHighlightFrame(p.hlf)
 	cellsOf := tabAware(s.StringWidth)
 	m := e.rowMap().measuring(cellsOf) // painted as the surface measures; wrapped to the Editor's width (w)
 	lineFill := func(y, ln int) {
 		// A line's own look covers its whole row, under its text (WithEditorLineStyle).
-		if ls, ok := e.lineLook(ln); ok {
+		if ls, ok := p.lineLook(ln); ok {
 			s.Fill(tui.Rect{X: 0, Y: y, W: w, H: 1}, " ", ls.Inherit(l.styles.Text))
 		}
 		// A line-wise highlight covers the WHOLE screen row (S2), text or
@@ -175,6 +175,19 @@ type textPaint struct {
 	styledLn   int
 	marked     int // the clusters of markedLn shown as indentation
 	markedLn   int
+	// look is lookLn's own look (WithEditorLineStyle), asked once per line a frame paints
+	look   style.Style
+	lookOk bool
+	lookLn int
+}
+
+// lineLook is line ln's own look, asked of the host once while the paint is on ln.
+func (p *textPaint) lineLook(ln int) (style.Style, bool) {
+	if ln != p.lookLn {
+		p.look, p.lookOk = p.e.lineLook(ln)
+		p.lookLn = ln
+	}
+	return p.look, p.lookOk
 }
 
 // style is the look of the cluster at (ln, col): the text's, its syntax style over that, and the
@@ -182,7 +195,7 @@ type textPaint struct {
 func (p *textPaint) style(ln, col int) style.Style {
 	e, c := p.e, p.e.core
 	st := e.cells.styles.Text
-	if ls, ok := e.lineLook(ln); ok {
+	if ls, ok := p.lineLook(ln); ok {
 		st = ls.Inherit(st)
 	}
 	if ln != p.styledLn {
