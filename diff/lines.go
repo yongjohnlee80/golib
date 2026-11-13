@@ -61,7 +61,7 @@ type Diff struct {
 func Lines(a, b []string, opts ...Options) Diff {
 	o := options(opts)
 	ids := intern(o, a, b)
-	d := &differ{a: ids[0], b: ids[1], deadline: time.Now().Add(o.Deadline)}
+	d := &differ{a: ids[0], b: ids[1], deadline: time.Now().Add(o.Deadline), now: time.Now}
 	if len(a)+len(b) > o.MaxLines {
 		d.coarse = true
 		d.trimmed(0, len(a), 0, len(b), func(a0, a1, b0, b1 int) {}) // the common ends only
@@ -128,7 +128,9 @@ type differ struct {
 	a, b     []int
 	matches  [][2]int // (i in a, j in b), increasing in both
 	deadline time.Time
+	now      func() time.Time // the clock the deadline is read on
 	coarse   bool
+	work     int // steps of the histogram search, for its bound
 }
 
 // maxChain is how often a line may occur in a region and still anchor it (git's histogram's
@@ -141,11 +143,14 @@ func (d *differ) region(a0, a1, b0, b1 int) {
 		if a0 == a1 || b0 == b1 {
 			return
 		}
-		if time.Now().After(d.deadline) {
+		if d.late() {
 			d.coarse = true // the region left is one block replaced
 			return
 		}
-		s, t, n, ok := d.anchor(a0, a1, b0, b1)
+		s, t, n, ok, late := d.anchor(a0, a1, b0, b1)
+		if late {
+			return // coarse: the region left is one block replaced
+		}
 		if !ok {
 			d.myers(a0, a1, b0, b1)
 			return
@@ -174,36 +179,73 @@ func (d *differ) trimmed(a0, a1, b0, b1 int, inner func(a0, a1, b0, b1 int)) {
 	}
 }
 
-// anchor is the run of equal lines the region splits at: the one whose line occurs least often in
-// a's region (at most maxChain times), the longest of those, as git's histogram diff chooses. ok
-// is false when no line of b's region occurs that rarely in a's.
-func (d *differ) anchor(a0, a1, b0, b1 int) (s, t, n int, ok bool) {
+// anchor is the run of equal lines the region splits at, as git's histogram diff chooses: the one
+// whose rarest line occurs least often in a's region (at most maxChain times), the longest of
+// those. ok is false when no line of b's region occurs that rarely in a's; late, that the deadline
+// passed while it looked, so the region is coarse.
+//
+// A run is expanded once: the lines of b it covers are passed over, so a long run of lines common
+// to both costs its length, not its length squared.
+func (d *differ) anchor(a0, a1, b0, b1 int) (s, t, n int, ok, late bool) {
 	where := map[int][]int{}
 	for i := a0; i < a1; i++ {
 		where[d.a[i]] = append(where[d.a[i]], i)
+		if d.tick() {
+			return 0, 0, 0, false, true
+		}
 	}
 	best := maxChain + 1
-	for j := b0; j < b1; j++ {
-		at := where[d.b[j]]
-		if len(at) == 0 || len(at) > best {
-			continue
+	for j := b0; j < b1; {
+		next := j + 1
+		if at := where[d.b[j]]; len(at) > 0 && len(at) <= best {
+			for _, i := range at {
+				rc := len(at) // the run's rarest line's count
+				ss, tt := i, j
+				for ss > a0 && tt > b0 && d.a[ss-1] == d.b[tt-1] {
+					ss, tt = ss-1, tt-1
+					rc = min(rc, len(where[d.a[ss]]))
+					if d.tick() {
+						return 0, 0, 0, false, true
+					}
+				}
+				e, f := i+1, j+1
+				for e < a1 && f < b1 && d.a[e] == d.b[f] {
+					rc = min(rc, len(where[d.a[e]]))
+					e, f = e+1, f+1
+					if d.tick() {
+						return 0, 0, 0, false, true
+					}
+				}
+				if rc < best || (rc == best && e-ss > n) {
+					s, t, n, best, ok = ss, tt, e-ss, rc, true
+				}
+				next = max(next, f)
+			}
 		}
-		for _, i := range at {
-			ss, tt := i, j
-			for ss > a0 && tt > b0 && d.a[ss-1] == d.b[tt-1] {
-				ss, tt = ss-1, tt-1
-			}
-			e, f := i+1, j+1
-			for e < a1 && f < b1 && d.a[e] == d.b[f] {
-				e, f = e+1, f+1
-			}
-			if len(at) < best || e-ss > n {
-				s, t, n, best, ok = ss, tt, e-ss, len(at), true
-			}
+		if d.tick() {
+			return 0, 0, 0, false, true
 		}
+		j = next
 	}
-	return s, t, n, ok
+	return s, t, n, ok, false
 }
+
+// tickEvery is how many steps of the histogram search pass between two looks at the clock.
+const tickEvery = 1024
+
+// tick counts one step of the histogram search, and every tickEvery steps reports whether the
+// deadline has passed (the diff is then coarse).
+func (d *differ) tick() bool {
+	d.work++
+	if d.work%tickEvery == 0 && d.late() {
+		d.coarse = true
+		return true
+	}
+	return false
+}
+
+// late is whether the deadline has passed.
+func (d *differ) late() bool { return d.now().After(d.deadline) }
 
 // myersBudget bounds Myers' trace (its copies of v, in ints): past it the region is coarse, so a
 // large region with no anchor never holds memory in proportion to its size times its distance.
@@ -218,7 +260,7 @@ func (d *differ) myers(a0, a1, b0, b1 int) {
 	v := make([]int, 2*max+2)
 	var trace [][]int
 	for e := 0; e <= max; e++ {
-		if (e%64 == 0 && time.Now().After(d.deadline)) || (e+1)*len(v) > myersBudget {
+		if (e%64 == 0 && d.late()) || (e+1)*len(v) > myersBudget {
 			d.coarse = true
 			return
 		}
