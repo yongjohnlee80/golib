@@ -73,6 +73,13 @@ func (t *Terminal) startCmd() pty.Cmd {
 // land takes a start's outcome on the UI loop: a failure said on the screen, or proc adopted as
 // the running program, its output read and its exit awaited. Start and StartAsync share it.
 func (t *Terminal) land(proc TerminalProcess, err error) error {
+	err, _ = t.landAs(proc, err)
+	return err
+}
+
+// landAs is land, with the cleanup error of a program a shutdown overtook, closed here: a start
+// in flight hands it to the shutdown that joins it (landFlight).
+func (t *Terminal) landAs(proc TerminalProcess, err error) (landErr, cleanErr error) {
 	if err != nil {
 		// A failed start ends like an exit: it says so on the screen, and
 		// Enter or i tries again, whoever asked for this start.
@@ -82,7 +89,7 @@ func (t *Terminal) land(proc TerminalProcess, err error) error {
 		t.procMu.Unlock()
 		t.exited = true
 		t.report(err)
-		return err
+		return err, nil
 	}
 	ctx := t.Context()
 	gen := t.gen + 1
@@ -100,8 +107,7 @@ func (t *Terminal) land(proc TerminalProcess, err error) error {
 		t.procMu.Unlock()
 		in.close()
 		wr.Close()
-		closeLate(proc)
-		return ErrTerminalShutdown
+		return ErrTerminalShutdown, closeLate(proc)
 	}
 	kept := t.lifetimes[:0]
 	for _, old := range t.lifetimes {
@@ -148,7 +154,7 @@ func (t *Terminal) land(proc TerminalProcess, err error) error {
 		})
 	}()
 	t.MarkDirty()
-	return nil
+	return nil, nil
 }
 
 // Stop hangs the program up. It returns at once; the hang-up and its grace
