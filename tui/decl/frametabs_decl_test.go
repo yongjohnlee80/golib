@@ -3,7 +3,9 @@ package decl_test
 import (
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
 	"github.com/yongjohnlee80/golib/tui/widget/core"
@@ -76,4 +78,42 @@ Frame { title: "notes.csv"; Editor { id: e; text: "a,b"; modeSwitch: "title"; fr
 		c := cellOf(t, s, "alpha")
 		return c.Attrs.BG == ansi(red) && c.Attrs.FG == ansi(white)
 	})
+}
+
+// The frame's tabs wear the palette the Editor inherits, the window's: a highlight the Editor sets
+// for its own text (its selection, say) does not reach them. Both are live: a change of the
+// window's restyles them though the Editor's own still masks it on the Editor, and a change of the
+// Editor's own leaves them in the window's.
+func TestTheFrameTabsWearTheWindowsPaletteNotTheEditors(t *testing.T) {
+	doc := `import tui 1.0
+import demo 1.0
+Window {
+    palette.highlight: App.hl; palette.highlightedText: "white"
+    Frame { title: "notes.csv"; Editor { id: e; text: "a,b"; modeSwitch: "title"; frameTabs: true; palette.highlight: App.ehl } }
+}`
+	s := decltest.RunWith(t, 60, 6, withTabs, tuidecl.LayoutSource("main.qml", []byte(doc)),
+		tuidecl.Singleton("demo", "1.0", "App"), tuidecl.Sources(map[string]any{"App.hl": "red", "App.ehl": "blue"}))
+	s.WaitForText(t, "alpha")
+	active := func(bg tui.CellColor) func(string) bool {
+		return func(string) bool {
+			c := cellOf(t, s, "alpha")
+			return c.Attrs.BG == bg && c.Attrs.FG == ansi(white)
+		}
+	}
+	s.WaitFor(t, "the active tab in the window's highlight, not the Editor's", active(ansi(red)))
+	onScreenLoop(t, s, func() {
+		if err := s.Program.Set("App.hl", "green"); err != nil {
+			t.Error(err)
+		}
+	})
+	s.WaitFor(t, "the active tab in the window's new highlight", active(ansi(green)))
+	onScreenLoop(t, s, func() {
+		if err := s.Program.Set("App.ehl", "#a0a000"); err != nil {
+			t.Error(err)
+		}
+	})
+	time.Sleep(100 * time.Millisecond) // the Editor restyled: its page, not its tabs
+	if c := cellOf(t, s, "alpha"); c.Attrs.BG != ansi(green) {
+		t.Fatalf("the Editor's own highlight changed and the active tab followed it: %+v", c.Attrs)
+	}
 }

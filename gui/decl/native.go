@@ -110,6 +110,7 @@ func Native(opts ...NativeOption) tuidecl.Style {
 	ed.Build = n.buildEditor
 	ed.Setters = editorSetters()
 	ed.Restyle = restyleEditor
+	ed.RestyleInherited = restyleEditorTabs
 	hv, _ := tuidecl.StandardType("HTMLView")
 	build := hv.Build
 	hv.Build = func(b tuidecl.Build) (tui.Component, []string, error) {
@@ -206,12 +207,19 @@ var (
 )
 
 // restyleEditor puts the palette's text on base under the Editor: the cells its view takes its
-// colours from; and its title bar's tabs in TerminalTabs's looks. An empty palette is the terminal
-// theme's default, golib's own look.
+// colours from. An empty palette is the terminal theme's default, golib's own look.
 func restyleEditor(c tui.Component, p tuidecl.Palette) {
 	if e, ok := c.(*widget.Editor); ok {
 		e.SetPageStyle(p.Look(tuidecl.RoleBase, tuidecl.RoleText))
-		e.Tabs().SetStyles(p.Look(tuidecl.RoleWindow, tuidecl.RoleWindowText), p.Look(tuidecl.RoleButton, tuidecl.RoleButtonText),
-			p.Look(tuidecl.RoleHighlight, tuidecl.RoleHighlightedText))
+	}
+}
+
+// restyleEditorTabs gives its title bar's tabs TerminalTabs's looks in the palette the Editor
+// inherits: the window's colours, not the ones it sets for its text.
+func restyleEditorTabs(c tui.Component, inherited tuidecl.Palette) {
+	if e, ok := c.(*widget.Editor); ok {
+		e.Tabs().SetStyles(inherited.Look(tuidecl.RoleWindow, tuidecl.RoleWindowText),
+			inherited.Look(tuidecl.RoleButton, tuidecl.RoleButtonText),
+			inherited.Look(tuidecl.RoleHighlight, tuidecl.RoleHighlightedText))
 	}
 }

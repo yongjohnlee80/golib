@@ -121,6 +121,9 @@ type typeContract struct {
 	destroyed func(tui.Component) // WithDestroyed
 	adopter   adopter             // WithAdopter (restructure.go)
 	restyler  restyler            // WithRestyler: how it wears an effective palette (propagate.go)
+	// inheritedRestyler dresses what it draws on its parent's ground in the palette it inherits
+	// (Type.RestyleInherited)
+	inheritedRestyler restyler
 }
 
 // contractOf is typeName's contract to read; an empty one when the adapter was given none.

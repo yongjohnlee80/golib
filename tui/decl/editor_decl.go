@@ -288,7 +288,8 @@ func editorSetters() map[string]Setter {
 
 // editorType is the standard Editor.
 var editorType = Type{Name: editorName, Build: buildEditor, Ctor: []string{"text", "wrap", "autoIndent", "indentUnit"}, restyle: restyleEditor,
-	Setters: editorSetters(), Enums: []Enum{EditorViews},
+	restyleInherited: restyleEditorTabs,
+	Setters:          editorSetters(), Enums: []Enum{EditorViews},
 	Signals: map[string][]string{"writeRequested": {"quit"}, "quitRequested": {"force"}},
 	Methods: EditorMethods()}
 

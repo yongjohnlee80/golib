@@ -164,14 +164,14 @@ func StandardContract(name string) (Contract, bool) {
 // the standard widget (an error, or nothing to release), so a style whose Build makes another widget
 // gets errors from the copied hooks, never a panic, and supplies its own. The vocabulary's private
 // palette and child hooks are left out, since they reach into the standard widget; a style's type
-// sets Restyle for its own. It keeps Children: a style whose Build counts its children another way
+// sets Restyle (and RestyleInherited) for its own. It keeps Children: a style whose Build counts its children another way
 // sets Arity{} (unchecked) or its own.
 func StandardType(name string) (Type, bool) {
 	t, ok := stdType(name)
 	if !ok {
 		return Type{}, false
 	}
-	t.restyle, t.Adopt = nil, nil
+	t.restyle, t.restyleInherited, t.Adopt = nil, nil, nil
 	t.Setters = maps.Clone(t.Setters)
 	t.Methods = maps.Clone(t.Methods)
 	t.Getters = maps.Clone(t.Getters)

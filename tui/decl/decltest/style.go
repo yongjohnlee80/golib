@@ -17,8 +17,8 @@ import (
 //
 // It also mounts each type s replaces, in that type's minimal declaration (minimals) under s, in a
 // Window whose palette is not empty, and fails t for each hook that refuses or panics on the widget
-// the style's Build makes: a getter read (ReadProperty), Restyle as the palette reaches it, and
-// Destroyed as the tree goes. A style that kept a standard hook copied from StandardType while its
+// the style's Build makes: a getter read (ReadProperty), Restyle and RestyleInherited as the
+// palette reaches it, and Destroyed as the tree goes. A style that kept a standard hook copied from StandardType while its
 // Build makes another widget fails here, at the type and the hook. Setters and methods are not
 // called: they need values, and they refuse a foreign widget as an error a document sees.
 func CheckStyle(t testing.TB, s tuidecl.Style) {
@@ -52,7 +52,7 @@ func checkHooks(t testing.TB, s tuidecl.Style, typ tuidecl.Type) {
 	stage := "mounting it"
 	defer func() {
 		if r := recover(); r != nil {
-			t.Errorf("style %q, %s: %s panicked (its Build, Restyle or Destroyed on the style's widget): %v", s.Name, typ.Name, stage, r)
+			t.Errorf("style %q, %s: %s panicked (its Build, Restyle, RestyleInherited or Destroyed on the style's widget): %v", s.Name, typ.Name, stage, r)
 		}
 	}()
 	p, err := mountMinimal(typ.Name, m, tuidecl.WithStyle(s))
