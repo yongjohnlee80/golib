@@ -73,6 +73,17 @@ func TestTheEditorTellsItsTopLineOnceAtEachChange(t *testing.T) {
 	if got := top(); got != 12 {
 		t.Fatalf("top %d after SetTopLine(12)", got)
 	}
+	step("ReplaceValue, the text the same length: the place kept", func() { h.onLoop(func() { ed.ReplaceValue(fortyLines()) }) }, false)
+	step("ReplaceValue with five lines: the top clamped to the last", func() {
+		h.onLoop(func() { ed.ReplaceValue("a\nb\nc\nd\ne") })
+	}, true)
+	if got := top(); got != 4 {
+		t.Fatalf("top %d after ReplaceValue with five lines, want 4", got)
+	}
+	step("SetValue, a new text from its top", func() { h.onLoop(func() { ed.SetValue(fortyLines()) }) }, true)
+	if got := top(); got != 0 {
+		t.Fatalf("top %d after SetValue, want 0", got)
+	}
 }
 
 // SetTopLine clamps: never above the first line, and once laid out never so low that the last
@@ -165,5 +176,41 @@ func TestALineStyleCoversItsRowUnderTheOverlayAndTheSelection(t *testing.T) {
 				t.Errorf("an unselected cell on the styled line: %s, want the tint", cellLook(tui.Cell{Attrs: a}))
 			}
 		})
+	}
+}
+
+// A frame asks a line's look once: the row's fill and each of its cells share the answer, so no
+// frame asks for the same line twice running. The Rendered view, which draws its own looks, never
+// asks.
+func TestALineStyleIsAskedOncePerLineAFrame(t *testing.T) {
+	var asked []int
+	ed := editor.NewEditor(editor.WithCore(editor.CoreInitialText(fortyLines())),
+		editor.WithEditorLineStyle(func(line int) (style.Style, bool) {
+			asked = append(asked, line)
+			return style.New().Background(style.RGB(0x20, 0x40, 0x20)), line%2 == 0
+		}))
+	sh := newShell(ed)
+	h := startApp(t, sh, 40, 10)
+	h.barrier(sh)
+	var got []int
+	h.onLoop(func() { got = append([]int(nil), asked...) })
+	if len(got) == 0 {
+		t.Fatal("the Raw view never asked a line's look")
+	}
+	for i := 1; i < len(got); i++ {
+		if got[i] == got[i-1] {
+			t.Fatalf("line %d asked twice running (ask %d of %v): a frame asks each line once", got[i], i, got)
+		}
+	}
+	h.onLoop(func() {
+		ed.SetRenderer(&editor.MarkdownCellRenderer{})
+		ed.SetView(editor.ViewRendered)
+	})
+	h.barrier(sh)
+	h.onLoop(func() { asked = nil; ed.MarkDirty() })
+	h.barrier(sh)
+	h.onLoop(func() { got = append([]int(nil), asked...) })
+	if len(got) != 0 {
+		t.Fatalf("the Rendered view asked the looks of lines %v", got)
 	}
 }
