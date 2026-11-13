@@ -339,7 +339,7 @@ func TestMyersMatchesALongestCommonSubsequence(t *testing.T) {
 		a := randomText(r, 140+r.Intn(60), 2+i%3)
 		b := randomText(r, 140+r.Intn(60), 2+i%3)
 		ids := intern(Options{}, a, b)
-		d := &differ{a: ids[0], b: ids[1], deadline: time.Now().Add(time.Minute)}
+		d := &differ{a: ids[0], b: ids[1], deadline: time.Now().Add(time.Minute), now: time.Now}
 		d.myers(0, len(a), 0, len(b))
 		if d.coarse {
 			t.Fatalf("case %d: Myers stopped coarse within its bounds", i)
@@ -358,5 +358,78 @@ func TestMyersMatchesALongestCommonSubsequence(t *testing.T) {
 		if want := lcs(a, b); len(d.matches) != want {
 			t.Fatalf("case %d: %d lines matched, the longest common subsequence is %d", i, len(d.matches), want)
 		}
+	}
+}
+
+// longRun is the shape of a long run of unique lines both texts share, their first and last lines
+// changed: the histogram search finds the run at its first line.
+func longRun(n int) (a, b []string) {
+	a, b = make([]string, n+2), make([]string, n+2)
+	a[0], b[0], a[n+1], b[n+1] = "a first", "b first", "a last", "b last"
+	for i := 1; i <= n; i++ {
+		a[i] = fmt.Sprintf("line %d", i)
+		b[i] = a[i]
+	}
+	return a, b
+}
+
+// The histogram search expands a long common run once, not once for each of its lines: its work is
+// linear in the region's size.
+func TestTheHistogramSearchExpandsALongRunOnce(t *testing.T) {
+	const n = 4000
+	a, b := longRun(n)
+	ids := intern(Options{}, a, b)
+	d := &differ{a: ids[0], b: ids[1], deadline: time.Now().Add(time.Minute), now: time.Now}
+	d.region(0, len(a), 0, len(b))
+	if d.coarse {
+		t.Fatal("coarse within its bounds")
+	}
+	if len(d.matches) != n {
+		t.Fatalf("%d lines matched, want the run's %d", len(d.matches), n)
+	}
+	if limit := 4 * (len(a) + len(b)); d.work > limit {
+		t.Fatalf("the search took %d steps over %d lines, past %d: not linear", d.work, len(a)+len(b), limit)
+	}
+}
+
+// A deadline passing while the histogram search runs stops it within tickEvery steps, the region
+// left coarse and the edits still turning a into b.
+func TestTheHistogramSearchStopsAtTheDeadline(t *testing.T) {
+	a, b := longRun(40000)
+	ids := intern(Options{}, a, b)
+	base := time.Now()
+	calls := 0
+	clock := func() time.Time { // in time for the region's own look; past it from the search's first
+		calls++
+		if calls == 1 {
+			return base
+		}
+		return base.Add(time.Hour)
+	}
+	d := &differ{a: ids[0], b: ids[1], deadline: base.Add(time.Minute), now: clock}
+	d.region(0, len(a), 0, len(b))
+	if !d.coarse {
+		t.Fatal("not coarse, the deadline passed during the search")
+	}
+	if d.work > 2*tickEvery {
+		t.Fatalf("the search went on %d steps past the deadline, the bound is %d", d.work, 2*tickEvery)
+	}
+	if got := apply(t, Diff{Edits: edits(d.matches, len(a), len(b))}, a, b); !reflect.DeepEqual(got, b) {
+		t.Fatalf("applied, the edits give %d lines unlike b", len(got))
+	}
+}
+
+// A long common run, its ends changed, within the default bounds: Lines diffs it in far less than a
+// second, matching the run.
+func TestLinesDiffsALongCommonRunQuickly(t *testing.T) {
+	a, b := longRun(40000)
+	start := time.Now()
+	d := Lines(a, b, Options{Deadline: 10 * time.Millisecond})
+	took := time.Since(start)
+	if got := apply(t, d, a, b); !reflect.DeepEqual(got, b) {
+		t.Fatalf("applied, the edits give %d lines unlike b", len(got))
+	}
+	if took > time.Second {
+		t.Fatalf("took %v for %d lines a side", took, len(a))
 	}
 }
