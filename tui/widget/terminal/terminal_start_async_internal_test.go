@@ -225,15 +225,15 @@ func TestAStartOvertakenByShutdownClosesItsLateProgram(t *testing.T) {
 }
 
 // TestAShutdownGivesUpOnASpawnThatNeverReturns: a shutdown waits for a start in flight only
-// startOutGrace, then says a start was still out; the program, when the spawn returns at last, is
+// its terminal's startGrace, then says a start was still out; the program, when the spawn returns at last, is
 // closed all the same.
 func TestAShutdownGivesUpOnASpawnThatNeverReturns(t *testing.T) {
-	was := startOutGrace
-	startOutGrace = 100 * time.Millisecond
-	t.Cleanup(func() { startOutGrace = was })
 	s := newHeldStarter()
 	term, h, _ := asyncTerminal(t, s)
-	h.OnLoop(func() { term.StartAsync(nil) })
+	h.OnLoop(func() {
+		term.startGrace = 100 * time.Millisecond // this terminal's alone: another test's ends read their own
+		term.StartAsync(nil)
+	})
 	s.spawnOut(t)
 	r := term.ShutdownWithResult()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

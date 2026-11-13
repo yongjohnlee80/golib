@@ -4,6 +4,7 @@ import (
 	"io"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/yongjohnlee80/golib/tui/widget/core"
 
@@ -197,10 +198,12 @@ type Terminal struct {
 	// asked off the loop, so a retry (the mount, Enter or i) starts that way too
 	starting *startFlight
 	async    bool
-	// flights are the starts in flight a shutdown joins (guarded by procMu)
-	flights  []*startFlight
-	alive    bool // mounted
-	watching bool // a goroutine ends the program with the App
+	// flights are the starts in flight a shutdown joins (guarded by procMu); startGrace is how long
+	// it waits for them, startOutGrace from NewTerminal (a test shortens its own terminal's)
+	flights    []*startFlight
+	startGrace time.Duration
+	alive      bool // mounted
+	watching   bool // a goroutine ends the program with the App
 
 	mode   TerminalMode
 	prefix bool // Ctrl-\ is pending
@@ -232,7 +235,7 @@ func NewTerminal(opts ...TerminalOption) *Terminal {
 	if cfg.start == nil {
 		cfg.start = func(c pty.Cmd) (TerminalProcess, error) { return pty.Start(c) }
 	}
-	t := &Terminal{cfg: cfg, rows: 24, cols: 80, minContrast: cfg.minContrast,
+	t := &Terminal{cfg: cfg, rows: 24, cols: 80, minContrast: cfg.minContrast, startGrace: startOutGrace,
 		cursorColor: cfg.cursorColor, cursorColored: cfg.cursorColored}
 	t.scr = t.newScreen()
 	return t
