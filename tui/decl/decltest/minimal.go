@@ -36,6 +36,7 @@ var minimals = map[string]minimal{
 	"Text":              {body: `Text { id: subject; text: "x" }`},
 	"Terminal":          {body: `Terminal { id: subject }`},
 	"TerminalTabs":      {body: `TerminalTabs { id: subject }`},
+	"MergeView":         {body: `MergeView { id: subject }`},
 	"Button":            {body: `Button { id: subject; text: "b" }`},
 	"CheckBox":          {body: `CheckBox { id: subject; text: "c" }`},
 	"Split":             {body: `Split { id: subject; Text { text: "a" } Text { text: "b" } }`},

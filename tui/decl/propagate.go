@@ -71,7 +71,8 @@ var paletteRoles = func() map[string]Role {
 	out := map[string]Role{}
 	for _, r := range []Role{roleWindow, roleWindowText, roleBase, roleText, roleHighlight,
 		roleHighlightedText, roleAccent, roleButton, roleButtonText, roleInactiveHighlight,
-		roleInactiveHighlightText, roleMid, roleLight, roleDocumentAccent} {
+		roleInactiveHighlightText, roleMid, roleLight, roleDocumentAccent,
+		roleDiffAdded, roleDiffDeleted, roleDiffChanged, roleDiffConflict} {
 		out[r.prop()] = r
 	}
 	for i := range highlight.Styles {

@@ -235,5 +235,85 @@
         <source>Not available in the terminal</source>
         <translation>터미널에서는 표시할 수 없습니다</translation>
     </message>
+    <message id="tui.mergeview.acceptLeft">
+        <source>Accept &amp;Left</source>
+        <translation>왼쪽 적용(&amp;l)</translation>
+    </message>
+    <message id="tui.mergeview.acceptRight">
+        <source>Accept &amp;Right</source>
+        <translation>오른쪽 적용(&amp;r)</translation>
+    </message>
+    <message id="tui.mergeview.merge">
+        <source>&amp;Merge</source>
+        <translation>병합(&amp;m)</translation>
+    </message>
+    <message id="tui.mergeview.apply">
+        <source>&amp;Apply</source>
+        <translation>적용(&amp;a)</translation>
+    </message>
+    <message id="tui.mergeview.reload">
+        <source>Reloa&amp;d</source>
+        <translation>다시 불러오기(&amp;d)</translation>
+    </message>
+    <message id="tui.mergeview.result">
+        <source>Result</source>
+        <translation>결과</translation>
+    </message>
+    <message id="tui.mergeview.kind.buffer">
+        <source>Buffer</source>
+        <translation>버퍼</translation>
+    </message>
+    <message id="tui.mergeview.kind.file">
+        <source>File</source>
+        <translation>파일</translation>
+    </message>
+    <message id="tui.mergeview.kind.remote">
+        <source>Remote</source>
+        <translation>원격</translation>
+    </message>
+    <message id="tui.mergeview.kind.git">
+        <source>Git</source>
+        <translation>Git</translation>
+    </message>
+    <message id="tui.mergeview.counts">
+        <source>%1 changes unresolved, %2 of them conflicts</source>
+        <translation>해결되지 않은 변경 %1개(그중 충돌 %2개)</translation>
+    </message>
+    <message id="tui.mergeview.resolved">
+        <source>Every change is resolved</source>
+        <translation>모든 변경이 해결되었습니다</translation>
+    </message>
+    <message id="tui.mergeview.coarse">
+        <source>Compared coarsely: the texts are large</source>
+        <translation>텍스트가 커서 대략적으로 비교했습니다</translation>
+    </message>
+    <message id="tui.mergeview.changed">
+        <source>A side changed under the merge</source>
+        <translation>병합 중에 한쪽이 변경되었습니다</translation>
+    </message>
+    <message id="tui.mergeview.loading">
+        <source>Loading…</source>
+        <translation>불러오는 중…</translation>
+    </message>
+    <message id="tui.mergeview.notText">
+        <source>Not text: there is nothing to merge by lines</source>
+        <translation>텍스트가 아니어서 줄 단위로 병합할 수 없습니다</translation>
+    </message>
+    <message id="tui.mergeview.loadFailed">
+        <source>Could not load: %1</source>
+        <translation>불러오지 못했습니다: %1</translation>
+    </message>
+    <message id="tui.mergeview.applyFailed">
+        <source>Could not apply: %1</source>
+        <translation>적용하지 못했습니다: %1</translation>
+    </message>
+    <message id="tui.mergeview.confirmApply">
+        <source>%1 changes are unresolved, %2 of them conflicts. Apply anyway?</source>
+        <translation>해결되지 않은 변경이 %1개(그중 충돌 %2개) 있습니다. 그래도 적용할까요?</translation>
+    </message>
+    <message id="tui.mergeview.confirmReload">
+        <source>Loading again discards the changes made to the result. Load again?</source>
+        <translation>다시 불러오면 결과에 한 변경이 사라집니다. 다시 불러올까요?</translation>
+    </message>
 </context>
 </TS>

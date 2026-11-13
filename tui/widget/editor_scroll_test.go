@@ -207,8 +207,13 @@ func TestALineStyleIsAskedOncePerLineAFrame(t *testing.T) {
 		ed.SetView(editor.ViewRendered)
 	})
 	h.barrier(sh)
-	h.onLoop(func() { asked = nil; ed.MarkDirty() })
-	h.barrier(sh)
+	// A text set after the asks are cleared, and waited for as the Rendered view draws it (the
+	// heading without its "#"): a frame of the Rendered view was painted, and asked nothing.
+	h.onLoop(func() { asked = nil; ed.SetValue("# Rendered heading\n\nbody") })
+	h.waitFor("the Rendered view's heading", func() bool {
+		screen := h.tb.String()
+		return strings.Contains(screen, "Rendered heading") && !strings.Contains(screen, "# Rendered heading")
+	})
 	h.onLoop(func() { got = append([]int(nil), asked...) })
 	if len(got) != 0 {
 		t.Fatalf("the Rendered view asked the looks of lines %v", got)
