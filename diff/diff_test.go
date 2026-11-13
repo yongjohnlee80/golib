@@ -419,9 +419,10 @@ func TestTheHistogramSearchStopsAtTheDeadline(t *testing.T) {
 	}
 }
 
-// A long common run, its ends changed, within the default bounds: Lines diffs it in far less than a
-// second, matching the run.
-func TestLinesDiffsALongCommonRunQuickly(t *testing.T) {
+// A long common run, its ends changed, within the default bounds: Lines diffs it, matching the run.
+// The search's linearity is the step-count cells' (TestTheHistogramSearchExpandsALongRunOnce); the
+// clock here is only a guard against a hang, loose enough for a loaded runner under -race.
+func TestLinesDiffsALongCommonRun(t *testing.T) {
 	a, b := longRun(40000)
 	start := time.Now()
 	d := Lines(a, b, Options{Deadline: 10 * time.Millisecond})
@@ -429,7 +430,7 @@ func TestLinesDiffsALongCommonRunQuickly(t *testing.T) {
 	if got := apply(t, d, a, b); !reflect.DeepEqual(got, b) {
 		t.Fatalf("applied, the edits give %d lines unlike b", len(got))
 	}
-	if took > time.Second {
-		t.Fatalf("took %v for %d lines a side", took, len(a))
+	if took > 10*time.Second {
+		t.Fatalf("took %v for %d lines a side: a hang", took, len(a))
 	}
 }

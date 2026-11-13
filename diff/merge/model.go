@@ -360,9 +360,10 @@ func (m *Model) Settle(rev uint64) {
 // spans after it move.
 //
 // Lines put in where two hunks meet go to a change that meets the place: an empty change there
-// first (lines both sides put in, or none kept), then a change ending there (a line added after
-// its last), then one starting there; only where no change meets it, to the hunk the line is in.
-// So what is typed at a change is the change's, and a later Take replaces it.
+// first (lines both sides put in, or none kept), then a settled change (resolved, or holding no
+// lines) ending there (a line added after its last), then one starting there. So what is typed at
+// a change is the change's, and a later Take replaces it. A line put in beside a change still to
+// resolve goes to the unchanged lines beside it: the change is not resolved by a line next to it.
 func (m *Model) Edited(lines []string, rev uint64) {
 	old := m.result
 	m.result = append([]string{}, lines...)
@@ -430,17 +431,21 @@ func (m *Model) Edited(lines []string, rev uint64) {
 	m.save(rev)
 }
 
-// insertInto is the hunk lines put in at boundary place f go to (Edited): an empty change there,
-// a change ending there, a change starting there, else the hunk holding line f (the last one, at
-// the end).
+// insertInto is the hunk lines put in at boundary place f go to (Edited): an empty change there;
+// else a settled change (resolved, or holding no lines) ending there, then one starting there;
+// else the hunk the place is inside; else the first hunk meeting it that is not an open change. A
+// line typed beside a conflict still to resolve is not the conflict's, so the conflicts counted
+// stay the conflicts left.
 func (m *Model) insertInto(b []int, f int) int {
 	change := func(i int) bool { return m.merge.Hunks[i].Kind != diff.Same }
+	settled := func(i int) bool { return m.states[i] != Unresolved || b[i] == b[i+1] }
 	hs := len(b) - 1
 	for _, pick := range []func(i int) bool{
 		func(i int) bool { return change(i) && b[i] == f && b[i+1] == f },
-		func(i int) bool { return change(i) && b[i] < f && b[i+1] == f },
-		func(i int) bool { return change(i) && b[i] == f && b[i+1] > f },
-		func(i int) bool { return b[i] <= f && f < b[i+1] },
+		func(i int) bool { return change(i) && settled(i) && b[i] < f && b[i+1] == f },
+		func(i int) bool { return change(i) && settled(i) && b[i] == f && b[i+1] > f },
+		func(i int) bool { return b[i] < f && f < b[i+1] },
+		func(i int) bool { return b[i] <= f && f <= b[i+1] && !(change(i) && !settled(i)) },
 	} {
 		for i := 0; i < hs; i++ {
 			if pick(i) {
