@@ -44,12 +44,26 @@ func (e *Editor) SetTopLine(line int) {
 
 // topMoved tells the host the first line shown, when it is another than it was last told.
 func (e *Editor) topMoved() {
-	if e.cells.top == e.toldTop {
+	if e.topHeld || e.cells.top == e.toldTop {
 		return
 	}
 	e.toldTop = e.cells.top
 	if e.onScroll != nil {
 		e.onScroll(e.cells.top)
+	}
+}
+
+// holdTop holds the top line's telling while a text is set (SetValue, ReplaceValue): the core
+// reveals its cursor on the way, a top the text never stays at. The func it answers ends the hold
+// and tells the top the text has then, once.
+func (e *Editor) holdTop() func() {
+	if e.topHeld {
+		return func() {}
+	}
+	e.topHeld = true
+	return func() {
+		e.topHeld = false
+		e.topMoved()
 	}
 }
 
