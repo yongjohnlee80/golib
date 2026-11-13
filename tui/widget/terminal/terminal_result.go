@@ -55,6 +55,16 @@ func newTerminalStopResult(proc TerminalProcess, generation int, input *inputQue
 		proc: proc, generation: generation, started: true, input: input, bridge: bridge}
 }
 
+// failedLateCleanup is the result of a program a cancelled start's spawn returned, closed with err:
+// it was never adopted, so it has no generation, and its cleanup is over. It is kept among the
+// Terminal's lifetimes as a failed generation is, until a shutdown reports it.
+func failedLateCleanup(err error) *TerminalStopResult {
+	r := &TerminalStopResult{completion: terminalCompletion{done: make(chan struct{}), err: err}}
+	r.once.Do(func() {}) // its cleanup ran already, in the start's goroutine
+	close(r.completion.done)
+	return r
+}
+
 func inactiveTerminalStopResult(startErr error) *TerminalStopResult {
 	r := &TerminalStopResult{completion: terminalCompletion{done: make(chan struct{})}, startErr: startErr}
 	close(r.completion.done) // no process was created, so no cleanup is pending
@@ -140,8 +150,12 @@ func joinTerminalCleanup(generations []*TerminalStopResult) *TerminalShutdownRes
 		for _, generation := range generations {
 			// These immutable per-generation references are safe after App.Done,
 			// including while decl destroys the Terminal on its own goroutine.
-			generation.input.close()
-			generation.bridge.Close()
+			if generation.input != nil { // a late program's failed cleanup has neither (failedLateCleanup)
+				generation.input.close()
+			}
+			if generation.bridge != nil {
+				generation.bridge.Close()
+			}
 			generation.cleanup(nil)
 		}
 		// Request every cleanup before waiting: a stalled old generation must

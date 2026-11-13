@@ -162,7 +162,7 @@ func (t *Terminal) StartAsync(done func(error)) {
 	t.procMu.Unlock()
 	t.sayStarting()
 	go func() {
-		defer t.forgetFlight(f) // after finish: a shutdown that joins f until then hears its end
+		defer t.retireFlight(f) // after finish: a shutdown that joins f until then hears its end
 		defer f.finish()
 		proc, err := start(cmd)
 		app.Update(func() { t.landFlight(f, proc, err) })
@@ -220,7 +220,7 @@ func (t *Terminal) landFlight(f *startFlight, proc TerminalProcess, err error) {
 }
 
 // endFlight answers f's waiters with err, f no longer the start in flight. f stays among the
-// flights a shutdown joins until its goroutine is done (forgetFlight): its program, when the spawn
+// flights a shutdown joins until its goroutine is done (retireFlight): its program, when the spawn
 // returns one, is still to be closed. On the UI loop.
 func (t *Terminal) endFlight(f *startFlight, err error) {
 	t.answerFlight(f, err)
@@ -239,15 +239,21 @@ func (t *Terminal) answerFlight(f *startFlight, err error) {
 	}
 }
 
-// forgetFlight drops f from the flights a shutdown would join.
-func (t *Terminal) forgetFlight(f *startFlight) {
+// retireFlight drops f, done, from the flights a shutdown would join. A late program's failed
+// cleanup is kept among the lifetimes instead (failedLateCleanup), as a generation's failed cleanup
+// is, so a shutdown or a tab's removal that comes later still reports it. Both under one hold of
+// procMu: no shutdown sees f gone and its failure not yet kept.
+func (t *Terminal) retireFlight(f *startFlight) {
 	t.procMu.Lock()
 	defer t.procMu.Unlock()
 	for i, g := range t.flights {
 		if g == f {
 			t.flights = append(t.flights[:i], t.flights[i+1:]...)
-			return
+			break
 		}
+	}
+	if err := f.cleanupErr(); err != nil {
+		t.lifetimes = append(t.lifetimes, failedLateCleanup(err))
 	}
 }
 
