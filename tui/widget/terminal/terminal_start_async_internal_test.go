@@ -501,3 +501,42 @@ func TestALateProgramsCleanupErrorReachesTheShutdown(t *testing.T) {
 		}
 	})
 }
+
+// TestAShutdownAfterAFailedLateCleanupStillSaysSo: Stop cancels a start in flight; its spawn then
+// returns a program whose Close fails, and the start's goroutine closes it and is done, its flight
+// pruned. A shutdown after all that still reports the failure, as it reports a generation's failed
+// cleanup.
+func TestAShutdownAfterAFailedLateCleanupStillSaysSo(t *testing.T) {
+	want := errors.New("the stopped start's late close failed")
+	start, entered, release := lateFailingStarter(want)
+	term := NewTerminal(WithStarter(start))
+	h := widgettest.StartApp(t, term, 40, 6)
+	t.Cleanup(func() { release(); h.Stop() })
+	var f *startFlight
+	h.OnLoop(func() {
+		term.StartAsync(nil)
+		f = term.starting
+	})
+	awaitResultEvent(t, entered)
+	h.OnLoop(term.Stop)
+	release()
+	awaitResultEvent(t, f.done)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		term.procMu.Lock()
+		n := len(term.flights)
+		term.procMu.Unlock()
+		if n == 0 {
+			break // the flight is retired: what a shutdown hears of it now is kept elsewhere
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the stopped start's flight was never retired")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	var r *TerminalShutdownResult
+	h.OnLoop(func() { r = term.ShutdownWithResult() })
+	if err := waitShutdown(t, r); !errors.Is(err, want) {
+		t.Fatalf("the shutdown after the failed late cleanup: %v, want its error", err)
+	}
+}
