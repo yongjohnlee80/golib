@@ -198,6 +198,12 @@ type Terminal struct {
 	// asked off the loop, so a retry (the mount, Enter or i) starts that way too
 	starting *startFlight
 	async    bool
+	// early is what the keyboard sent while a start was in flight, in order, for the program once
+	// it runs (send); earlyLen its bytes, at most TerminalInputLimit, earlyFull that the excess was
+	// dropped and said so. A start that fails or is cancelled drops it.
+	early     [][]byte
+	earlyLen  int
+	earlyFull bool
 	// flights are the starts in flight a shutdown joins (guarded by procMu); startGrace is how long
 	// it waits for them, startOutGrace from NewTerminal (a test shortens its own terminal's)
 	flights    []*startFlight
