@@ -69,6 +69,12 @@ type Type struct {
 	// widget as golib draws it. Nil, the type wears nothing, and its subtree
 	// still inherits through it.
 	Restyle func(c tui.Component, p Palette)
+	// RestyleInherited is how the type dresses what it draws on its parent's ground rather than
+	// its own: called with the palette the node INHERITS (its parent's effective palette, the
+	// node's own roles left out) whenever that changes, even when the node's own roles mask the
+	// change. An Editor's tab strip wears it: the strip is its frame's row, so it takes the
+	// window's colours, not those the Editor sets for its text. Nil, nothing is dressed so.
+	RestyleInherited func(c tui.Component, inherited Palette)
 
 	// Adopt is a container's way of taking a child by its attached properties
 	// (RegisterAttached, Honour): Layout.fillHeight in a column makes a weighted
@@ -80,8 +86,8 @@ type Type struct {
 	// places an inserted child.
 	Adopt func(parent, child tui.Component, attached map[string]qml.SpecValue) error
 
-	// restyle is a built-in type's, reading the palette directly.
-	restyle restyler
+	// restyle and restyleInherited are a built-in type's, reading the palette directly.
+	restyle, restyleInherited restyler
 }
 
 // adopter is a Type's Adopt.
@@ -185,6 +191,13 @@ func typeOptions(types []Type) []Option {
 		case w.Restyle != nil:
 			wear := w.Restyle
 			opts = append(opts, withRestyle(w.Name, func(c tui.Component, p palette) { wear(c, Palette{p}) }))
+		}
+		switch {
+		case w.restyleInherited != nil:
+			opts = append(opts, withRestyleInherited(w.Name, w.restyleInherited))
+		case w.RestyleInherited != nil:
+			wear := w.RestyleInherited
+			opts = append(opts, withRestyleInherited(w.Name, func(c tui.Component, p palette) { wear(c, Palette{p}) }))
 		}
 		if w.Adopt != nil {
 			opts = append(opts, withAdopt(w.Name, w.Adopt))

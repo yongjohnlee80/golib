@@ -45,6 +45,7 @@ import (
 // palNode is one node's place in the palette tree.
 type palNode struct {
 	own, eff  palette
+	inh       palette // what it inherits: its parent's eff, its own roles left out
 	parent    decl.NodeID
 	hasParent bool
 }
@@ -55,6 +56,10 @@ type restyler func(c tui.Component, p palette)
 
 func withRestyle(typeName string, fn restyler) Option {
 	return func(a *Adapter) { a.declare(typeName).restyler = fn }
+}
+
+func withRestyleInherited(typeName string, fn restyler) Option {
+	return func(a *Adapter) { a.declare(typeName).inheritedRestyler = fn }
 }
 
 // paletteRoles is every role a document may write, by its property name.
@@ -138,7 +143,9 @@ func (a *Adapter) paletteBuilt(id decl.NodeID, own palette, kids []decl.NodeID) 
 }
 
 // refresh recomputes a node's effective palette, restyles it if that changed,
-// and carries a change on to its children.
+// and carries a change on to its children. What the node inherits is tracked too:
+// a change there dresses what it draws on its parent's ground (RestyleInherited),
+// even when its own roles leave its effective palette as it was.
 func (a *Adapter) refresh(id decl.NodeID) {
 	pn, ok := a.pal[id]
 	if !ok {
@@ -157,17 +164,25 @@ func (a *Adapter) refresh(id decl.NodeID) {
 	for r, c := range pn.own {
 		eff[r] = c
 	}
-	if samePalette(eff, pn.eff) {
+	effChanged, inhChanged := !samePalette(eff, pn.eff), !samePalette(inherited, pn.inh)
+	if !effChanged && !inhChanged {
 		return
 	}
-	pn.eff = eff
+	pn.eff, pn.inh = eff, inherited
 	if b, ok := a.nodes[id]; ok {
-		if fn := a.contractOf(b.typ).restyler; fn != nil {
+		c := a.contractOf(b.typ)
+		if fn := c.restyler; fn != nil && effChanged {
 			fn(b.comp, eff)
 		}
-		if _, root := b.comp.(themeRoot); root && !pn.hasParent {
+		if fn := c.inheritedRestyler; fn != nil && inhChanged {
+			fn(b.comp, inherited)
+		}
+		if _, root := b.comp.(themeRoot); root && !pn.hasParent && effChanged {
 			a.windowTheme(eff)
 		}
+	}
+	if !effChanged {
+		return // its children inherit its effective palette, unchanged
 	}
 	for _, k := range a.kids[id] {
 		a.refresh(k)
@@ -340,13 +355,19 @@ func restyleFrame(c tui.Component, p palette) {
 	c.(*core.Box).WithStyle(st).WithFocusedStyle(focused)
 }
 
-// restyleEditor gives the Editor the palette's looks, and its frame's tabs (Editor.Tabs)
-// TerminalTabs's: the bar in window, a tab in button, the active one in highlight.
+// restyleEditor gives the Editor the palette's looks. Its frame's tabs are restyleEditorTabs's.
 func restyleEditor(c tui.Component, p palette) {
 	st, _ := p.editorStyles()
-	e := c.(*editor.Editor)
-	e.WithStyles(st)
-	e.Tabs().SetStyles(p.look(roleWindow, roleWindowText), p.look(roleButton, roleButtonText), p.look(roleHighlight, roleHighlightedText))
+	c.(*editor.Editor).WithStyles(st)
+}
+
+// restyleEditorTabs gives the Editor's frame's tabs (Editor.Tabs) TerminalTabs's looks in the
+// palette the Editor inherits: the bar in window, a tab in button, the active one in highlight.
+// The strip is its frame's row, so it wears the window's colours, not the ones an Editor sets for
+// its text (a highlight that is its selection, say).
+func restyleEditorTabs(c tui.Component, inherited palette) {
+	c.(*editor.Editor).Tabs().SetStyles(inherited.look(roleWindow, roleWindowText),
+		inherited.look(roleButton, roleButtonText), inherited.look(roleHighlight, roleHighlightedText))
 }
 
 func restyleStatusBar(c tui.Component, p palette) {

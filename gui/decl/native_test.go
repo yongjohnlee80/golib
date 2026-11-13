@@ -322,6 +322,57 @@ Window {
 	})
 }
 
+// TestTheEditorsTabsWearTheWindowsPalette: the native Editor's title-bar tabs wear the palette the
+// Editor inherits, the window's: a highlight the Editor sets for its own text does not reach them,
+// when it is set or when it changes.
+func TestTheEditorsTabsWearTheWindowsPalette(t *testing.T) {
+	src := `import tui 1.0
+import demo 1.0
+Window {
+    palette.highlight: "red"
+    palette.button: "blue"
+    Editor { id: ed; text: "hello"; palette.highlight: App.ehl }
+}`
+	s := run(t, src, tuidecl.WithStyle(guidecl.Native()), tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Sources(map[string]any{"App.ehl": "green"}))
+	onLoop(t, s, func() {
+		c, _ := s.Program.Find("ed")
+		tabs := c.(*widget.Editor).Tabs()
+		tabs.SetTabs([]core.StripTab{{ID: "1", Label: "alpha"}, {ID: "2", Label: "beta"}})
+		tabs.SetActive("1")
+	})
+	bgOf := func(text string) (tui.CellColor, bool) {
+		for _, row := range s.Backend.Snapshot() {
+			var line strings.Builder
+			var cols []int
+			for x, c := range row {
+				line.WriteString(c.Content)
+				for range len(c.Content) {
+					cols = append(cols, x)
+				}
+			}
+			if i := strings.Index(line.String(), text); i >= 0 {
+				return row[cols[i]].Attrs.BG, true
+			}
+		}
+		return tui.CellColor{}, false
+	}
+	red := tui.CellColor{Kind: tui.CellColorANSI, Index: 1}
+	s.WaitFor(t, "the active tab in the window's highlight, not the Editor's", func(string) bool {
+		a, ok := bgOf("alpha")
+		return ok && a == red
+	})
+	onLoop(t, s, func() {
+		if err := s.Program.Set("App.ehl", "#a0a000"); err != nil {
+			t.Error(err)
+		}
+	})
+	time.Sleep(100 * time.Millisecond) // the Editor restyled: its page, not its tabs
+	if a, ok := bgOf("alpha"); !ok || a != red {
+		t.Fatalf("the Editor's own highlight changed and the active tab followed it: %v", a)
+	}
+}
+
 // A TableView with a cellCursor under the native style shows tui's DataTable bound to gui's pixel
 // layout, over the same core; with no style, or with a row cursor, the table stays in cells.
 func TestNativeBindsACellCursorTableViewsPixelLayout(t *testing.T) {

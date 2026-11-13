@@ -651,7 +651,9 @@ the row's whole width (scrolling between `←` and `→` when its tabs overflow 
 is a row shorter under it. The title row keeps the title, whatever a host writes into it, and the
 switch (`modeSwitch: "title"`) at its right; the bottom border is a plain border. The Frame is the
 one that holds the switch. The host feeds the strip and hears its choices; with `frameTabs: false`
-the strip takes no row. The strip wears the palette as `TerminalTabs` does.
+the strip takes no row. The strip wears the palette as `TerminalTabs` does, the palette the
+Editor inherits: the strip is its frame's row, so a role the Editor sets for its text (a
+highlight that is its selection) does not reach it.
 
 **The property is `view`, not `mode`, on purpose.** The Editor already has a `modeChanged`
 signal, and it reports the **Vim** mode (Normal, Insert, Visual). QML reads a property `x` and a
