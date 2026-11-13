@@ -198,6 +198,11 @@ type Editor struct {
 	// taskDone, when set, sees each task's result as it is taken, before it is handled (a test's
 	// fence: a result that changes nothing has arrived).
 	taskDone func(tui.TaskResult)
+	// onScroll is told the first line shown at each change (WithEditorOnScroll); toldTop is the
+	// line it was told last. lineStyle is each line's own look (WithEditorLineStyle).
+	onScroll  func(top int)
+	toldTop   int
+	lineStyle func(line int) (style.Style, bool)
 	// presented is the presentation the viewport was last revealed for (presentation): a change of
 	// it reveals the cursor again, though the cursor stayed.
 	presented [2]int
@@ -334,6 +339,7 @@ func NewEditor(opts ...EditorOption) *Editor {
 func (e *Editor) SetValue(s string) {
 	e.cells.top, e.cells.topIn, e.cells.left = 0, 0, 0 // a new document starts at its top
 	e.core.SetValue(s)
+	e.topMoved()
 }
 
 // SetKeepPlace makes a text set keep the reader's place, as ReplaceValue does: decl's keepPlace.
@@ -350,6 +356,7 @@ func (e *Editor) ReplaceValue(s string) {
 	e.core.SetValue(s)
 	e.core.SetCursor(at)
 	e.cells.top, e.cells.topIn, e.cells.left = min(top, max(e.core.LineCount()-1, 0)), 0, left
+	e.topMoved()
 }
 
 // AcceptsFocus implements tui.Focusable.
