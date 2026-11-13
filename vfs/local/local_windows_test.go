@@ -9,6 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"golang.org/x/sys/windows"
 
 	"github.com/yongjohnlee80/golib/vfs"
 )
@@ -148,5 +151,78 @@ func bothRoots(t *testing.T, cell func(t *testing.T, f *FS, dir string)) {
 	t.Run("root per operation", func(t *testing.T) {
 		dir := t.TempDir()
 		cell(t, newPerOp(t, dir), dir)
+	})
+}
+
+// holdAtCommit opens name in dir as a reader does (os.Open, no delete-sharing) at the write's
+// commit point, and answers the open file; the cell closes it.
+func holdAtCommit(t *testing.T, dir, name string) <-chan *os.File {
+	t.Helper()
+	held := make(chan *os.File, 1)
+	t.Cleanup(func() { testHook = nil })
+	testHook = func(p string) error {
+		if p != "precommit" {
+			return nil
+		}
+		testHook = nil
+		fh, err := os.Open(filepath.Join(dir, name))
+		if err != nil {
+			t.Errorf("holding %s: %v", name, err)
+			return nil
+		}
+		held <- fh
+		return nil
+	}
+	return held
+}
+
+// A write over a file a reader holds open (os.Open, which doesn't share delete) waits the hold
+// out: the reader lets go within replaceBusyWait, and the write lands.
+func TestAWriteWaitsOutAReaderHoldingItsFile(t *testing.T) {
+	bothRoots(t, func(t *testing.T, f *FS, dir string) {
+		if err := os.WriteFile(filepath.Join(dir, "a.md"), []byte("old"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		held := holdAtCommit(t, dir, "a.md")
+		go func() {
+			fh := <-held
+			time.Sleep(200 * time.Millisecond) // a reader's moment, well inside replaceBusyWait
+			fh.Close()
+		}()
+		if _, err := f.WriteFile(bg, "a.md", strings.NewReader("new")); err != nil {
+			t.Fatalf("WriteFile over a file held for 200 ms: %v; want it written once let go", err)
+		}
+		if b, _ := os.ReadFile(filepath.Join(dir, "a.md")); string(b) != "new" {
+			t.Fatalf("a.md holds %q, want the write's", b)
+		}
+	})
+}
+
+// A write over a file held past replaceBusyWait fails, with the hold's own refusal whole (a
+// sharing violation), and leaves the file as it was.
+func TestAWriteOverAFileHeldPastTheWaitSaysItIsInUse(t *testing.T) {
+	bothRoots(t, func(t *testing.T, f *FS, dir string) {
+		if err := os.WriteFile(filepath.Join(dir, "a.md"), []byte("old"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		held := holdAtCommit(t, dir, "a.md")
+		start := time.Now()
+		_, err := f.WriteFile(bg, "a.md", strings.NewReader("new"))
+		took := time.Since(start)
+		select {
+		case fh := <-held:
+			fh.Close()
+		default:
+			t.Fatal("the file was never held")
+		}
+		if !errors.Is(err, windows.ERROR_SHARING_VIOLATION) {
+			t.Fatalf("WriteFile over a held file: %v; want the sharing violation", err)
+		}
+		if took < replaceBusyWait {
+			t.Errorf("the write gave up after %s, before replaceBusyWait (%s)", took, replaceBusyWait)
+		}
+		if b, _ := os.ReadFile(filepath.Join(dir, "a.md")); string(b) != "old" {
+			t.Fatalf("a.md holds %q, want it as it was", b)
+		}
 	})
 }

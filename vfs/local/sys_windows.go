@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -43,9 +44,37 @@ func (p *parent) createTemp(name string, perm fs.FileMode) (*os.File, error) {
 	return p.root.OpenFile(p.path(name), os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
 }
 
-// rename moves from in p to to in dst, replacing an existing file at to.
+// rename moves from in p to to in dst, replacing an existing file at to. A file another handle
+// holds open without delete-sharing can't be replaced while it's held: an editor, a virus
+// scanner, the search indexer, or any reader through os.Open (Go opens without FILE_SHARE_DELETE)
+// refuses it with a sharing violation, or access denied. Such a hold is brief, so the replace is
+// tried again for up to replaceBusyWait, as Go's own toolchain does (cmd/go/internal/robustio),
+// and then the last refusal is answered whole.
 func (p *parent) rename(from string, dst *parent, to string) error {
-	return renameAt(p.handle(), from, dst.handle(), to, true)
+	return whileBusy(func() error { return renameAt(p.handle(), from, dst.handle(), to, true) })
+}
+
+// replaceBusyWait bounds how long a replace waits out a target held open (rename).
+const replaceBusyWait = time.Second
+
+// whileBusy runs op, and runs it again, backing off from 1 ms to 64 ms, while it fails because
+// the file is held (isBusy) and replaceBusyWait hasn't run out; its last error is op's own.
+func whileBusy(op func() error) error {
+	deadline := time.Now().Add(replaceBusyWait)
+	wait := time.Millisecond
+	for {
+		err := op()
+		if err == nil || !isBusy(err) || time.Now().After(deadline) {
+			return err
+		}
+		time.Sleep(wait)
+		wait = min(2*wait, 64*time.Millisecond)
+	}
+}
+
+// isBusy: the refusals of a file another handle holds open without delete-sharing.
+func isBusy(err error) bool {
+	return errors.Is(err, windows.ERROR_SHARING_VIOLATION) || errors.Is(err, windows.ERROR_ACCESS_DENIED)
 }
 
 func (p *parent) unlink(name string) error { return p.root.Remove(p.path(name)) }
