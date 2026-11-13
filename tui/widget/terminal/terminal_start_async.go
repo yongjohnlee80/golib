@@ -1,10 +1,12 @@
 package terminal
 
 import (
+	"errors"
 	"sync"
 	"time"
 
 	"github.com/yongjohnlee80/golib/errs"
+	"github.com/yongjohnlee80/golib/tui"
 )
 
 // The Terminal's start off the UI loop (StartAsync): the program's spawn, which on Windows creates a
@@ -36,16 +38,20 @@ func WithStartingText(text string) TerminalOption {
 }
 
 // startFlight is one start in flight: its outcome lands on the loop once, or it is cancelled and
-// its program, when the spawn returns one, is closed. state is guarded by mu; the goroutine and the
-// loop (or a shutdown off it) race to settle it.
+// its program, when the spawn returns one, is closed. state and cleanErr are guarded by mu; the
+// goroutine and the loop (or a shutdown off it) race to settle it. A flight stays among the
+// Terminal's flights until its goroutine is done, cancelled or not: a shutdown joins it until its
+// program is closed, and hears how that went (cleanErr).
 type startFlight struct {
-	mu      sync.Mutex
-	state   flightState
-	cancel  chan struct{} // closed on cancellation
-	landed  chan struct{} // closed once the loop has settled the outcome
-	done    chan struct{} // closed once the flight is over: adopted, failed, or its program closed
-	once    sync.Once
-	waiters []func(error)
+	mu       sync.Mutex
+	state    flightState
+	cleanErr error         // a late program's Close and Wait errors, once it is closed
+	app      *tui.App      // the App it was started in: where its waiters are answered
+	cancel   chan struct{} // closed on cancellation
+	landed   chan struct{} // closed once the loop has settled the outcome
+	done     chan struct{} // closed once the flight is over: adopted, failed, or its program closed
+	once     sync.Once
+	waiters  []func(error) // on the loop
 }
 
 type flightState int
@@ -56,8 +62,22 @@ const (
 	flightCancelled                    // cancelled: its program, if any, is closed by whoever sees it
 )
 
-func newStartFlight() *startFlight {
-	return &startFlight{cancel: make(chan struct{}), landed: make(chan struct{}), done: make(chan struct{})}
+func newStartFlight(app *tui.App) *startFlight {
+	return &startFlight{app: app, cancel: make(chan struct{}), landed: make(chan struct{}), done: make(chan struct{})}
+}
+
+// keepCleanErr keeps err, a late program's cleanup failure, for the shutdown that joins f.
+func (f *startFlight) keepCleanErr(err error) {
+	f.mu.Lock()
+	f.cleanErr = errors.Join(f.cleanErr, err)
+	f.mu.Unlock()
+}
+
+// cleanupErr is f's cleanup failure; read once f.done is closed.
+func (f *startFlight) cleanupErr() error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.cleanErr
 }
 
 // cancelOut cancels f unless its outcome has landed, answering whether it did.
@@ -74,14 +94,23 @@ func (f *startFlight) cancelOut() bool {
 
 func (f *startFlight) finish() { f.once.Do(func() { close(f.done) }) }
 
+// hasLanded says whether f's outcome landed on the loop (or is landing), rather than f cancelled.
+func (f *startFlight) hasLanded() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.state == flightLanded
+}
+
 // closeLate closes a program spawned for a cancelled start, and reaps it: it is never adopted, so
-// nothing else would.
-func closeLate(proc TerminalProcess) {
+// nothing else would. Its error is Close's and Wait's, as a generation's cleanup is
+// (TerminalStopResult); the exit status is no failure.
+func closeLate(proc TerminalProcess) error {
 	if proc == nil {
-		return
+		return nil
 	}
-	_ = proc.Close()
-	_, _ = proc.Wait()
+	closeErr := proc.Close()
+	_, waitErr := proc.Wait()
+	return errors.Join(closeErr, waitErr)
 }
 
 // StartAsync runs the program as Start does, but spawns it off the UI loop, which goes on drawing
@@ -122,7 +151,8 @@ func (t *Terminal) StartAsync(done func(error)) {
 		}
 		return
 	}
-	f := newStartFlight()
+	cmd, start, app := t.startCmd(), t.cfg.start, ctx.App()
+	f := newStartFlight(app)
 	if done != nil {
 		f.waiters = append(f.waiters, done)
 	}
@@ -131,8 +161,8 @@ func (t *Terminal) StartAsync(done func(error)) {
 	t.flights = append(t.flights, f)
 	t.procMu.Unlock()
 	t.sayStarting()
-	cmd, start, app := t.startCmd(), t.cfg.start, ctx.App()
 	go func() {
+		defer t.forgetFlight(f) // after finish: a shutdown that joins f until then hears its end
 		defer f.finish()
 		proc, err := start(cmd)
 		app.Update(func() { t.landFlight(f, proc, err) })
@@ -143,13 +173,14 @@ func (t *Terminal) StartAsync(done func(error)) {
 			return
 		case <-f.cancel:
 		case <-app.Done():
-			f.cancelOut()
+			if !f.cancelOut() && f.hasLanded() {
+				<-f.landed // landing on the loop as it ended: it closes landed once it is done
+				return
+			}
+			// cancelled, now or by the shutdown the App's end made: its program is this goroutine's
 		}
-		f.mu.Lock()
-		cancelled := f.state == flightCancelled
-		f.mu.Unlock()
-		if cancelled && err == nil {
-			closeLate(proc)
+		if err == nil {
+			f.keepCleanErr(closeLate(proc))
 		}
 	}()
 }
@@ -157,7 +188,8 @@ func (t *Terminal) StartAsync(done func(error)) {
 // landFlight settles f's outcome on the loop: adopted, or said as a failure (land, which also
 // closes a program a shutdown overtook). A flight cancelled meanwhile lands nothing: its goroutine
 // closes its program, and its waiters were answered. f.mu is never held with t.procMu, which a
-// shutdown takes first.
+// shutdown takes first. landed is closed once the outcome, and a late program's cleanup error, is
+// kept: the goroutine ends the flight only then.
 func (t *Terminal) landFlight(f *startFlight, proc TerminalProcess, err error) {
 	f.mu.Lock()
 	if f.state != flightOut {
@@ -166,37 +198,45 @@ func (t *Terminal) landFlight(f *startFlight, proc TerminalProcess, err error) {
 	}
 	f.state = flightLanded
 	f.mu.Unlock()
-	close(f.landed)
 	waiters := f.waiters
 	f.waiters = nil
 	if t.starting == f {
 		t.starting = nil
 	}
-	t.forgetFlight(f)
+	var cleanErr error
 	if t.Context() == nil { // destroyed meanwhile: nothing to run the program in
 		if err == nil {
-			closeLate(proc)
+			cleanErr = closeLate(proc)
 		}
 		err = ErrTerminalStartCancelled
 	} else {
-		err = t.land(proc, err)
+		err, cleanErr = t.landAs(proc, err)
 	}
+	f.keepCleanErr(cleanErr)
+	close(f.landed)
 	for _, w := range waiters {
 		w(err)
 	}
 }
 
-// endFlight forgets f and answers its waiters with err. On the UI loop.
+// endFlight answers f's waiters with err, f no longer the start in flight. f stays among the
+// flights a shutdown joins until its goroutine is done (forgetFlight): its program, when the spawn
+// returns one, is still to be closed. On the UI loop.
 func (t *Terminal) endFlight(f *startFlight, err error) {
+	t.answerFlight(f, err)
+	t.MarkDirty()
+}
+
+// answerFlight answers f's waiters, once, with err. On the UI loop.
+func (t *Terminal) answerFlight(f *startFlight, err error) {
 	if t.starting == f {
 		t.starting = nil
 	}
-	t.forgetFlight(f)
-	for _, w := range f.waiters {
+	waiters := f.waiters
+	f.waiters = nil
+	for _, w := range waiters {
 		w(err)
 	}
-	f.waiters = nil
-	t.MarkDirty()
 }
 
 // forgetFlight drops f from the flights a shutdown would join.
@@ -228,20 +268,25 @@ func (t *Terminal) cancelStart() {
 }
 
 // cancelFlightsLocked cancels every start in flight and answers one shutdown result for each: done
-// once its spawn has returned and its program is closed, or ErrTerminalStartStillOut after
-// t.startGrace. With t.procMu held (ShutdownWithResult, on the loop or off it): waiters are not
-// answered, the loop perhaps gone.
+// once its spawn has returned and its program is closed, with that cleanup's error, or
+// ErrTerminalStartStillOut after t.startGrace. A flight cancelled earlier (Stop, a tab's removal)
+// is joined the same way until its goroutine is done. With t.procMu held (ShutdownWithResult, on
+// the loop or off it): the waiters of a flight it cancels are answered ErrTerminalStartCancelled
+// on the loop, posted (they are the loop's), and never if the loop has ended.
 func (t *Terminal) cancelFlightsLocked() []*TerminalShutdownResult {
 	var out []*TerminalShutdownResult
 	grace := t.startGrace
 	for _, f := range t.flights {
-		f.cancelOut()
+		if f.cancelOut() {
+			f.app.Update(func() { t.answerFlight(f, ErrTerminalStartCancelled) })
+		}
 		r := &TerminalShutdownResult{completion: terminalCompletion{done: make(chan struct{})}}
 		go func(f *startFlight) {
 			timer := time.NewTimer(grace)
 			defer timer.Stop()
 			select {
 			case <-f.done:
+				r.completion.err = f.cleanupErr()
 			case <-timer.C:
 				r.completion.err = ErrTerminalStartStillOut
 			}

@@ -329,3 +329,175 @@ func TestATabRemovedWhileStartingClosesItsLateProgram(t *testing.T) {
 	s.free()
 	s.closedOnce(t)
 }
+
+// waitShutdown waits for r within 5 s, answering its error.
+func waitShutdown(t *testing.T, r interface{ Wait(context.Context) error }) error {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return r.Wait(ctx)
+}
+
+// notDoneYet fails when done closes within 100 ms.
+func notDoneYet(t *testing.T, done <-chan struct{}, what string) {
+	t.Helper()
+	select {
+	case <-done:
+		t.Fatal(what)
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+// slowTab is a TerminalTabs with one tab whose spawn s holds, mounted.
+func slowTab(t *testing.T, s *heldStarter) (*TerminalTabs, TerminalTabID, *widgettest.Harness) {
+	t.Helper()
+	tabs := NewTerminalTabs()
+	h := widgettest.StartApp(t, tabs, 40, 6)
+	t.Cleanup(func() { s.free(); h.Stop() })
+	var id TerminalTabID
+	h.OnLoop(func() {
+		var err error
+		if id, err = tabs.Add("slow", WithStarter(s.start)); err != nil {
+			t.Error(err)
+		}
+	})
+	return tabs, id, h
+}
+
+// TestARemovalWaitsForItsStartsLateProgram: a tab removed while its start is out is not done until
+// the program its spawn returns is closed; then it is, with no error.
+func TestARemovalWaitsForItsStartsLateProgram(t *testing.T) {
+	s := newHeldStarter()
+	tabs, id, h := slowTab(t, s)
+	h.OnLoop(func() { tabs.StartAsync(id, nil) })
+	s.spawnOut(t)
+	var removal *TerminalTabRemovalResult
+	h.OnLoop(func() {
+		var err error
+		if removal, err = tabs.Remove(id); err != nil {
+			t.Error(err)
+		}
+	})
+	notDoneYet(t, removal.Done(), "the removal was done while its start's spawn was still out")
+	s.free()
+	s.closedOnce(t)
+	if err := waitShutdown(t, removal); err != nil {
+		t.Fatalf("the removal: %v, want done once the late program is closed", err)
+	}
+}
+
+// TestAShutdownAfterStopJoinsTheCancelledStart: Stop cancels a start in flight; a shutdown after
+// it still joins that start, until its program is closed, or for the terminal's grace when the
+// spawn never returns.
+func TestAShutdownAfterStopJoinsTheCancelledStart(t *testing.T) {
+	t.Run("the spawn returns", func(t *testing.T) {
+		s := newHeldStarter()
+		term, h, _ := asyncTerminal(t, s)
+		h.OnLoop(func() { term.StartAsync(nil) })
+		s.spawnOut(t)
+		var r *TerminalShutdownResult
+		h.OnLoop(func() { term.Stop(); r = term.ShutdownWithResult() })
+		notDoneYet(t, r.Done(), "the shutdown was done while the stopped start's spawn was still out")
+		s.free()
+		s.closedOnce(t)
+		if err := waitShutdown(t, r); err != nil {
+			t.Fatalf("the shutdown: %v, want done once the late program is closed", err)
+		}
+	})
+	t.Run("the spawn never returns", func(t *testing.T) {
+		s := newHeldStarter()
+		term, h, _ := asyncTerminal(t, s)
+		h.OnLoop(func() {
+			term.startGrace = 100 * time.Millisecond
+			term.StartAsync(nil)
+		})
+		s.spawnOut(t)
+		var r *TerminalShutdownResult
+		h.OnLoop(func() { term.Stop(); r = term.ShutdownWithResult() })
+		if err := waitShutdown(t, r); !errors.Is(err, ErrTerminalStartStillOut) {
+			t.Fatalf("the shutdown over a stopped, wedged start: %v, want ErrTerminalStartStillOut", err)
+		}
+	})
+}
+
+// TestAShutdownOnTheLoopAnswersItsStart: a shutdown on the loop while a start is out answers the
+// start's waiter, once, with ErrTerminalStartCancelled, without waiting for the spawn.
+func TestAShutdownOnTheLoopAnswersItsStart(t *testing.T) {
+	s := newHeldStarter()
+	term, h, _ := asyncTerminal(t, s)
+	a := newAnswers()
+	h.OnLoop(func() { term.StartAsync(a.done) })
+	s.spawnOut(t)
+	h.OnLoop(func() { term.ShutdownWithResult() })
+	if err := a.next(t); !errors.Is(err, ErrTerminalStartCancelled) {
+		t.Fatalf("the start overtaken by a shutdown on the loop answered %v, want ErrTerminalStartCancelled", err)
+	}
+	s.free()
+	s.closedOnce(t)
+	h.Sync()
+	select {
+	case err := <-a.ch:
+		t.Fatalf("the start answered again: %v", err)
+	default:
+	}
+}
+
+// lateFailingStarter answers its spawn, once released, with p, whose Close fails with err.
+func lateFailingStarter(err error) (start func(pty.Cmd) (TerminalProcess, error), entered <-chan struct{}, release func()) {
+	p := newResultProc()
+	p.closeErr = err
+	close(p.release) // Close answers at once
+	in, out := make(chan struct{}), make(chan struct{})
+	return func(pty.Cmd) (TerminalProcess, error) {
+		close(in)
+		<-out
+		return p, nil
+	}, in, sync.OnceFunc(func() { close(out) })
+}
+
+// TestALateProgramsCleanupErrorReachesTheShutdown: the program a cancelled start's spawn returns
+// is closed, and when its Close fails, the shutdown (or the tab's removal) that joined the start
+// says so, rather than done.
+func TestALateProgramsCleanupErrorReachesTheShutdown(t *testing.T) {
+	want := errors.New("the late program's close failed")
+	t.Run("a shutdown", func(t *testing.T) {
+		start, entered, release := lateFailingStarter(want)
+		term := NewTerminal(WithStarter(start))
+		h := widgettest.StartApp(t, term, 40, 6)
+		t.Cleanup(func() { release(); h.Stop() })
+		h.OnLoop(func() { term.StartAsync(nil) })
+		awaitResultEvent(t, entered)
+		var r *TerminalShutdownResult
+		h.OnLoop(func() { r = term.ShutdownWithResult() })
+		release()
+		if err := waitShutdown(t, r); !errors.Is(err, want) {
+			t.Fatalf("the shutdown: %v, want the late program's cleanup error", err)
+		}
+	})
+	t.Run("a tab's removal", func(t *testing.T) {
+		start, entered, release := lateFailingStarter(want)
+		tabs := NewTerminalTabs()
+		h := widgettest.StartApp(t, tabs, 40, 6)
+		t.Cleanup(func() { release(); h.Stop() })
+		var id TerminalTabID
+		h.OnLoop(func() {
+			var err error
+			if id, err = tabs.Add("slow", WithStarter(start)); err != nil {
+				t.Error(err)
+			}
+			tabs.StartAsync(id, nil)
+		})
+		awaitResultEvent(t, entered)
+		var removal *TerminalTabRemovalResult
+		h.OnLoop(func() {
+			var err error
+			if removal, err = tabs.Remove(id); err != nil {
+				t.Error(err)
+			}
+		})
+		release()
+		if err := waitShutdown(t, removal); !errors.Is(err, want) {
+			t.Fatalf("the removal: %v, want the late program's cleanup error", err)
+		}
+	})
+}
