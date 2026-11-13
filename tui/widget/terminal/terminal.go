@@ -325,11 +325,12 @@ func pressMatches(match func(tui.KeyEvent) bool, e tui.KeyEvent) bool {
 }
 
 // toggleMode is the mode key: normal mode back to input, input mode into normal mode while a
-// program runs (Ctrl+\ Ctrl+n's condition). A Ctrl+\ waiting for its second key is sent as itself.
+// program runs or its start is in flight (Ctrl+\ Ctrl+n's condition): a starting Terminal takes its
+// keys as a running one does. A Ctrl+\ waiting for its second key is sent as itself.
 // SetMode puts the Terminal in m, as its mode key does: TerminalInput sends the keys to the
-// program, TerminalNormal moves a cursor over its scrollback. Normal mode needs a running program,
-// as the mode key's does: SetMode(TerminalNormal) on a Terminal with none changes nothing and
-// reports false. A host puts a Terminal in input mode when the user arrives to type in it.
+// program, TerminalNormal moves a cursor over its scrollback. Normal mode needs a running program
+// or a start in flight, as the mode key's does: SetMode(TerminalNormal) on a Terminal with neither
+// changes nothing and reports false. A host puts a Terminal in input mode when the user arrives to type in it.
 func (t *Terminal) SetMode(m TerminalMode) bool {
 	if m == t.mode {
 		return true
@@ -342,7 +343,7 @@ func (t *Terminal) toggleMode() bool {
 		t.setMode(TerminalInput)
 		return true
 	}
-	if !t.running {
+	if !t.running && t.starting == nil { // a start in flight toggles as a running program does
 		return false
 	}
 	t.flushPrefix()
@@ -472,8 +473,8 @@ func (t *Terminal) HandleEvent(ev tui.Event) bool {
 		return false
 	case tui.PasteEvent:
 		t.endTransientView()
-		if t.mode == TerminalNormal || !t.running {
-			return false
+		if t.mode == TerminalNormal || (!t.running && t.starting == nil) {
+			return false // a paste while a start is in flight is the program's, kept for it (send)
 		}
 		if t.prefix {
 			t.prefix = false
