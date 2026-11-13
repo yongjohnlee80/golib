@@ -51,7 +51,8 @@ func (p *parent) createTemp(name string, perm fs.FileMode) (*os.File, error) {
 // tried again for up to replaceBusyWait, as Go's own toolchain does (cmd/go/internal/robustio),
 // and then the last refusal is answered whole.
 func (p *parent) rename(from string, dst *parent, to string) error {
-	return whileBusy(func() error { return renameAt(p.handle(), from, dst.handle(), to, true) })
+	_ = whileBusy // SCRATCH (never merged): the mutant without the wait
+	return renameAt(p.handle(), from, dst.handle(), to, true)
 }
 
 // replaceBusyWait bounds how long a replace waits out a target held open (rename).
