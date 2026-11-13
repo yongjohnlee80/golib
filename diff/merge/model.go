@@ -106,6 +106,7 @@ func NewModel(in Input, opts ...diff.Options) *Model {
 		m.base = diff.Text{Lines: []string{}}
 		m.merge = diff.Merge2(m.left.Lines, m.right.Lines, opts...)
 	}
+	m.merge.Hunks = separated(m.merge.Hunks)
 	switch {
 	case in.ResultSide == Left:
 		m.unresolved = diff.PickLeft
@@ -125,6 +126,33 @@ func NewModel(in Input, opts ...diff.Options) *Model {
 		m.result = append(m.result, lines...)
 	}
 	return m
+}
+
+// separated is hunks with a Same hunk of no lines before a change that starts them, after one that
+// ends them, and between two changes next to each other: each at the very place the hunks beside
+// it meet, in base, left and right. A line typed beside an open change then always has unchanged
+// lines to go to, so it never resolves the change, and a later Take of it never replaces the line.
+func separated(hunks []diff.Hunk) []diff.Hunk {
+	change := func(h diff.Hunk) bool { return h.Kind != diff.Same }
+	at := func(h diff.Hunk) diff.Hunk { // a separator where h ends
+		return diff.Hunk{Kind: diff.Same, Base: diff.Span{From: h.Base.To, To: h.Base.To},
+			Left: diff.Span{From: h.Left.To, To: h.Left.To}, Right: diff.Span{From: h.Right.To, To: h.Right.To}}
+	}
+	out := make([]diff.Hunk, 0, len(hunks)+2)
+	for i, h := range hunks {
+		switch {
+		case i == 0 && change(h):
+			out = append(out, diff.Hunk{Kind: diff.Same, Base: diff.Span{From: h.Base.From, To: h.Base.From},
+				Left: diff.Span{From: h.Left.From, To: h.Left.From}, Right: diff.Span{From: h.Right.From, To: h.Right.From}})
+		case i > 0 && change(h) && change(hunks[i-1]):
+			out = append(out, at(hunks[i-1]))
+		}
+		out = append(out, h)
+	}
+	if n := len(hunks); n > 0 && change(hunks[n-1]) {
+		out = append(out, at(hunks[n-1]))
+	}
+	return out
 }
 
 // unresolvedLines are a hunk's lines in the result before it is resolved.
@@ -153,7 +181,9 @@ func (m *Model) Input() Input { return m.in }
 func (m *Model) HasBase() bool { return m.merge.HasBase }
 func (m *Model) Coarse() bool  { return m.merge.Coarse }
 
-// Hunks are the merge's hunks, in order.
+// Hunks are the merge's hunks, in order. They may include Same hunks of no lines the model adds at
+// the edges and between two changes next to each other (separators), so that a line typed beside a
+// change has unchanged lines to go to. Changes lists only the changes.
 func (m *Model) Hunks() []diff.Hunk { return m.merge.Hunks }
 
 // BaseLines, LeftLines and RightLines are each text's lines; ResultLines the result's, as it is now.
