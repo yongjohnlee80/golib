@@ -24,6 +24,7 @@ type source struct {
 	in       merge.Input
 	loadErr  error
 	applyErr error
+	hold     chan struct{} // when set, Apply waits for it
 	loads    int
 	applied  []string
 	changed  chan struct{}
@@ -38,9 +39,21 @@ func (s *source) Load(context.Context) (merge.Input, error) {
 
 func (s *source) Apply(_ context.Context, result string) error {
 	s.mu.Lock()
+	hold := s.hold
+	s.mu.Unlock()
+	if hold != nil {
+		<-hold
+	}
+	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.applied = append(s.applied, result)
 	return s.applyErr
+}
+
+func (s *source) failLoads(err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.loadErr = err
 }
 
 func (s *source) Changed() <-chan struct{} {
@@ -66,14 +79,14 @@ var (
 func lines(ls ...string) string { return strings.Join(ls, "\n") + "\n" }
 
 // threeWay is a merge of a left change, a right change and a conflict, the result to the buffer
-// on the right.
+// on the right: Compare's shape, the merge starting from the buffer's own text.
 func threeWay() merge.Input {
 	return merge.Input{
 		HasBase:  true,
 		Base:     lines("alpha", "beta", "gamma", "delta", "x", "omega"),
 		Left:     lines("alpha", "BETA", "gamma", "delta", "x", "OMEGA-L"),
 		Right:    lines("alpha", "beta", "gamma", "DELTA", "x", "omega-r"),
-		BaseFrom: disk, LeftFrom: disk, RightFrom: buffer, ResultTo: buffer,
+		BaseFrom: disk, LeftFrom: disk, RightFrom: buffer, ResultTo: buffer, ResultSide: merge.Right,
 	}
 }
 
@@ -262,12 +275,16 @@ func TestTheKeysResolveTheChangeAtTheCursor(t *testing.T) {
 	}
 	r.focus(0, 1) // the left pane, on BETA
 	r.keys(key('<'))
-	r.resultIs("< on the left's change", lines("alpha", "BETA", "gamma", "delta", "x", "omega"))
+	r.until("< taking the left's change", func() bool { return r.v.Model().Changes()[0].State == merge.TookLeft })
+	r.resultIs("< on the left's change", lines("alpha", "BETA", "gamma", "DELTA", "x", "omega-r"))
 	r.focus(2, 3) // the right pane, on DELTA
 	r.keys(key('>'))
-	r.resultIs("> on the right's change", lines("alpha", "BETA", "gamma", "DELTA", "x", "omega"))
+	// The buffer's DELTA is in the result already: wait for the take itself, not the text.
+	r.until("> taking the right's change", func() bool { return r.v.Model().Changes()[1].State == merge.TookRight })
+	r.resultIs("> on the right's change", lines("alpha", "BETA", "gamma", "DELTA", "x", "omega-r"))
 	r.focus(2, 5) // the conflict
 	r.keys(key('+'))
+	r.until("+ taking both of the conflict", func() bool { return r.v.Model().Changes()[2].State == merge.TookBoth })
 	r.resultIs("+ on the conflict", lines("alpha", "BETA", "gamma", "DELTA", "x", "OMEGA-L", "omega-r"))
 	if ch, co := r.counts(); ch != 0 || co != 0 {
 		t.Fatalf("counts %d, %d with every change taken", ch, co)
@@ -279,8 +296,8 @@ func TestTheKeysResolveTheChangeAtTheCursor(t *testing.T) {
 	r.focus(0, 5)
 	r.keys(key('x'))
 	r.until("x dismissing the conflict", func() bool { ch, co := r.v.Counts(); return ch == 2 && co == 0 })
-	if got := r.result(); got != lines("alpha", "beta", "gamma", "delta", "x", "omega") {
-		t.Fatalf("x changed the result: %q", got)
+	if got := r.result(); got != threeWay().Right {
+		t.Fatalf("x changed the result: %q, want it as it started, the buffer's", got)
 	}
 	r.focus(1, 0)
 	r.keys(key(']'))
@@ -297,7 +314,7 @@ func TestClickingAnArrowAndABarButton(t *testing.T) {
 	s := r.shows("the arrows", "»", "«")
 	x, y, _ := find(s, "»")
 	r.click(x, y) // the first », the left's BETA
-	r.resultIs("a click on »", lines("alpha", "BETA", "gamma", "delta", "x", "omega"))
+	r.resultIs("a click on »", lines("alpha", "BETA", "gamma", "DELTA", "x", "omega-r"))
 	s = r.shows("the bar", "Accept Right")
 	x, y, _ = find(s, "Accept Right")
 	r.click(x+1, y)
@@ -319,7 +336,8 @@ func TestApplyAsksThenHandsTheSourceTheResult(t *testing.T) {
 	}}, 120, 14)
 	r.loaded()
 	r.h.OnLoop(r.v.Merge)
-	want := lines("alpha", "BETA", "gamma", "DELTA", "x", "omega")
+	// The conflict left unresolved keeps the buffer's lines: what Apply writes there is the user's.
+	want := lines("alpha", "BETA", "gamma", "DELTA", "x", "omega-r")
 	if got := r.result(); got != want {
 		t.Fatalf("Merge: %q", got)
 	}
@@ -352,6 +370,17 @@ func TestAnApplyErrorStaysInTheBar(t *testing.T) {
 	}
 	if _, a := src.counts(); len(a) != 1 {
 		t.Fatalf("Cancel applied: %q", a)
+	}
+	r.mu.Unlock()
+	r.h.OnLoop(r.v.Apply) // after Cancel: nothing
+	r.h.OnLoop(func() { r.v.Take(0, merge.Left) })
+	r.h.Sync()
+	r.mu.Lock()
+	if _, a := src.counts(); len(a) != 1 {
+		t.Fatalf("Apply after Cancel applied: %q", a)
+	}
+	if got := r.result(); got != threeWay().Right {
+		t.Fatalf("Take after Cancel changed the result: %q", got)
 	}
 }
 
@@ -396,13 +425,13 @@ func TestAnUndoInTheResultUndoesATake(t *testing.T) {
 	}
 	r.focus(1, 0)
 	r.keys(key('u'))
-	r.resultIs("u undoing the take", threeWay().Base)
+	r.resultIs("u undoing the take", threeWay().Right)
 	if ch, _ := r.counts(); ch != 3 {
 		t.Fatalf("after u: %d changes unresolved, want 3", ch)
 	}
 	// A redo brings the take back as a take, not as a hand edit: its revision was settled.
 	r.keys(tui.KeyEvent{Kind: tui.KeyPress, Code: 'r', Mods: tui.ModCtrl})
-	r.resultIs("Ctrl+R redoing the take", lines("alpha", "BETA", "gamma", "delta", "x", "omega"))
+	r.resultIs("Ctrl+R redoing the take", lines("alpha", "BETA", "gamma", "DELTA", "x", "omega-r"))
 	r.until("the redone change taken from the left", func() bool {
 		return r.v.Model().Changes()[0].State == merge.TookLeft
 	})
@@ -420,7 +449,7 @@ func scrollInput() merge.Input {
 	right = append([]string{}, base...)
 	right[50] = "changed"
 	return merge.Input{HasBase: true, Base: lines(base...), Left: lines(left...), Right: lines(right...),
-		LeftFrom: disk, RightFrom: buffer, ResultTo: buffer}
+		LeftFrom: disk, RightFrom: buffer, ResultTo: buffer, ResultSide: merge.Right}
 }
 
 func TestScrollingOnePaneScrollsTheOthers(t *testing.T) {
@@ -496,4 +525,93 @@ func TestTheTintsReadInSepiaAndDark(t *testing.T) {
 			}
 		})
 	}
+}
+
+// With nowhere to ask (no dialog host, no Confirm option), Apply with changes left and Reload over a
+// touched result are not done, and the bar says so: an unasked one could drop the user's work.
+func TestWithNowhereToAskApplyAndReloadAreNotDone(t *testing.T) {
+	src := &source{in: threeWay()}
+	r := start(t, src, mergeview.Options{}, 160, 14)
+	r.loaded()
+	r.h.OnLoop(r.v.Apply)
+	r.shows("the refusal", "Not done: it needs a confirmation, and there is nowhere to ask")
+	if _, a := src.counts(); len(a) != 0 {
+		t.Fatalf("Apply with changes left and nowhere to ask applied %q", a)
+	}
+	r.h.OnLoop(func() { r.v.Take(0, merge.Left) })
+	r.h.OnLoop(r.v.Reload)
+	r.h.Sync()
+	if n, _ := src.counts(); n != 1 {
+		t.Fatalf("Reload over a touched result, nowhere to ask: %d loads, want the first alone", n)
+	}
+	if got := r.result(); got != lines("alpha", "BETA", "gamma", "DELTA", "x", "omega-r") {
+		t.Fatalf("the result after the refused reload: %q", got)
+	}
+}
+
+// A reload that fails keeps the merge shown, its result and Apply: the error is in the bar, and
+// Reload is offered again.
+func TestAFailedReloadKeepsTheMergeAndApply(t *testing.T) {
+	src := &source{in: threeWay()}
+	r := start(t, src, mergeview.Options{
+		ConfirmApply:  func(_, _ int, apply func()) { apply() },
+		ConfirmReload: func(reload func()) { reload() },
+	}, 160, 14)
+	r.loaded()
+	r.h.OnLoop(func() { r.v.Take(0, merge.Left) })
+	src.failLoads(errors.New("the disk is gone"))
+	r.h.OnLoop(func() { r.v.Reload() })
+	r.shows("the failed reload in the bar, the merge still shown", "Could not load: the disk is gone", "BETA", "OMEGA-L", "Reload", "Apply")
+	want := lines("alpha", "BETA", "gamma", "DELTA", "x", "omega-r")
+	if got := r.result(); got != want {
+		t.Fatalf("after the failed reload: %q, want the result kept", got)
+	}
+	r.h.OnLoop(r.v.Apply)
+	r.screen("the apply", func(string) bool { _, a := src.counts(); return len(a) == 1 })
+	if _, a := src.counts(); a[0] != want {
+		t.Fatalf("applied %q, want the kept result", a[0])
+	}
+}
+
+// The result is read-only while an Apply runs, so nothing is typed that the applied text lacks; an
+// Apply that fails gives it back.
+func TestTheResultIsReadOnlyWhileItIsApplied(t *testing.T) {
+	src := &source{in: threeWay(), hold: make(chan struct{}), applyErr: errors.New("refused")}
+	r := start(t, src, mergeview.Options{ConfirmApply: func(_, _ int, apply func()) { apply() }}, 160, 14)
+	r.loaded()
+	r.h.OnLoop(r.v.Apply)
+	readOnly := func() (ro bool) {
+		r.h.OnLoop(func() { _, res, _ := r.v.Panes(); ro = res.Core().ReadOnly() })
+		return ro
+	}
+	if !readOnly() {
+		t.Fatal("the result is editable while it is applied")
+	}
+	close(src.hold)
+	r.shows("the refusal", "Could not apply: refused")
+	if readOnly() {
+		t.Fatal("the result stayed read-only after the Apply failed")
+	}
+}
+
+// ] moves to a change starting on the line of the one it is on: two changes can, once the lines
+// between them are gone.
+func TestNextChangeReachesAChangeOnTheSameLine(t *testing.T) {
+	in := merge.Input{HasBase: true,
+		Base: lines("a", "b", "c", "d", "e"), Left: lines("a", "c", "d", "E"), Right: lines("a", "b", "c", "d", "e"),
+		LeftFrom: disk, RightFrom: buffer, ResultTo: buffer}
+	r := start(t, &source{in: in}, mergeview.Options{}, 120, 14)
+	r.loaded()
+	r.h.OnLoop(func() { r.v.Take(0, merge.Left) }) // b deleted: the first change holds no lines, at line 1
+	r.h.OnLoop(func() {                            // c and d deleted by hand: the second change starts at line 1 too
+		_, res, _ := r.v.Panes()
+		_, _ = res.Core().Replace(editor.TextRange{From: editor.TextPos{Line: 1}, To: editor.TextPos{Line: 3}}, "")
+	})
+	r.until("the result a, e", func() bool { return r.v.Result() == lines("a", "e") })
+	r.focus(1, 0)
+	r.keys(key(']'))
+	r.until("] at the first change, line 1", func() bool { _, res, _ := r.v.Panes(); return res.Core().Cursor().Line == 1 })
+	r.keys(key(']'))
+	r.keys(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyRight, Mods: tui.ModCtrl | tui.ModShift}) // take the left's
+	r.resultIs("the second ] then taking the left: the second change's E", lines("a", "E"))
 }

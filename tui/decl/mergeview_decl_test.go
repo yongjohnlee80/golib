@@ -31,9 +31,10 @@ const mergeViewDoc = "import tui 1.0\nimport demo 1.0\nWindow {\n" +
 func TestADeclaredMergeViewTakesItsSourceFromItsHost(t *testing.T) {
 	src := &mergeSource{applied: make(chan string, 1), in: merge.Input{
 		Left: "same\nleft side\n", Right: "same\nright side\n",
-		LeftFrom:  merge.Origin{Kind: merge.File, Label: "On disk"},
-		RightFrom: merge.Origin{Kind: merge.Buffer, Label: "Your edits"},
-		ResultTo:  merge.Origin{Kind: merge.Buffer, Label: "Your edits"},
+		LeftFrom:   merge.Origin{Kind: merge.File, Label: "On disk"},
+		RightFrom:  merge.Origin{Kind: merge.Buffer, Label: "Your edits"},
+		ResultTo:   merge.Origin{Kind: merge.Buffer, Label: "Your edits"},
+		ResultSide: merge.Right,
 	}}
 	rec := &recorder{}
 	give := func(p *tuidecl.Program) error {

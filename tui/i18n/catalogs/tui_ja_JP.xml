@@ -315,5 +315,9 @@
         <source>Loading again discards the changes made to the result. Load again?</source>
         <translation>再読み込みすると、結果に加えた変更は破棄されます。再読み込みしますか?</translation>
     </message>
+    <message id="tui.mergeview.cannotAsk">
+        <source>Not done: it needs a confirmation, and there is nowhere to ask</source>
+        <translation>実行しませんでした: 確認が必要ですが、確認を求める場所がありません</translation>
+    </message>
 </context>
 </TS>
