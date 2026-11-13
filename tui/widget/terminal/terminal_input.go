@@ -11,13 +11,43 @@ import (
 // The Terminal's input: what a key does in input mode, and the bounded queue that writes to the
 // program, off the loop.
 
-// send queues bytes for the program without blocking the loop.
+// send queues bytes for the program without blocking the loop. While a start is in flight they
+// are kept for the program once it runs (early), so a key typed as a terminal opens is not lost.
 func (t *Terminal) send(b []byte) {
-	if t.Running() && len(b) > 0 {
+	if len(b) == 0 {
+		return
+	}
+	if t.Running() {
 		if err := t.in.offer(b); err != nil {
 			t.report(err)
 		}
+		return
 	}
+	if t.starting != nil {
+		t.keepEarly(b)
+	}
+}
+
+// keepEarly keeps b for the program the start in flight runs, within TerminalInputLimit: what
+// would pass it is dropped, and the screen says so once.
+func (t *Terminal) keepEarly(b []byte) {
+	if t.earlyLen+len(b) > TerminalInputLimit {
+		if !t.earlyFull {
+			t.earlyFull = true
+			t.report(ErrTerminalInputFull)
+		}
+		return
+	}
+	t.early = append(t.early, append([]byte(nil), b...))
+	t.earlyLen += len(b)
+}
+
+// takeEarly is what the keyboard sent while the start was in flight, taken: for its program, or
+// dropped with a start that did not run one.
+func (t *Terminal) takeEarly() [][]byte {
+	early := t.early
+	t.early, t.earlyLen, t.earlyFull = nil, 0, false
+	return early
 }
 
 // SendText accepts literal text into the running generation's bounded input queue.
@@ -109,10 +139,12 @@ func inputAct(ctx tui.KeyResolver, k tui.KeyEvent, running, exited, prefix, vimK
 	return termSend
 }
 
-// inputKey handles a key in input mode.
+// inputKey handles a key in input mode. While a start is in flight the program's keys are the
+// Terminal's, as once it runs: kept for the program (send), never the host's.
 func (t *Terminal) inputKey(k tui.KeyEvent) bool {
-	act := inputAct(t.Context(), k, t.running, t.exited, t.prefix, t.cfg.vimKeys, t.running && t.scr.Modes().AltScreen)
-	if t.prefix && t.running {
+	live := t.running || t.starting != nil
+	act := inputAct(t.Context(), k, live, t.exited, t.prefix, t.cfg.vimKeys, t.running && t.scr.Modes().AltScreen)
+	if t.prefix && live {
 		t.prefix = false
 	}
 	switch act {

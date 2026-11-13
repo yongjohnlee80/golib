@@ -118,7 +118,10 @@ func closeLate(proc TerminalProcess) error {
 // runs on the loop with the start's outcome: nil once the program runs (or when it already does),
 // the start's error, ErrTerminalShutdown, or ErrTerminalStartCancelled when Stop or Shutdown
 // overtook it. A start in flight is joined, never repeated. Before the mount, the start waits for
-// it, as Start's does. Enter or i retry a failed start the same way. On the UI loop.
+// it, as Start's does. Enter or i retry a failed start the same way. What the keyboard sends while
+// the start is out is the program's, kept for it and written once it runs (up to
+// TerminalInputLimit; the excess is dropped, and the screen says so once); a start that fails or
+// is cancelled drops it. On the UI loop.
 func (t *Terminal) StartAsync(done func(error)) {
 	answer := func(err error) {
 		if done != nil {
@@ -200,7 +203,8 @@ func (t *Terminal) landFlight(f *startFlight, proc TerminalProcess, err error) {
 	f.mu.Unlock()
 	waiters := f.waiters
 	f.waiters = nil
-	if t.starting == f {
+	current := t.starting == f // the start in flight: what was typed while it started is its own
+	if current {
 		t.starting = nil
 	}
 	var cleanErr error
@@ -211,6 +215,14 @@ func (t *Terminal) landFlight(f *startFlight, proc TerminalProcess, err error) {
 		err = ErrTerminalStartCancelled
 	} else {
 		err, cleanErr = t.landAs(proc, err)
+	}
+	if current {
+		early := t.takeEarly()
+		if err == nil { // the keys typed while it started, in order, before any typed after
+			for _, b := range early {
+				t.send(b)
+			}
+		}
 	}
 	f.keepCleanErr(cleanErr)
 	close(f.landed)
@@ -231,6 +243,7 @@ func (t *Terminal) endFlight(f *startFlight, err error) {
 func (t *Terminal) answerFlight(f *startFlight, err error) {
 	if t.starting == f {
 		t.starting = nil
+		t.takeEarly() // no program will read them
 	}
 	waiters := f.waiters
 	f.waiters = nil
