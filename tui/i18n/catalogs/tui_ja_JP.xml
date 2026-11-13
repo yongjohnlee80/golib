@@ -235,5 +235,85 @@
         <source>Not available in the terminal</source>
         <translation>ターミナルでは表示できません</translation>
     </message>
+    <message id="tui.mergeview.acceptLeft">
+        <source>Accept &amp;Left</source>
+        <translation>左側を採用(&amp;l)</translation>
+    </message>
+    <message id="tui.mergeview.acceptRight">
+        <source>Accept &amp;Right</source>
+        <translation>右側を採用(&amp;r)</translation>
+    </message>
+    <message id="tui.mergeview.merge">
+        <source>&amp;Merge</source>
+        <translation>マージ(&amp;m)</translation>
+    </message>
+    <message id="tui.mergeview.apply">
+        <source>&amp;Apply</source>
+        <translation>適用(&amp;a)</translation>
+    </message>
+    <message id="tui.mergeview.reload">
+        <source>Reloa&amp;d</source>
+        <translation>再読み込み(&amp;d)</translation>
+    </message>
+    <message id="tui.mergeview.result">
+        <source>Result</source>
+        <translation>結果</translation>
+    </message>
+    <message id="tui.mergeview.kind.buffer">
+        <source>Buffer</source>
+        <translation>バッファー</translation>
+    </message>
+    <message id="tui.mergeview.kind.file">
+        <source>File</source>
+        <translation>ファイル</translation>
+    </message>
+    <message id="tui.mergeview.kind.remote">
+        <source>Remote</source>
+        <translation>リモート</translation>
+    </message>
+    <message id="tui.mergeview.kind.git">
+        <source>Git</source>
+        <translation>Git</translation>
+    </message>
+    <message id="tui.mergeview.counts">
+        <source>%1 changes unresolved, %2 of them conflicts</source>
+        <translation>未解決の変更 %1 件(うち競合 %2 件)</translation>
+    </message>
+    <message id="tui.mergeview.resolved">
+        <source>Every change is resolved</source>
+        <translation>すべての変更を解決しました</translation>
+    </message>
+    <message id="tui.mergeview.coarse">
+        <source>Compared coarsely: the texts are large</source>
+        <translation>テキストが大きいため大まかに比較しました</translation>
+    </message>
+    <message id="tui.mergeview.changed">
+        <source>A side changed under the merge</source>
+        <translation>マージ中に片方が変更されました</translation>
+    </message>
+    <message id="tui.mergeview.loading">
+        <source>Loading…</source>
+        <translation>読み込み中…</translation>
+    </message>
+    <message id="tui.mergeview.notText">
+        <source>Not text: there is nothing to merge by lines</source>
+        <translation>テキストではないため、行単位でマージできません</translation>
+    </message>
+    <message id="tui.mergeview.loadFailed">
+        <source>Could not load: %1</source>
+        <translation>読み込めませんでした: %1</translation>
+    </message>
+    <message id="tui.mergeview.applyFailed">
+        <source>Could not apply: %1</source>
+        <translation>適用できませんでした: %1</translation>
+    </message>
+    <message id="tui.mergeview.confirmApply">
+        <source>%1 changes are unresolved, %2 of them conflicts. Apply anyway?</source>
+        <translation>未解決の変更が %1 件(うち競合 %2 件)あります。このまま適用しますか?</translation>
+    </message>
+    <message id="tui.mergeview.confirmReload">
+        <source>Loading again discards the changes made to the result. Load again?</source>
+        <translation>再読み込みすると、結果に加えた変更は破棄されます。再読み込みしますか?</translation>
+    </message>
 </context>
 </TS>

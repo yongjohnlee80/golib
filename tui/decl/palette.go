@@ -73,6 +73,10 @@ const (
 	RoleMid                     = roleMid
 	RoleLight                   = roleLight
 	RoleDocumentAccent          = roleDocumentAccent
+	RoleDiffAdded               = roleDiffAdded
+	RoleDiffDeleted             = roleDiffDeleted
+	RoleDiffChanged             = roleDiffChanged
+	RoleDiffConflict            = roleDiffConflict
 )
 
 // Palette is the effective palette a node wears — its own roles over its
@@ -111,6 +115,12 @@ const (
 	// document.accent — where the plain accent is the chrome's (a menu's access keys). A layout
 	// that sets none leaves it unset, and the page's accent token derives from the accent's own.
 	roleDocumentAccent Role = "documentAccent"
+	// The diff roles: the backgrounds a MergeView marks added, deleted and changed lines and a
+	// conflict's lines with. One nothing sets keeps the view's own tint for the theme's darkness.
+	roleDiffAdded    Role = "diffAdded"
+	roleDiffDeleted  Role = "diffDeleted"
+	roleDiffChanged  Role = "diffChanged"
+	roleDiffConflict Role = "diffConflict"
 )
 
 // OptionalPaletteRole is a theme-file key a file may leave unset, with the required key its value

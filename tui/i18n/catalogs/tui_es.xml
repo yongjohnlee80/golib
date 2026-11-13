@@ -235,5 +235,85 @@
         <source>Not available in the terminal</source>
         <translation>No disponible en la terminal</translation>
     </message>
+    <message id="tui.mergeview.acceptLeft">
+        <source>Accept &amp;Left</source>
+        <translation>Aceptar &amp;la izquierda</translation>
+    </message>
+    <message id="tui.mergeview.acceptRight">
+        <source>Accept &amp;Right</source>
+        <translation>Aceptar la de&amp;recha</translation>
+    </message>
+    <message id="tui.mergeview.merge">
+        <source>&amp;Merge</source>
+        <translation>Co&amp;mbinar</translation>
+    </message>
+    <message id="tui.mergeview.apply">
+        <source>&amp;Apply</source>
+        <translation>&amp;Aplicar</translation>
+    </message>
+    <message id="tui.mergeview.reload">
+        <source>Reloa&amp;d</source>
+        <translation>Recargar(&amp;d)</translation>
+    </message>
+    <message id="tui.mergeview.result">
+        <source>Result</source>
+        <translation>Resultado</translation>
+    </message>
+    <message id="tui.mergeview.kind.buffer">
+        <source>Buffer</source>
+        <translation>Búfer</translation>
+    </message>
+    <message id="tui.mergeview.kind.file">
+        <source>File</source>
+        <translation>Archivo</translation>
+    </message>
+    <message id="tui.mergeview.kind.remote">
+        <source>Remote</source>
+        <translation>Remoto</translation>
+    </message>
+    <message id="tui.mergeview.kind.git">
+        <source>Git</source>
+        <translation>Git</translation>
+    </message>
+    <message id="tui.mergeview.counts">
+        <source>%1 changes unresolved, %2 of them conflicts</source>
+        <translation>%1 cambios sin resolver, %2 de ellos conflictos</translation>
+    </message>
+    <message id="tui.mergeview.resolved">
+        <source>Every change is resolved</source>
+        <translation>Todos los cambios están resueltos</translation>
+    </message>
+    <message id="tui.mergeview.coarse">
+        <source>Compared coarsely: the texts are large</source>
+        <translation>Comparación aproximada: los textos son grandes</translation>
+    </message>
+    <message id="tui.mergeview.changed">
+        <source>A side changed under the merge</source>
+        <translation>Uno de los lados cambió durante la combinación</translation>
+    </message>
+    <message id="tui.mergeview.loading">
+        <source>Loading…</source>
+        <translation>Cargando…</translation>
+    </message>
+    <message id="tui.mergeview.notText">
+        <source>Not text: there is nothing to merge by lines</source>
+        <translation>No es texto: no hay nada que combinar por líneas</translation>
+    </message>
+    <message id="tui.mergeview.loadFailed">
+        <source>Could not load: %1</source>
+        <translation>No se pudo cargar: %1</translation>
+    </message>
+    <message id="tui.mergeview.applyFailed">
+        <source>Could not apply: %1</source>
+        <translation>No se pudo aplicar: %1</translation>
+    </message>
+    <message id="tui.mergeview.confirmApply">
+        <source>%1 changes are unresolved, %2 of them conflicts. Apply anyway?</source>
+        <translation>Hay %1 cambios sin resolver, %2 de ellos conflictos. ¿Aplicar de todos modos?</translation>
+    </message>
+    <message id="tui.mergeview.confirmReload">
+        <source>Loading again discards the changes made to the result. Load again?</source>
+        <translation>Volver a cargar descarta los cambios hechos en el resultado. ¿Volver a cargar?</translation>
+    </message>
 </context>
 </TS>

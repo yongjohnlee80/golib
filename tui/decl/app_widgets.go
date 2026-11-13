@@ -40,6 +40,7 @@ func appTypes() []Type {
 		terminalType,
 		editorType,
 		terminalTabsType,
+		mergeViewType,
 		statusBarType,
 		menuBarType,
 		menuType,

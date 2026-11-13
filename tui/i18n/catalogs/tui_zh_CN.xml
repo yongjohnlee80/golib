@@ -235,5 +235,85 @@
         <source>Not available in the terminal</source>
         <translation>终端中无法显示</translation>
     </message>
+    <message id="tui.mergeview.acceptLeft">
+        <source>Accept &amp;Left</source>
+        <translation>采用左侧(&amp;l)</translation>
+    </message>
+    <message id="tui.mergeview.acceptRight">
+        <source>Accept &amp;Right</source>
+        <translation>采用右侧(&amp;r)</translation>
+    </message>
+    <message id="tui.mergeview.merge">
+        <source>&amp;Merge</source>
+        <translation>合并(&amp;m)</translation>
+    </message>
+    <message id="tui.mergeview.apply">
+        <source>&amp;Apply</source>
+        <translation>应用(&amp;a)</translation>
+    </message>
+    <message id="tui.mergeview.reload">
+        <source>Reloa&amp;d</source>
+        <translation>重新加载(&amp;d)</translation>
+    </message>
+    <message id="tui.mergeview.result">
+        <source>Result</source>
+        <translation>结果</translation>
+    </message>
+    <message id="tui.mergeview.kind.buffer">
+        <source>Buffer</source>
+        <translation>缓冲区</translation>
+    </message>
+    <message id="tui.mergeview.kind.file">
+        <source>File</source>
+        <translation>文件</translation>
+    </message>
+    <message id="tui.mergeview.kind.remote">
+        <source>Remote</source>
+        <translation>远程</translation>
+    </message>
+    <message id="tui.mergeview.kind.git">
+        <source>Git</source>
+        <translation>Git</translation>
+    </message>
+    <message id="tui.mergeview.counts">
+        <source>%1 changes unresolved, %2 of them conflicts</source>
+        <translation>未解决的更改 %1 处,其中冲突 %2 处</translation>
+    </message>
+    <message id="tui.mergeview.resolved">
+        <source>Every change is resolved</source>
+        <translation>所有更改均已解决</translation>
+    </message>
+    <message id="tui.mergeview.coarse">
+        <source>Compared coarsely: the texts are large</source>
+        <translation>文本较大,已粗略比较</translation>
+    </message>
+    <message id="tui.mergeview.changed">
+        <source>A side changed under the merge</source>
+        <translation>合并期间有一侧发生了更改</translation>
+    </message>
+    <message id="tui.mergeview.loading">
+        <source>Loading…</source>
+        <translation>正在加载…</translation>
+    </message>
+    <message id="tui.mergeview.notText">
+        <source>Not text: there is nothing to merge by lines</source>
+        <translation>不是文本,无法按行合并</translation>
+    </message>
+    <message id="tui.mergeview.loadFailed">
+        <source>Could not load: %1</source>
+        <translation>无法加载:%1</translation>
+    </message>
+    <message id="tui.mergeview.applyFailed">
+        <source>Could not apply: %1</source>
+        <translation>无法应用:%1</translation>
+    </message>
+    <message id="tui.mergeview.confirmApply">
+        <source>%1 changes are unresolved, %2 of them conflicts. Apply anyway?</source>
+        <translation>有 %1 处更改未解决,其中冲突 %2 处。仍要应用吗?</translation>
+    </message>
+    <message id="tui.mergeview.confirmReload">
+        <source>Loading again discards the changes made to the result. Load again?</source>
+        <translation>重新加载将丢弃对结果所做的更改。要重新加载吗?</translation>
+    </message>
 </context>
 </TS>
