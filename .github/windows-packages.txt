@@ -18,6 +18,7 @@
 ./dao/postgres
 ./dao/sqlite
 ./decl
+./diff
 ./errs
 ./exporter
 ./extract
