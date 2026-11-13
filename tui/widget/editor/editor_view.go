@@ -72,11 +72,13 @@ func (l *cellLayout) ScrollLines(delta int) {
 	if m := l.ed.rowMap(); m.r != nil { // the Rendered view scrolls by rows, so a tall line scrolls too
 		start := m.r.topRow(l.top) + l.topIn + delta
 		l.top, l.topIn = m.r.atRow(max(0, min(start, len(m.r.rows)-l.h)))
+		l.ed.topMoved()
 		l.ed.MarkDirty()
 		return
 	}
 	bottom := l.ed.rowMap().lowestTop(0, len(lines)-1, l.h)
 	l.top, l.topIn = max(0, min(l.top+delta, max(bottom, l.top))), 0
+	l.ed.topMoved()
 	l.ed.MarkDirty()
 }
 
@@ -139,6 +141,7 @@ func (e *Editor) reveal(ln, col int) {
 			start = row - l.h + 1
 		}
 		l.top, l.topIn = m.r.atRow(start)
+		e.topMoved()
 		l.left = 0
 		if row < len(m.r.rowBlock) { // a wide block pans until the caret's cell shows; a picture, only by hand (zh, zl)
 			if bi := m.r.rowBlock[row]; m.maxPan(bi) > 0 && m.r.blockPic[bi] == nil {
@@ -161,6 +164,7 @@ func (e *Editor) reveal(ln, col int) {
 	}
 	l.top, l.left = e.rowMap().reveal(l.top, l.left, ln, e.core.buf.CellsAt(ln, col, e.width))
 	l.topIn = 0
+	e.topMoved()
 }
 
 // ScrollColumns implements EditorSideScroller: in the Rendered view the wide block at the cursor

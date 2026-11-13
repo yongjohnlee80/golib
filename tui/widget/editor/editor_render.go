@@ -91,6 +91,10 @@ func (e *Editor) renderText(s tui.Surface) {
 	cellsOf := tabAware(s.StringWidth)
 	m := e.rowMap().measuring(cellsOf) // painted as the surface measures; wrapped to the Editor's width (w)
 	lineFill := func(y, ln int) {
+		// A line's own look covers its whole row, under its text (WithEditorLineStyle).
+		if ls, ok := e.lineLook(ln); ok {
+			s.Fill(tui.Rect{X: 0, Y: y, W: w, H: 1}, " ", ls.Inherit(l.styles.Text))
+		}
 		// A line-wise highlight covers the WHOLE screen row (S2), text or
 		// not; clusters then paint over the fill.
 		if c.keys.mode == ModeVisualLine && (e.Focused() || c.vPinned) && c.Selected(ln, 0) {
@@ -178,6 +182,9 @@ type textPaint struct {
 func (p *textPaint) style(ln, col int) style.Style {
 	e, c := p.e, p.e.core
 	st := e.cells.styles.Text
+	if ls, ok := e.lineLook(ln); ok {
+		st = ls.Inherit(st)
+	}
 	if ln != p.styledLn {
 		p.lineStyles, p.styledLn = p.hlf.Styles(ln), ln
 	}

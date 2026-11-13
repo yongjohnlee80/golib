@@ -1349,6 +1349,25 @@ func MarkdownListWhere(a0 *EditorCore, a1 MarkdownStructure) func(ln int) bool {
 	return editor.MarkdownListWhere(a0, a1)
 }
 
+// WithEditorOnScroll calls fn with the first line shown each time it changes: a key's move, the
+// wheel, a reveal of the cursor, a new text, SetTopLine. A layout that leaves it where it was calls
+// nothing.
+//
+// Deprecated: use [editor.WithEditorOnScroll], from github.com/yongjohnlee80/golib/tui/widget/editor.
+func WithEditorOnScroll(a0 func(top int)) EditorOption {
+	return editor.WithEditorOnScroll(a0)
+}
+
+// WithEditorLineStyle gives each line a look of its own: fn answers line's style and true, or false
+// for the text's own. The style is laid over the text's look across the whole row, under the
+// syntax styles and the selection; a whole-line mark, such as a diff's added and deleted lines. The
+// Rendered view draws its own looks and does not ask.
+//
+// Deprecated: use [editor.WithEditorLineStyle], from github.com/yongjohnlee80/golib/tui/widget/editor.
+func WithEditorLineStyle(a0 func(line int) (style.Style, bool)) EditorOption {
+	return editor.WithEditorLineStyle(a0)
+}
+
 // CoreTableEditing turns table editing on or off.
 //
 // Deprecated: use [editor.CoreTableEditing], from github.com/yongjohnlee80/golib/tui/widget/editor.
