@@ -117,3 +117,30 @@ Window {
 		t.Fatalf("the Editor's own highlight changed and the active tab followed it: %+v", c.Attrs)
 	}
 }
+
+// An Editor styled alone, with nothing above it setting a palette, keeps its frame's tabs in its
+// own: a role nothing above sets is the Editor's, and a change of it restyles them.
+func TestTheFrameTabsOfAnEditorStyledAloneWearItsPalette(t *testing.T) {
+	doc := `import tui 1.0
+import demo 1.0
+Window {
+    Frame { title: "notes.csv"
+        Editor { id: e; text: "a,b"; modeSwitch: "title"; frameTabs: true; palette.highlight: App.ehl; palette.highlightedText: "white" } }
+}`
+	s := decltest.RunWith(t, 60, 6, withTabs, tuidecl.LayoutSource("main.qml", []byte(doc)),
+		tuidecl.Singleton("demo", "1.0", "App"), tuidecl.Sources(map[string]any{"App.ehl": "red"}))
+	s.WaitForText(t, "alpha")
+	active := func(bg tui.CellColor) func(string) bool {
+		return func(string) bool {
+			c := cellOf(t, s, "alpha")
+			return c.Attrs.BG == bg && c.Attrs.FG == ansi(white)
+		}
+	}
+	s.WaitFor(t, "the active tab in the Editor's own highlight", active(ansi(red)))
+	onScreenLoop(t, s, func() {
+		if err := s.Program.Set("App.ehl", "green"); err != nil {
+			t.Error(err)
+		}
+	})
+	s.WaitFor(t, "the active tab in the Editor's new highlight", active(ansi(green)))
+}

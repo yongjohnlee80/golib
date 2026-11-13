@@ -58,7 +58,11 @@ func withRestyle(typeName string, fn restyler) Option {
 	return func(a *Adapter) { a.declare(typeName).restyler = fn }
 }
 
-func withRestyleInherited(typeName string, fn restyler) Option {
+// inheritedRestyler dresses what a widget draws on its parent's ground, in the palette it inherits
+// and its effective one (Type.RestyleInherited).
+type inheritedRestyler func(c tui.Component, inherited, eff palette)
+
+func withRestyleInherited(typeName string, fn inheritedRestyler) Option {
 	return func(a *Adapter) { a.declare(typeName).inheritedRestyler = fn }
 }
 
@@ -174,8 +178,8 @@ func (a *Adapter) refresh(id decl.NodeID) {
 		if fn := c.restyler; fn != nil && effChanged {
 			fn(b.comp, eff)
 		}
-		if fn := c.inheritedRestyler; fn != nil && inhChanged {
-			fn(b.comp, inherited)
+		if fn := c.inheritedRestyler; fn != nil {
+			fn(b.comp, inherited, eff)
 		}
 		if _, root := b.comp.(themeRoot); root && !pn.hasParent && effChanged {
 			a.windowTheme(eff)
@@ -364,10 +368,25 @@ func restyleEditor(c tui.Component, p palette) {
 // restyleEditorTabs gives the Editor's frame's tabs (Editor.Tabs) TerminalTabs's looks in the
 // palette the Editor inherits: the bar in window, a tab in button, the active one in highlight.
 // The strip is its frame's row, so it wears the window's colours, not the ones an Editor sets for
-// its text (a highlight that is its selection, say).
-func restyleEditorTabs(c tui.Component, inherited palette) {
-	c.(*editor.Editor).Tabs().SetStyles(inherited.look(roleWindow, roleWindowText),
-		inherited.look(roleButton, roleButtonText), inherited.look(roleHighlight, roleHighlightedText))
+// its text (a highlight that is its selection, say). A role nothing above the Editor sets is the
+// Editor's own: an Editor styled alone keeps its strip in its palette.
+func restyleEditorTabs(c tui.Component, inherited, eff palette) {
+	p := stripPalette(inherited, eff)
+	c.(*editor.Editor).Tabs().SetStyles(p.look(roleWindow, roleWindowText),
+		p.look(roleButton, roleButtonText), p.look(roleHighlight, roleHighlightedText))
+}
+
+// stripPalette is the palette a node's strip wears: what it inherits, and for a role it inherits
+// none of, its own effective one.
+func stripPalette(inherited, eff palette) palette {
+	p := palette{}
+	for r, c := range eff {
+		p[r] = c
+	}
+	for r, c := range inherited {
+		p[r] = c
+	}
+	return p
 }
 
 func restyleStatusBar(c tui.Component, p palette) {
