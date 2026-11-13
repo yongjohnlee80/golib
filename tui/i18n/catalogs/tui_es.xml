@@ -315,5 +315,9 @@
         <source>Loading again discards the changes made to the result. Load again?</source>
         <translation>Volver a cargar descarta los cambios hechos en el resultado. ¿Volver a cargar?</translation>
     </message>
+    <message id="tui.mergeview.cannotAsk">
+        <source>Not done: it needs a confirmation, and there is nowhere to ask</source>
+        <translation>No se hizo: necesita una confirmación y no hay dónde preguntar</translation>
+    </message>
 </context>
 </TS>

@@ -315,5 +315,9 @@
         <source>Loading again discards the changes made to the result. Load again?</source>
         <translation>Loading again discards the changes made to the result. Load again?</translation>
     </message>
+    <message id="tui.mergeview.cannotAsk">
+        <source>Not done: it needs a confirmation, and there is nowhere to ask</source>
+        <translation>Not done: it needs a confirmation, and there is nowhere to ask</translation>
+    </message>
 </context>
 </TS>

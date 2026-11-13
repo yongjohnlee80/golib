@@ -25,8 +25,7 @@ func replay(lines []string, e Edit) []string {
 	return append(out, lines[e.At.To:]...)
 }
 
-// check is what holds after every operation: the spans partition the result, in order, and the
-// rows show each pane's lines once, in order.
+// check is what holds after every operation: the spans partition the result, in order.
 func check(t *testing.T, m *Model) {
 	t.Helper()
 	at := 0
@@ -40,21 +39,6 @@ func check(t *testing.T, m *Model) {
 	}
 	if at != len(m.ResultLines()) {
 		t.Fatalf("the spans end at %d, the result has %d lines", at, len(m.ResultLines()))
-	}
-	next := [3]int{}
-	for _, r := range m.Rows() {
-		for k, v := range [3]int{r.Left, r.Result, r.Right} {
-			if v < 0 {
-				continue
-			}
-			if v != next[k] {
-				t.Fatalf("pane %d's row shows line %d, want %d", k, v, next[k])
-			}
-			next[k]++
-		}
-	}
-	if want := [3]int{len(m.LeftLines()), len(m.ResultLines()), len(m.RightLines())}; next != want {
-		t.Fatalf("the rows show %v lines, the panes have %v", next, want)
 	}
 }
 
@@ -113,20 +97,20 @@ func TestAThreeWayMergeStartsOnTheBaseAndResolvesEachChange(t *testing.T) {
 	}
 }
 
-// An unresolved two-way conflict keeps the side the result replaces: ResultTo naming the right,
-// the right's lines; the left, the left's; neither, none.
+// An unresolved two-way conflict keeps the side the result replaces: ResultSide Right, the right's
+// lines; Left, the left's; None, none.
 func TestATwoWayConflictKeepsTheSideTheResultReplaces(t *testing.T) {
 	left, right := text("a", "disk", "c"), text("a", "mine", "more", "c")
 	for _, c := range []struct {
 		name string
-		to   Origin
+		side Side
 		want []string
 	}{
-		{"right", buffer, []string{"a", "mine", "more", "c"}},
-		{"left", disk, []string{"a", "disk", "c"}},
-		{"neither", ours, []string{"a", "c"}},
+		{"right", Right, []string{"a", "mine", "more", "c"}},
+		{"left", Left, []string{"a", "disk", "c"}},
+		{"none", None, []string{"a", "c"}},
 	} {
-		m := NewModel(Input{Left: left, Right: right, LeftFrom: disk, RightFrom: buffer, ResultTo: c.to})
+		m := NewModel(Input{Left: left, Right: right, LeftFrom: disk, RightFrom: buffer, ResultSide: c.side})
 		check(t, m)
 		if got := m.ResultLines(); !reflect.DeepEqual(got, c.want) {
 			t.Errorf("%s: the result starts as %q, want %q", c.name, got, c.want)
@@ -138,6 +122,80 @@ func TestATwoWayConflictKeepsTheSideTheResultReplaces(t *testing.T) {
 			t.Errorf("%s: a two-way merge had a change that is not a conflict", c.name)
 		}
 	}
+}
+
+// An unresolved three-way change keeps the side the result replaces too: a buffer merged with its
+// file (the base the version it was opened at, the left the disk, the right the buffer) keeps the
+// user's own lines in a conflict left unresolved, and in their own change; a result written to a
+// third place (None) keeps the base. The side is named, never read from the origins: a ResultTo
+// whose label and revision are not the right's still writes the right.
+func TestAThreeWayConflictKeepsTheSideTheResultReplaces(t *testing.T) {
+	in := Input{
+		HasBase:  true,
+		Base:     text("a", "b", "c", "d", "e"),
+		Left:     text("a", "B-disk", "c", "d", "e-disk"),
+		Right:    text("a", "b", "c", "D-mine", "e-mine"),
+		BaseFrom: disk, LeftFrom: disk, RightFrom: buffer,
+		ResultTo:   Origin{Kind: Buffer, Location: "notes.md", Label: "Result", Revision: "8"},
+		ResultSide: Right,
+	}
+	m := NewModel(in)
+	check(t, m)
+	if got, want := m.Result(), text("a", "b", "c", "D-mine", "e-mine"); got != want {
+		t.Fatalf("the buffer's merge, unresolved: %q, want the buffer's own lines %q", got, want)
+	}
+	if ch, co := m.Counts(); ch != 2 || co != 1 {
+		t.Fatalf("counts %d, %d, want 2 changes (the disk's, the conflict), 1 conflict", ch, co)
+	}
+	m.MergeNonConflicting()
+	if got, want := m.Result(), text("a", "B-disk", "c", "D-mine", "e-mine"); got != want {
+		t.Fatalf("merged with the conflict left: %q, want %q (the conflict keeps the buffer's)", got, want)
+	}
+	in.ResultSide = None
+	if got := NewModel(in).Result(); got != in.Base {
+		t.Fatalf("ResultSide None: %q, want the base", got)
+	}
+}
+
+// Lines typed where hunks meet go to the change that meets the place: into a change with no lines
+// kept (an insert both sides made, unresolved to none), and after a change's last line. So a later
+// Take replaces what was typed, never keeps it beside the taken lines.
+func TestLinesTypedAtAChangeAreTheChanges(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		in   Input
+	}{
+		{"three-way, the base kept", Input{HasBase: true, Base: text("a", "c"), Left: text("a", "L", "c"), Right: text("a", "R", "c")}},
+		{"two-way, none kept", Input{Left: text("a", "L", "c"), Right: text("a", "R", "c")}},
+	} {
+		m := NewModel(c.in)
+		m.Settle(1)
+		if got := m.Changes()[0].Result; got.Len() != 0 {
+			t.Fatalf("%s: the conflict holds %v, want no lines", c.name, got)
+		}
+		m.Edited([]string{"a", "LR", "c"}, 2) // typed where the conflict is
+		if cs := m.Changes(); cs[0].State != Edited || cs[0].Result != (diff.Span{From: 1, To: 2}) {
+			t.Fatalf("%s: after typing at the conflict: %+v, want it Edited, holding the line", c.name, cs[0])
+		}
+		check(t, m)
+		e, _ := m.Take(0, Left)
+		if got, want := replay([]string{"a", "LR", "c"}, e), []string{"a", "L", "c"}; !reflect.DeepEqual(got, want) || !reflect.DeepEqual(m.ResultLines(), want) {
+			t.Fatalf("%s: » after typing: %q (replayed %q), want %q", c.name, m.ResultLines(), got, want)
+		}
+	}
+	// A line added after a taken change's last line is the change's: taking it again replaces it.
+	m := NewModel(Input{HasBase: true, Base: text("a", "b", "c"), Left: text("a", "B", "c"), Right: text("a", "b", "c")})
+	m.Take(0, Left)
+	m.Settle(1)
+	m.Edited([]string{"a", "B", "added", "c"}, 2)
+	if cs := m.Changes(); cs[0].State != Edited || cs[0].Result != (diff.Span{From: 1, To: 3}) {
+		t.Fatalf("a line added after the change: %+v, want it the change's", cs[0])
+	}
+	m.Take(0, Left)
+	if got := m.ResultLines(); !reflect.DeepEqual(got, []string{"a", "B", "c"}) {
+		t.Fatalf("taking the change again: %q, want the added line replaced", got)
+	}
+	check(t, m)
 }
 
 func TestAcceptingASideMakesTheResultThatSide(t *testing.T) {
@@ -165,7 +223,7 @@ func TestAcceptingASideMakesTheResultThatSide(t *testing.T) {
 func TestTheResultKeepsTheEndingsOfTheTextItReplaces(t *testing.T) {
 	m := NewModel(Input{
 		Left: "a\nb\n", Right: "a\r\nB\r\n",
-		LeftFrom: disk, RightFrom: buffer, ResultTo: buffer,
+		LeftFrom: disk, RightFrom: buffer, ResultTo: buffer, ResultSide: Right,
 	})
 	if got := m.Result(); got != "a\r\nB\r\n" {
 		t.Fatalf("result %q, want the right's CRLF text", got)
@@ -174,7 +232,7 @@ func TestTheResultKeepsTheEndingsOfTheTextItReplaces(t *testing.T) {
 	if got := m.Result(); got != "a\r\nb\r\n" {
 		t.Fatalf("result %q after taking the left, want CRLF", got)
 	}
-	m = NewModel(Input{Left: "x", Right: "y\n", LeftFrom: disk, RightFrom: buffer, ResultTo: disk})
+	m = NewModel(Input{Left: "x", Right: "y\n", LeftFrom: disk, RightFrom: buffer, ResultTo: disk, ResultSide: Left})
 	if got := m.Result(); got != "x" {
 		t.Fatalf("result %q, want the left's, with no final newline", got)
 	}
@@ -225,7 +283,7 @@ func TestAHandEditMarksWhatItReachesAndAnUndoRestoresIt(t *testing.T) {
 }
 
 func TestDismissResolvesAChangeAsItIs(t *testing.T) {
-	m := NewModel(Input{Left: text("a"), Right: text("b"), LeftFrom: disk, RightFrom: buffer, ResultTo: buffer})
+	m := NewModel(Input{Left: text("a"), Right: text("b"), LeftFrom: disk, RightFrom: buffer, ResultTo: buffer, ResultSide: Right})
 	m.Settle(1)
 	if !m.Dismiss(0) || m.Dismiss(1) {
 		t.Fatal("Dismiss answered wrong")
@@ -275,7 +333,7 @@ func TestAnyRunOfOperationsKeepsTheResultAndItsSpansWhole(t *testing.T) {
 		return b.String()
 	}
 	for run := 0; run < 200; run++ {
-		in := Input{Left: random(r.Intn(12)), Right: random(r.Intn(12)), LeftFrom: disk, RightFrom: buffer, ResultTo: buffer}
+		in := Input{Left: random(r.Intn(12)), Right: random(r.Intn(12)), LeftFrom: disk, RightFrom: buffer, ResultTo: buffer, ResultSide: Side(r.Intn(3))}
 		if run%2 == 0 {
 			in.HasBase, in.Base = true, random(r.Intn(12))
 		}
@@ -294,7 +352,7 @@ func TestAnyRunOfOperationsKeepsTheResultAndItsSpansWhole(t *testing.T) {
 			ok := true
 			switch op := r.Intn(7); {
 			case op == 0 && n > 0:
-				e, ok = m.Take(r.Intn(n), Side(r.Intn(2)))
+				e, ok = m.Take(r.Intn(n), Side(1+r.Intn(2)))
 			case op == 1 && n > 0:
 				e, ok = m.TakeBoth(r.Intn(n))
 			case op == 2:

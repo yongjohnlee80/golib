@@ -33,11 +33,13 @@ type Input struct {
 	Base, Left, Right string
 	HasBase           bool
 	// BaseFrom, LeftFrom and RightFrom are where each text came from; ResultTo is where Apply
-	// writes. ResultTo equal to LeftFrom or RightFrom names the side the result replaces: an
-	// unresolved two-way conflict keeps that side's lines, and the result is written with its line
-	// endings.
+	// writes, for the result pane's header.
 	BaseFrom, LeftFrom, RightFrom Origin
 	ResultTo                      Origin
+	// ResultSide is the side the result replaces: Left or Right, or None for a result written to a
+	// third place. An unresolved change keeps that side's lines, and the result is written with its
+	// line endings; with None, a three-way merge keeps the base's lines and a two-way one none.
+	ResultSide Side
 }
 
 // OriginKind is what kind of place a text came from.
