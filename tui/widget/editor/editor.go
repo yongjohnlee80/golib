@@ -202,6 +202,7 @@ type Editor struct {
 	// line it was told last. lineStyle is each line's own look (WithEditorLineStyle).
 	onScroll  func(top int)
 	toldTop   int
+	topHeld   bool // a text being set: the reveals inside it tell nothing, the end tells once
 	lineStyle func(line int) (style.Style, bool)
 	// presented is the presentation the viewport was last revealed for (presentation): a change of
 	// it reveals the cursor again, though the cursor stayed.
@@ -337,9 +338,9 @@ func NewEditor(opts ...EditorOption) *Editor {
 // cursor and command state reset, content is replaced, and undo/redo history
 // is CLEARED. The register is preserved.
 func (e *Editor) SetValue(s string) {
+	defer e.holdTop()()
 	e.cells.top, e.cells.topIn, e.cells.left = 0, 0, 0 // a new document starts at its top
 	e.core.SetValue(s)
-	e.topMoved()
 }
 
 // SetKeepPlace makes a text set keep the reader's place, as ReplaceValue does: decl's keepPlace.
@@ -352,11 +353,11 @@ func (e *Editor) KeepsPlace() bool { return e.keepPlace }
 // its line and column as far as the new text has them, and the first shown line. It is for a
 // viewer a program refreshes (decl's keepPlace), which scrolling must not lose each time.
 func (e *Editor) ReplaceValue(s string) {
+	defer e.holdTop()()
 	at, top, left := e.core.Cursor(), e.cells.top, e.cells.left
 	e.core.SetValue(s)
 	e.core.SetCursor(at)
 	e.cells.top, e.cells.topIn, e.cells.left = min(top, max(e.core.LineCount()-1, 0)), 0, left
-	e.topMoved()
 }
 
 // AcceptsFocus implements tui.Focusable.
