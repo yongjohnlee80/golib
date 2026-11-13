@@ -215,3 +215,53 @@ func TestWhatIsTypedWhileStartingIsBounded(t *testing.T) {
 		t.Fatalf("kept %d bytes, said full %d times; want %d kept and one notice", kept, said, TerminalInputLimit)
 	}
 }
+
+// modedTerminal is typedTerminal with Ctrl+T its mode key.
+func modedTerminal(t *testing.T, s *typedStarter) (*Terminal, *widgettest.Harness) {
+	t.Helper()
+	term, h := typedTerminal(t, s)
+	h.OnLoop(func() { term.SetModeKey(func(k tui.KeyEvent) bool { return k.Code == 't' && k.Mods&tui.ModCtrl != 0 }) })
+	return term, h
+}
+
+// TestTheModeKeyLeavesAStartingTerminalAsARunningOne: while a start is out, the mode key (Ctrl+T)
+// takes the Terminal to Normal mode, as it does a running one, so the Esc after it is the host's and
+// the program never reads it; the mode key again returns to input, where keys are the program's.
+func TestTheModeKeyLeavesAStartingTerminalAsARunningOne(t *testing.T) {
+	s := newTypedStarter()
+	term, h := modedTerminal(t, s)
+	h.OnLoop(func() { term.StartAsync(nil) })
+	s.spawnOut(t)
+	ctrlT := tui.KeyEvent{Code: 't', Mods: tui.ModCtrl, Kind: tui.KeyPress}
+	if !key(h, term, ctrlT) {
+		t.Fatal("the mode key did nothing while the terminal starts")
+	}
+	var mode TerminalMode
+	h.OnLoop(func() { mode = term.Mode() })
+	if mode != TerminalNormal {
+		t.Fatalf("mode %v after the mode key while starting, want Normal", mode)
+	}
+	if key(h, term, tui.KeyEvent{Code: tui.KeyEscape, Kind: tui.KeyPress}) {
+		t.Fatal("Esc in Normal mode while starting was the terminal's, not the host's")
+	}
+	key(h, term, ctrlT) // back to input
+	key(h, term, runeKey('a'))
+	s.free()
+	s.written(t, 0, "a")
+}
+
+// TestAPasteIntoAStartingTerminalReachesItsProgram: a paste while a start is out is the program's,
+// as into a running one: kept, and read once it runs.
+func TestAPasteIntoAStartingTerminalReachesItsProgram(t *testing.T) {
+	s := newTypedStarter()
+	term, h := typedTerminal(t, s)
+	h.OnLoop(func() { term.StartAsync(nil) })
+	s.spawnOut(t)
+	var took bool
+	h.OnLoop(func() { took = term.HandleEvent(tui.PasteEvent{Text: "pasted"}) })
+	if !took {
+		t.Fatal("a paste while the terminal starts went to the host")
+	}
+	s.free()
+	s.written(t, 0, "pasted")
+}
