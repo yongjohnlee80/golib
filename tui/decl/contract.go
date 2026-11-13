@@ -71,10 +71,11 @@ type Type struct {
 	Restyle func(c tui.Component, p Palette)
 	// RestyleInherited is how the type dresses what it draws on its parent's ground rather than
 	// its own: called with the palette the node INHERITS (its parent's effective palette, the
-	// node's own roles left out) whenever that changes, even when the node's own roles mask the
-	// change. An Editor's tab strip wears it: the strip is its frame's row, so it takes the
-	// window's colours, not those the Editor sets for its text. Nil, nothing is dressed so.
-	RestyleInherited func(c tui.Component, inherited Palette)
+	// node's own roles left out) and its effective one, whenever either changes, even when the
+	// node's own roles mask a change of the first. An Editor's tab strip wears it: the strip is its
+	// frame's row, so it takes the window's colours, not those the Editor sets for its text, and a
+	// role nothing above sets comes from the Editor's own. Nil, nothing is dressed so.
+	RestyleInherited func(c tui.Component, inherited, effective Palette)
 
 	// Adopt is a container's way of taking a child by its attached properties
 	// (RegisterAttached, Honour): Layout.fillHeight in a column makes a weighted
@@ -87,7 +88,8 @@ type Type struct {
 	Adopt func(parent, child tui.Component, attached map[string]qml.SpecValue) error
 
 	// restyle and restyleInherited are a built-in type's, reading the palette directly.
-	restyle, restyleInherited restyler
+	restyle          restyler
+	restyleInherited inheritedRestyler
 }
 
 // adopter is a Type's Adopt.
@@ -197,7 +199,7 @@ func typeOptions(types []Type) []Option {
 			opts = append(opts, withRestyleInherited(w.Name, w.restyleInherited))
 		case w.RestyleInherited != nil:
 			wear := w.RestyleInherited
-			opts = append(opts, withRestyleInherited(w.Name, func(c tui.Component, p palette) { wear(c, Palette{p}) }))
+			opts = append(opts, withRestyleInherited(w.Name, func(c tui.Component, inh, eff palette) { wear(c, Palette{inh}, Palette{eff}) }))
 		}
 		if w.Adopt != nil {
 			opts = append(opts, withAdopt(w.Name, w.Adopt))

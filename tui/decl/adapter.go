@@ -123,7 +123,7 @@ type typeContract struct {
 	restyler  restyler            // WithRestyler: how it wears an effective palette (propagate.go)
 	// inheritedRestyler dresses what it draws on its parent's ground in the palette it inherits
 	// (Type.RestyleInherited)
-	inheritedRestyler restyler
+	inheritedRestyler inheritedRestyler
 }
 
 // contractOf is typeName's contract to read; an empty one when the adapter was given none.

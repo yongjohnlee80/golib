@@ -31,6 +31,7 @@ import (
 	"github.com/yongjohnlee80/golib/gui/widget"
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
+	"github.com/yongjohnlee80/golib/tui/style"
 	"github.com/yongjohnlee80/golib/tui/widget/core"
 	"github.com/yongjohnlee80/golib/tui/widget/editor"
 	"github.com/yongjohnlee80/golib/tui/widget/htmlview"
@@ -215,11 +216,32 @@ func restyleEditor(c tui.Component, p tuidecl.Palette) {
 }
 
 // restyleEditorTabs gives its title bar's tabs TerminalTabs's looks in the palette the Editor
-// inherits: the window's colours, not the ones it sets for its text.
-func restyleEditorTabs(c tui.Component, inherited tuidecl.Palette) {
+// inherits: the window's colours, not the ones it sets for its text. A role nothing above the
+// Editor sets is the Editor's own: an Editor styled alone keeps its tabs in its palette.
+func restyleEditorTabs(c tui.Component, inherited, eff tuidecl.Palette) {
 	if e, ok := c.(*widget.Editor); ok {
-		e.Tabs().SetStyles(inherited.Look(tuidecl.RoleWindow, tuidecl.RoleWindowText),
-			inherited.Look(tuidecl.RoleButton, tuidecl.RoleButtonText),
-			inherited.Look(tuidecl.RoleHighlight, tuidecl.RoleHighlightedText))
+		e.Tabs().SetStyles(stripLook(inherited, eff, tuidecl.RoleWindow, tuidecl.RoleWindowText),
+			stripLook(inherited, eff, tuidecl.RoleButton, tuidecl.RoleButtonText),
+			stripLook(inherited, eff, tuidecl.RoleHighlight, tuidecl.RoleHighlightedText))
 	}
+}
+
+// stripLook is a background and a foreground role as one style, each from the inherited palette,
+// or the effective one where nothing above sets it.
+func stripLook(inherited, eff tuidecl.Palette, bg, fg tuidecl.Role) style.Style {
+	st := style.New()
+	if c, ok := stripColor(inherited, eff, bg); ok {
+		st = st.Background(c)
+	}
+	if c, ok := stripColor(inherited, eff, fg); ok {
+		st = st.Foreground(c)
+	}
+	return st
+}
+
+func stripColor(inherited, eff tuidecl.Palette, r tuidecl.Role) (style.Color, bool) {
+	if c, ok := inherited.Color(r); ok {
+		return c, true
+	}
+	return eff.Color(r)
 }

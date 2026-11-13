@@ -373,6 +373,39 @@ Window {
 	}
 }
 
+// TestTheTabsOfAnEditorStyledAloneWearItsPalette: with nothing above it setting a palette, the
+// native Editor's title-bar tabs wear its own.
+func TestTheTabsOfAnEditorStyledAloneWearItsPalette(t *testing.T) {
+	src := `import tui 1.0
+Window {
+    Editor { id: ed; text: "hello"; palette.highlight: "red" }
+}`
+	s := run(t, src, tuidecl.WithStyle(guidecl.Native()))
+	onLoop(t, s, func() {
+		c, _ := s.Program.Find("ed")
+		tabs := c.(*widget.Editor).Tabs()
+		tabs.SetTabs([]core.StripTab{{ID: "1", Label: "alpha"}, {ID: "2", Label: "beta"}})
+		tabs.SetActive("1")
+	})
+	red := tui.CellColor{Kind: tui.CellColorANSI, Index: 1}
+	s.WaitFor(t, "the active tab in the Editor's own highlight", func(string) bool {
+		for _, row := range s.Backend.Snapshot() {
+			var line strings.Builder
+			var cols []int
+			for x, c := range row {
+				line.WriteString(c.Content)
+				for range len(c.Content) {
+					cols = append(cols, x)
+				}
+			}
+			if i := strings.Index(line.String(), "alpha"); i >= 0 {
+				return row[cols[i]].Attrs.BG == red
+			}
+		}
+		return false
+	})
+}
+
 // A TableView with a cellCursor under the native style shows tui's DataTable bound to gui's pixel
 // layout, over the same core; with no style, or with a row cursor, the table stays in cells.
 func TestNativeBindsACellCursorTableViewsPixelLayout(t *testing.T) {
