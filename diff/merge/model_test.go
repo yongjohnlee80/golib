@@ -398,3 +398,32 @@ func TestAnyRunOfOperationsKeepsTheResultAndItsSpansWhole(t *testing.T) {
 		}
 	}
 }
+
+// A line typed just above or just below a conflict still to resolve is not the conflict's: it stays
+// unresolved, so the conflicts counted, and an Apply's question, stay right.
+func TestALineTypedBesideAnOpenConflictLeavesItOpen(t *testing.T) {
+	in := Input{HasBase: true, Base: text("a", "b", "c"), Left: text("a", "L", "c"), Right: text("a", "R", "c"),
+		LeftFrom: disk, RightFrom: buffer, ResultTo: buffer, ResultSide: Right}
+	for _, c := range []struct {
+		name  string
+		typed []string
+		span  diff.Span
+	}{
+		{"above", []string{"a", "typed", "R", "c"}, diff.Span{From: 2, To: 3}},
+		{"below", []string{"a", "R", "typed", "c"}, diff.Span{From: 1, To: 2}},
+	} {
+		m := NewModel(in)
+		m.Settle(1)
+		if cs := m.Changes(); len(cs) != 1 || !cs[0].Conflict() || cs[0].Result != (diff.Span{From: 1, To: 2}) {
+			t.Fatalf("the fixture: %+v, want one conflict holding the buffer's R", cs)
+		}
+		m.Edited(c.typed, 2)
+		if ch, co := m.Counts(); ch != 1 || co != 1 {
+			t.Fatalf("a line typed %s the conflict: counts %d, %d, want it still open (1, 1)", c.name, ch, co)
+		}
+		if got := m.Changes()[0]; got.State != Unresolved || got.Result != c.span {
+			t.Fatalf("a line typed %s the conflict: %+v, want it unresolved at %v", c.name, got, c.span)
+		}
+		check(t, m)
+	}
+}
