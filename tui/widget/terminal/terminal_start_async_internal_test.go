@@ -540,3 +540,55 @@ func TestAShutdownAfterAFailedLateCleanupStillSaysSo(t *testing.T) {
 		t.Fatalf("the shutdown after the failed late cleanup: %v, want its error", err)
 	}
 }
+
+// TestAFailedLateCleanupOutlivesARestart: Stop cancels a start, its late program's Close fails and
+// the flight is retired; the terminal is then started again and runs. A shutdown after that still
+// reports the earlier failure: a restart prunes only the lifetimes that ended well.
+func TestAFailedLateCleanupOutlivesARestart(t *testing.T) {
+	want := errors.New("the stopped start's late close failed")
+	failing, entered, release := lateFailingStarter(want)
+	var spawns atomic.Int32
+	start := func(c pty.Cmd) (TerminalProcess, error) {
+		if spawns.Add(1) == 1 {
+			return failing(c)
+		}
+		p := newSlowProc()
+		close(p.release) // its hang-up is at once
+		return p, nil
+	}
+	term := NewTerminal(WithStarter(start))
+	h := widgettest.StartApp(t, term, 40, 6)
+	t.Cleanup(func() { release(); h.Stop() })
+	var f *startFlight
+	h.OnLoop(func() {
+		term.StartAsync(nil)
+		f = term.starting
+	})
+	awaitResultEvent(t, entered)
+	h.OnLoop(term.Stop)
+	release()
+	awaitResultEvent(t, f.done)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		term.procMu.Lock()
+		n := len(term.flights)
+		term.procMu.Unlock()
+		if n == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the stopped start's flight was never retired")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	a := newAnswers()
+	h.OnLoop(func() { term.StartAsync(a.done) })
+	if err := a.next(t); err != nil {
+		t.Fatalf("the restart: %v, want the program running", err)
+	}
+	var r *TerminalShutdownResult
+	h.OnLoop(func() { r = term.ShutdownWithResult() })
+	if err := waitShutdown(t, r); !errors.Is(err, want) {
+		t.Fatalf("the shutdown after a restart: %v, want the earlier late cleanup's error", err)
+	}
+}
