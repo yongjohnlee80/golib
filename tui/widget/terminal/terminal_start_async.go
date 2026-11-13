@@ -21,8 +21,10 @@ var ErrTerminalStartCancelled = errs.Sentinel(errs.ErrPrecondition, "terminal st
 var ErrTerminalStartStillOut = errs.Sentinel(errs.ErrTimeout, "terminal start still in flight at shutdown")
 
 // startOutGrace bounds how long a shutdown waits for a start in flight: a spawn that never returns
-// (a wedged pseudo-console) must not hold a quit for ever. A variable, so a test can shorten it.
-var startOutGrace = 5 * time.Second
+// (a wedged pseudo-console) must not hold a quit for ever. Each Terminal keeps its own (startGrace),
+// which a test shortens on its own terminal: the App's end shuts a terminal down on a goroutine of
+// its own, which may still be reading after its test is over.
+const startOutGrace = 5 * time.Second
 
 // defaultStartingText is what the terminal says while a start is in flight (WithStartingText).
 const defaultStartingText = "starting…"
@@ -227,15 +229,16 @@ func (t *Terminal) cancelStart() {
 
 // cancelFlightsLocked cancels every start in flight and answers one shutdown result for each: done
 // once its spawn has returned and its program is closed, or ErrTerminalStartStillOut after
-// startOutGrace. With t.procMu held (ShutdownWithResult, on the loop or off it): waiters are not
+// t.startGrace. With t.procMu held (ShutdownWithResult, on the loop or off it): waiters are not
 // answered, the loop perhaps gone.
 func (t *Terminal) cancelFlightsLocked() []*TerminalShutdownResult {
 	var out []*TerminalShutdownResult
+	grace := t.startGrace
 	for _, f := range t.flights {
 		f.cancelOut()
 		r := &TerminalShutdownResult{completion: terminalCompletion{done: make(chan struct{})}}
 		go func(f *startFlight) {
-			timer := time.NewTimer(startOutGrace)
+			timer := time.NewTimer(grace)
 			defer timer.Stop()
 			select {
 			case <-f.done:
