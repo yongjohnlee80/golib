@@ -258,11 +258,12 @@ func TestAHandEditMarksWhatItReachesAndAnUndoRestoresIt(t *testing.T) {
 	if cs := m.Changes(); cs[0].State != TookLeft || cs[1].State != Unresolved {
 		t.Fatalf("after an edit of unchanged lines: %v", cs)
 	}
-	// Two lines put in the second change's line: it is Edited, and the spans move.
-	typed = append(append(append([]string{}, typed[:4]...), "x", "y"), typed[4:]...)
+	// The second change's line replaced by two: it is Edited, and its span holds them. (A line put
+	// in beside an open change, not in it, is the unchanged lines': TestALineTypedBesideAnOpenConflict.)
+	typed = append(append([]string{}, typed[:4]...), "x", "y")
 	m.Edited(typed, 4)
 	cs := m.Changes()
-	if cs[1].State != Edited || cs[1].Result != (diff.Span{From: 4, To: 7}) {
+	if cs[1].State != Edited || cs[1].Result != (diff.Span{From: 4, To: 6}) {
 		t.Fatalf("after an edit at the second change: %v", cs[1])
 	}
 	check(t, m)
@@ -426,4 +427,95 @@ func TestALineTypedBesideAnOpenConflictLeavesItOpen(t *testing.T) {
 		}
 		check(t, m)
 	}
+}
+
+// edgeConflicts is a merge whose first and last lines are conflicts, the buffer's side kept.
+func edgeConflicts() Input {
+	return Input{HasBase: true, Base: text("a", "x", "b"), Left: text("L1", "x", "L2"), Right: text("R1", "x", "R2"),
+		LeftFrom: disk, RightFrom: buffer, ResultTo: buffer, ResultSide: Right}
+}
+
+// The model puts a Same hunk of no lines at an edge a change touches and between two changes next
+// to each other, at the very place in base, left and right where its neighbours meet; Changes lists
+// the changes alone.
+func TestTheModelSeparatesChangesAtItsEdgesAndBetweenThem(t *testing.T) {
+	m := NewModel(edgeConflicts())
+	var kinds []diff.Kind
+	for _, h := range m.Hunks() {
+		kinds = append(kinds, h.Kind)
+	}
+	if want := []diff.Kind{diff.Same, diff.Conflict, diff.Same, diff.Conflict, diff.Same}; !reflect.DeepEqual(kinds, want) {
+		t.Fatalf("hunks %v, want %v", kinds, want)
+	}
+	zero := func(n int) diff.Span { return diff.Span{From: n, To: n} }
+	if h := m.Hunks()[0]; h.Base != zero(0) || h.Left != zero(0) || h.Right != zero(0) {
+		t.Fatalf("the first separator %+v, want every side at 0", h)
+	}
+	if h := m.Hunks()[4]; h.Base != zero(3) || h.Left != zero(3) || h.Right != zero(3) {
+		t.Fatalf("the last separator %+v, want every side at 3", h)
+	}
+	if len(m.Changes()) != 2 {
+		t.Fatalf("changes %+v, want the two conflicts alone", m.Changes())
+	}
+	check(t, m)
+	// Two changes next to each other get one between them, where the first ends.
+	got := separated([]diff.Hunk{
+		{Kind: diff.Conflict, Base: diff.Span{From: 0, To: 1}, Left: diff.Span{From: 0, To: 2}, Right: diff.Span{From: 0, To: 1}},
+		{Kind: diff.LeftOnly, Base: diff.Span{From: 1, To: 2}, Left: diff.Span{From: 2, To: 3}, Right: diff.Span{From: 1, To: 2}},
+	})
+	if len(got) != 5 || got[2].Kind != diff.Same || got[2].Base != zero(1) || got[2].Left != zero(2) || got[2].Right != zero(1) {
+		t.Fatalf("separated two changes next to each other: %+v", got)
+	}
+}
+
+// A line typed above a conflict on the first line, below one on the last, or between two whose
+// unchanged line between was deleted, goes to the unchanged lines beside them: both conflicts stay
+// counted, and a later Take replaces the conflict's own lines alone, keeping the typed one.
+func TestALineTypedWhereOnlyConflictsAreBesideLeavesThemOpen(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		edits [][]string
+		take  int
+		want  []string
+	}{
+		{"above the first line's", [][]string{{"typed", "R1", "x", "R2"}}, 0, []string{"typed", "L1", "x", "R2"}},
+		{"below the last line's", [][]string{{"R1", "x", "R2", "typed"}}, 1, []string{"R1", "x", "L2", "typed"}},
+		{"between two, the line between deleted", [][]string{{"R1", "R2"}, {"R1", "typed", "R2"}}, 0, []string{"L1", "typed", "R2"}},
+	} {
+		m := NewModel(edgeConflicts())
+		m.Settle(1)
+		for k, e := range c.edits {
+			m.Edited(e, uint64(2+k))
+			check(t, m)
+		}
+		if ch, co := m.Counts(); ch != 2 || co != 2 {
+			t.Fatalf("a line typed %s conflict: counts %d, %d, want both open (2, 2): %+v", c.name, ch, co, m.Changes())
+		}
+		m.Take(c.take, Left)
+		if got := m.ResultLines(); !reflect.DeepEqual(got, c.want) {
+			t.Fatalf("a line typed %s conflict, then a Take: %q, want %q (the typed line kept)", c.name, got, c.want)
+		}
+		check(t, m)
+	}
+}
+
+// Typing into an empty open conflict still resolves it, the separator beside it notwithstanding;
+// typing beside a conflict that holds lines does not: both in one merge.
+func TestTypingIntoAnEmptyConflictResolvesItAndBesideAFullOneDoesNot(t *testing.T) {
+	m := NewModel(Input{HasBase: true, // the base kept: the inserted conflict holds no lines, the last one b
+		Base: text("a", "c", "x", "b"), Left: text("a", "L", "c", "x", "B1"), Right: text("a", "R", "c", "x", "B2")})
+	m.Settle(1)
+	if cs := m.Changes(); len(cs) != 2 || cs[0].Result.Len() != 0 || cs[1].Result.Len() != 1 {
+		t.Fatalf("the fixture: %+v, want an empty conflict and one holding b", cs)
+	}
+	m.Edited([]string{"a", "typed", "c", "x", "b"}, 2)
+	m.Edited([]string{"a", "typed", "c", "x", "b", "below"}, 3)
+	cs := m.Changes()
+	if cs[0].State != Edited || cs[1].State != Unresolved {
+		t.Fatalf("states %v, %v: want the empty conflict Edited, the full one still open", cs[0].State, cs[1].State)
+	}
+	if ch, co := m.Counts(); ch != 1 || co != 1 {
+		t.Fatalf("counts %d, %d, want the full conflict alone", ch, co)
+	}
+	check(t, m)
 }

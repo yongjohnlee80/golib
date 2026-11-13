@@ -615,3 +615,39 @@ func TestNextChangeReachesAChangeOnTheSameLine(t *testing.T) {
 	r.keys(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyRight, Mods: tui.ModCtrl | tui.ModShift}) // take the left's
 	r.resultIs("the second ] then taking the left: the second change's E", lines("a", "E"))
 }
+
+// With conflicts on the first and the last line (the model's separators at both edges), each
+// change's arrows sit on its own first line's row, and scrolling one pane brings the others to the
+// same line: the separators move nothing.
+func TestConflictsAtTheEdgesKeepTheirMarksAndTheScroll(t *testing.T) {
+	var base, left, right []string
+	for i := range 40 {
+		base = append(base, fmt.Sprintf("line %02d", i))
+	}
+	left = append([]string{}, base...)
+	right = append([]string{}, base...)
+	left[0], right[0], left[39], right[39] = "L first", "R first", "L last", "R last"
+	in := merge.Input{HasBase: true, Base: lines(base...), Left: lines(left...), Right: lines(right...),
+		LeftFrom: disk, RightFrom: buffer, ResultTo: buffer, ResultSide: merge.Right}
+	r := start(t, &source{in: in}, mergeview.Options{}, 120, 14)
+	r.loaded()
+	s := r.shows("the panes", "L first", "R first")
+	_, ay, ok := find(s, "»")
+	_, ly, _ := find(s, "L first")
+	if !ok || ay != ly {
+		t.Fatalf("the first conflict's » on row %d (found %v), its line on row %d:\n%s", ay, ok, ly, s)
+	}
+	_, by, ok := find(s, "«")
+	if !ok || by != ly {
+		t.Fatalf("the first conflict's « on row %d, its line on row %d", by, ly)
+	}
+	r.h.OnLoop(func() { l, _, _ := r.v.Panes(); l.SetTopLine(20) })
+	var tops [3]int
+	r.h.OnLoop(func() {
+		l, res, rt := r.v.Panes()
+		tops = [3]int{l.TopLine(), res.TopLine(), rt.TopLine()}
+	})
+	if tops != [3]int{20, 20, 20} {
+		t.Fatalf("the left pane at 20: tops %v, want every pane at 20", tops)
+	}
+}
