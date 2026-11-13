@@ -88,6 +88,7 @@ var toolkitEnglish = map[string]string{
 	"tui.mergeview.applyFailed":   "Could not apply: %1",
 	"tui.mergeview.confirmApply":  "%1 changes are unresolved, %2 of them conflicts. Apply anyway?",
 	"tui.mergeview.confirmReload": "Loading again discards the changes made to the result. Load again?",
+	"tui.mergeview.cannotAsk":     "Not done: it needs a confirmation, and there is nowhere to ask",
 }
 
 var shippedLanguages = []string{"en", "ko_KR", "ja_JP", "zh_CN", "pt_BR", "es"}

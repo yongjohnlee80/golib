@@ -315,5 +315,9 @@
         <source>Loading again discards the changes made to the result. Load again?</source>
         <translation>다시 불러오면 결과에 한 변경이 사라집니다. 다시 불러올까요?</translation>
     </message>
+    <message id="tui.mergeview.cannotAsk">
+        <source>Not done: it needs a confirmation, and there is nowhere to ask</source>
+        <translation>실행하지 않았습니다: 확인이 필요하지만 물어볼 곳이 없습니다</translation>
+    </message>
 </context>
 </TS>

@@ -4,11 +4,13 @@ import (
 	"github.com/yongjohnlee80/golib/diff"
 )
 
-// Side is one of the two texts merged.
+// Side is one of the two texts merged, or None.
 type Side uint8
 
 const (
-	Left Side = iota
+	// None is neither side: as Input.ResultSide, a result written to a third place.
+	None Side = iota
+	Left
 	Right
 )
 
@@ -16,8 +18,8 @@ const (
 type Resolution uint8
 
 const (
-	// Unresolved holds the change's unresolved lines: the base's in a three-way merge; in a
-	// two-way one, the lines of the side the result replaces, or none.
+	// Unresolved holds the change's unresolved lines: the side's the result replaces
+	// (Input.ResultSide); with None, the base's in a three-way merge, none in a two-way one.
 	Unresolved Resolution = iota
 	TookLeft
 	TookRight
@@ -47,13 +49,6 @@ type Edit struct {
 	Lines []string
 }
 
-// Row is one row of the three panes aligned: each pane's line on it, or -1 for a filler row where a
-// pane has no line. Hunk is the hunk the row is in.
-type Row struct {
-	Left, Result, Right int
-	Hunk                int
-}
-
 // state is what a revision of the result restores: each hunk's span in the result and its
 // resolution.
 type state struct {
@@ -78,28 +73,48 @@ type Model struct {
 	state
 	rev   uint64
 	saved map[uint64]state
+	order []uint64 // the saved revisions, oldest first, for the bound
 }
 
-// NewModel is the merge of in's texts, every change unresolved: the result is the base where there
-// is one, and otherwise the side the result replaces, with each conflict its lines (Input).
+// maxSaved bounds the revisions whose state is kept: an undo further back than an editor keeps
+// finds none, and the change it reaches reads as a hand edit.
+const maxSaved = 4096
+
+// save keeps the state as revision rev's, dropping the oldest past maxSaved.
+func (m *Model) save(rev uint64) {
+	if _, ok := m.saved[rev]; !ok {
+		m.order = append(m.order, rev)
+	}
+	m.saved[rev] = m.copyState()
+	for len(m.order) > maxSaved {
+		delete(m.saved, m.order[0])
+		m.order = m.order[1:]
+	}
+}
+
+// NewModel is the merge of in's texts, every change unresolved. An unresolved change keeps the
+// lines of the side the result replaces (Input.ResultSide), so applying with changes left keeps
+// what that side had there: in a buffer's merge with its file, the user's own text. With None, a
+// three-way merge keeps the base's lines and a two-way one none.
 func NewModel(in Input, opts ...diff.Options) *Model {
 	m := &Model{in: in, saved: map[uint64]state{}}
 	m.left, m.right = diff.Split(in.Left), diff.Split(in.Right)
 	if in.HasBase {
 		m.base = diff.Split(in.Base)
 		m.merge = diff.Merge3(m.base.Lines, m.left.Lines, m.right.Lines, opts...)
-		m.unresolved = diff.PickBase
 	} else {
 		m.base = diff.Text{Lines: []string{}}
 		m.merge = diff.Merge2(m.left.Lines, m.right.Lines, opts...)
-		switch in.ResultTo {
-		case in.LeftFrom:
-			m.unresolved = diff.PickLeft
-		case in.RightFrom:
-			m.unresolved = diff.PickRight
-		default:
-			m.unresolved = diff.PickNone
-		}
+	}
+	switch {
+	case in.ResultSide == Left:
+		m.unresolved = diff.PickLeft
+	case in.ResultSide == Right:
+		m.unresolved = diff.PickRight
+	case in.HasBase:
+		m.unresolved = diff.PickBase
+	default:
+		m.unresolved = diff.PickNone
 	}
 	m.result = []string{}
 	m.spans = make([]diff.Span, len(m.merge.Hunks))
@@ -148,12 +163,12 @@ func (m *Model) RightLines() []string  { return m.right.Lines }
 func (m *Model) ResultLines() []string { return m.result }
 
 // Result is the result as text, written with the line endings and final newline of the text it
-// replaces: the side ResultTo names, else the base, else the left.
+// replaces: the ResultSide, else the base, else the left.
 func (m *Model) Result() string {
 	switch {
-	case m.in.ResultTo == m.in.LeftFrom:
+	case m.in.ResultSide == Left:
 		return m.left.Join(m.result)
-	case m.in.ResultTo == m.in.RightFrom:
+	case m.in.ResultSide == Right:
 		return m.right.Join(m.result)
 	case m.merge.HasBase:
 		return m.base.Join(m.result)
@@ -211,10 +226,11 @@ func (m *Model) Counts() (changes, conflicts int) {
 // hand. A view asks before loading again over it.
 func (m *Model) Touched() bool { return m.touched }
 
-// Take resolves change i with side s's lines. ok is false for no such change.
+// Take resolves change i with side s's lines. ok is false for no such change, or a side that is
+// None.
 func (m *Model) Take(i int, s Side) (Edit, bool) {
 	h := m.hunk(i)
-	if h < 0 {
+	if h < 0 || (s != Left && s != Right) {
 		return Edit{}, false
 	}
 	hk := m.merge.Hunks[h]
@@ -244,7 +260,7 @@ func (m *Model) Dismiss(i int) bool {
 	}
 	m.states[h] = Dismissed
 	m.touched = true
-	m.saved[m.rev] = m.copyState()
+	m.save(m.rev)
 	return true
 }
 
@@ -334,7 +350,7 @@ func (m *Model) copyState() state {
 // revision of that text.
 func (m *Model) Settle(rev uint64) {
 	m.rev = rev
-	m.saved[rev] = m.copyState()
+	m.save(rev)
 }
 
 // Edited tells the model the result's lines are now lines, at its editor's revision rev: a hand
@@ -342,6 +358,11 @@ func (m *Model) Settle(rev uint64) {
 // back how each change was resolved. A new one is a hand edit: the lines between the common head
 // and tail of the old result and the new are the edit, every change it reaches is Edited, and the
 // spans after it move.
+//
+// Lines put in where two hunks meet go to a change that meets the place: an empty change there
+// first (lines both sides put in, or none kept), then a change ending there (a line added after
+// its last), then one starting there; only where no change meets it, to the hunk the line is in.
+// So what is typed at a change is the change's, and a later Take replaces it.
 func (m *Model) Edited(lines []string, rev uint64) {
 	old := m.result
 	m.result = append([]string{}, lines...)
@@ -362,25 +383,41 @@ func (m *Model) Edited(lines []string, rev uint64) {
 	}
 	f, t, n := head, len(old)-tail, len(lines)-tail-head
 	if f == t && n == 0 {
-		m.saved[rev] = m.copyState() // the same lines: a revision with no change to them
+		m.save(rev) // the same lines: a revision with no change to them
 		return
 	}
-	// Each boundary between spans moves with the edit: one at or before its start stays, one at or
-	// after its end moves by what it added, and one inside goes to the end of the lines put in.
-	// The result's end is always the last span's end.
-	at := func(b int) int {
+	hs := len(m.spans)
+	if hs == 0 {
+		m.touched = true
+		m.save(rev)
+		return
+	}
+	// The boundaries between spans, B[0] the first's start, B[hs] the last's end.
+	b := make([]int, hs+1)
+	for i, sp := range m.spans {
+		b[i] = sp.From
+	}
+	b[hs] = m.spans[hs-1].To
+	// at is where boundary i goes. One before the edit stays, one after it moves by what it added,
+	// one inside goes to the end of the lines put in. At an insert's place (f == t), the boundaries
+	// up to the hunk taking the lines (into) stay, the rest move past them.
+	into := -1
+	if f == t {
+		into = m.insertInto(b, f)
+	}
+	at := func(i int) int {
 		switch {
-		case b <= f:
-			return b
-		case b >= t:
-			return b + n - (t - f)
+		case b[i] < f, b[i] == f && (f != t || i <= into):
+			return b[i]
+		case b[i] >= t:
+			return b[i] + n - (t - f)
 		}
 		return f + n
 	}
 	for i := range m.spans {
 		was := m.spans[i]
-		now := diff.Span{From: at(was.From), To: at(was.To)}
-		if i == len(m.spans)-1 {
+		now := diff.Span{From: at(i), To: at(i + 1)}
+		if i == hs-1 {
 			now.To = len(lines)
 		}
 		reached := (was.From < t && f < was.To) || (n > 0 && now.From < f+n && f < now.To)
@@ -390,31 +427,28 @@ func (m *Model) Edited(lines []string, rev uint64) {
 		m.spans[i] = now
 	}
 	m.touched = true
-	m.saved[rev] = m.copyState()
+	m.save(rev)
 }
 
-// Rows are the three panes aligned, hunk by hunk: each hunk's lines side by side, the shorter
-// panes' rows filled (-1) to the longest's.
-func (m *Model) Rows() []Row {
-	var out []Row
-	for i, h := range m.merge.Hunks {
-		r := m.spans[i]
-		n := max(h.Left.Len(), r.Len(), h.Right.Len())
-		for k := 0; k < n; k++ {
-			row := Row{Left: -1, Result: -1, Right: -1, Hunk: i}
-			if k < h.Left.Len() {
-				row.Left = h.Left.From + k
+// insertInto is the hunk lines put in at boundary place f go to (Edited): an empty change there,
+// a change ending there, a change starting there, else the hunk holding line f (the last one, at
+// the end).
+func (m *Model) insertInto(b []int, f int) int {
+	change := func(i int) bool { return m.merge.Hunks[i].Kind != diff.Same }
+	hs := len(b) - 1
+	for _, pick := range []func(i int) bool{
+		func(i int) bool { return change(i) && b[i] == f && b[i+1] == f },
+		func(i int) bool { return change(i) && b[i] < f && b[i+1] == f },
+		func(i int) bool { return change(i) && b[i] == f && b[i+1] > f },
+		func(i int) bool { return b[i] <= f && f < b[i+1] },
+	} {
+		for i := 0; i < hs; i++ {
+			if pick(i) {
+				return i
 			}
-			if k < r.Len() {
-				row.Result = r.From + k
-			}
-			if k < h.Right.Len() {
-				row.Right = h.Right.From + k
-			}
-			out = append(out, row)
 		}
 	}
-	return out
+	return hs - 1
 }
 
 // Change is the index of the change hunk h is, or -1 for a hunk alike on every side.

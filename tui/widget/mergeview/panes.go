@@ -155,10 +155,15 @@ func (v *MergeView) glyphs() []glyph {
 		y := line - tops[pane]
 		return v.panesY + y, y >= 0 && y < v.panesH
 	}
+	// gone is a deletion's mark: the Deleted tint's colour, where a side has no lines of the change.
+	gone := style.New()
+	if bg, ok := v.style.Deleted.GetBackground(); ok {
+		gone = gone.Foreground(bg)
+	}
 	mark := func(x, pane int, s diff.Span, st style.Style, i int) {
 		if s.Len() == 0 { // nothing on this side: a mark where its lines would be
 			if y, ok := row(pane, s.From); ok {
-				out = append(out, glyph{x: x, y: y, text: "▁", st: st, change: i})
+				out = append(out, glyph{x: x, y: y, text: "▁", st: gone.Inherit(st), change: i})
 			}
 			return
 		}
@@ -208,8 +213,11 @@ func (v *MergeView) glyphs() []glyph {
 	return out
 }
 
-// hunkOf is change i's hunk index.
+// hunkOf is change i's hunk index, or -1.
 func (v *MergeView) hunkOf(i int) int {
+	if i < 0 || v.model == nil {
+		return -1
+	}
 	for h := range v.model.Hunks() {
 		if v.model.Change(h) == i {
 			return h
@@ -249,7 +257,8 @@ func (v *MergeView) focusedPane() int {
 	return resultPane
 }
 
-// current is the change at the focused pane's cursor, else the one last moved to.
+// current is the change at the focused pane's cursor: the one last moved to when the cursor is at
+// it (two changes may start on one line), else the first there, else the one last moved to.
 func (v *MergeView) current() int {
 	if v.model == nil {
 		return -1
@@ -257,6 +266,10 @@ func (v *MergeView) current() int {
 	pane := v.focusedPane()
 	line := v.panes[pane].Core().Cursor().Line
 	spans := v.spansOf(pane)
+	at := func(s diff.Span) bool { return (line >= s.From && line < s.To) || (s.Len() == 0 && line == s.From) }
+	if h := v.hunkOf(v.cur); h >= 0 && at(spans[h]) {
+		return v.cur
+	}
 	for h, s := range spans {
 		if (line >= s.From && line < s.To) || (s.Len() == 0 && line == s.From) {
 			if c := v.model.Change(h); c >= 0 {
@@ -275,17 +288,21 @@ func (v *MergeView) move(delta int, conflictsOnly bool) {
 		return
 	}
 	line := v.panes[resultPane].Core().Cursor().Line
+	// on is whether the cursor is at the change last moved to: then a change starting on the same
+	// line is the next (or the one before), not passed over.
+	on := v.cur >= 0 && v.cur < len(changes) && changes[v.cur].Result.From == line
 	pick := -1
 	if delta > 0 {
 		for i, c := range changes {
-			if c.Result.From > line && (!conflictsOnly || c.Conflict()) {
+			if (c.Result.From > line || (on && c.Result.From == line && i > v.cur)) && (!conflictsOnly || c.Conflict()) {
 				pick = i
 				break
 			}
 		}
 	} else {
 		for i := len(changes) - 1; i >= 0; i-- {
-			if changes[i].Result.From < line && (!conflictsOnly || changes[i].Conflict()) {
+			c := changes[i]
+			if (c.Result.From < line || (on && c.Result.From == line && i < v.cur)) && (!conflictsOnly || c.Conflict()) {
 				pick = i
 				break
 			}

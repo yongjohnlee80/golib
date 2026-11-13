@@ -68,6 +68,7 @@ type MergeView struct {
 	note            string
 	noteErr         bool
 	changed         bool // a side changed under the view: a reload is offered
+	reloadFailed    bool // a reload failed: the merge shown stays, and a reload is offered again
 	details         bool
 	cur             int  // the change last moved to, or -1
 	syncing         bool // panes being scrolled to follow another
@@ -268,7 +269,7 @@ func (v *MergeView) load() {
 // loaded makes the merge of in and shows it.
 func (v *MergeView) loaded(in merge.Input) {
 	v.model = merge.NewModel(in, v.opts.Diff)
-	v.cur, v.changed = -1, false
+	v.cur, v.changed, v.reloadFailed = -1, false, false
 	v.panes[leftPane].SetValue(strings.Join(v.model.LeftLines(), "\n"))
 	v.panes[rightPane].SetValue(strings.Join(v.model.RightLines(), "\n"))
 	v.panes[resultPane].SetValue(strings.Join(v.model.ResultLines(), "\n"))
@@ -287,7 +288,15 @@ func (v *MergeView) HandleEvent(ev tui.Event) bool {
 		case v.loadID:
 			v.loading = false
 			if e.Err != nil {
-				v.failed = e.Err
+				msg := kit.WithArg(v.Translate(tui.Msg("tui.mergeview.loadFailed")), e.Err.Error())
+				if errNotText(e.Err) {
+					msg = v.Translate(tui.Msg("tui.mergeview.notText"))
+				}
+				if v.model != nil { // a reload: the merge shown and its result stay, with Apply
+					v.note, v.noteErr, v.reloadFailed = msg, true, true
+				} else {
+					v.failed = e.Err
+				}
 				v.MarkDirty()
 				v.RequestLayout()
 				return true
@@ -298,6 +307,7 @@ func (v *MergeView) HandleEvent(ev tui.Event) bool {
 			return true
 		case v.applyID:
 			v.applying = false
+			v.panes[resultPane].Core().SetReadOnly(false)
 			if e.Err != nil {
 				v.note, v.noteErr = kit.WithArg(v.Translate(tui.Msg("tui.mergeview.applyFailed")), e.Err.Error()), true
 				v.RequestLayout()
@@ -321,7 +331,7 @@ func (v *MergeView) HandleEvent(ev tui.Event) bool {
 
 // command runs one of the view's keys.
 func (v *MergeView) command(cmd keymap.Command) bool {
-	if v.model == nil {
+	if !v.usable() {
 		return false
 	}
 	switch cmd.ID {
@@ -348,9 +358,12 @@ func (v *MergeView) command(cmd keymap.Command) bool {
 	return true
 }
 
+// usable is whether the merge can be acted on: loaded, not closed, not being applied.
+func (v *MergeView) usable() bool { return v.model != nil && !v.closed && !v.applying }
+
 // Take resolves change i with side s's lines.
 func (v *MergeView) Take(i int, s merge.Side) {
-	if v.model == nil {
+	if !v.usable() {
 		return
 	}
 	if e, ok := v.model.Take(i, s); ok {
@@ -361,7 +374,7 @@ func (v *MergeView) Take(i int, s merge.Side) {
 
 // TakeBoth resolves change i with the left's lines, then the right's.
 func (v *MergeView) TakeBoth(i int) {
-	if v.model == nil {
+	if !v.usable() {
 		return
 	}
 	if e, ok := v.model.TakeBoth(i); ok {
@@ -372,7 +385,7 @@ func (v *MergeView) TakeBoth(i int) {
 
 // Dismiss resolves change i as it is.
 func (v *MergeView) Dismiss(i int) {
-	if v.model != nil && v.model.Dismiss(i) {
+	if v.usable() && v.model.Dismiss(i) {
 		v.cur = i
 		v.refresh()
 	}
@@ -380,20 +393,20 @@ func (v *MergeView) Dismiss(i int) {
 
 // AcceptLeft and AcceptRight make the result that side whole.
 func (v *MergeView) AcceptLeft() {
-	if v.model != nil {
+	if v.usable() {
 		v.replay(v.model.AcceptLeft())
 	}
 }
 
 func (v *MergeView) AcceptRight() {
-	if v.model != nil {
+	if v.usable() {
 		v.replay(v.model.AcceptRight())
 	}
 }
 
 // Merge resolves every change that is not a conflict with its changed side.
 func (v *MergeView) Merge() {
-	if v.model == nil {
+	if !v.usable() {
 		return
 	}
 	if e, ok := v.model.MergeNonConflicting(); ok {
@@ -402,18 +415,20 @@ func (v *MergeView) Merge() {
 }
 
 // Apply hands the result to the source, asking first when changes are left unresolved. An error
-// keeps the view open, said in the bar; success closes it.
+// keeps the view open, said in the bar; success closes it. While it runs, the result is read-only, so
+// no edit is made that the applied text would not hold; after Cancel or a close, it does nothing.
 func (v *MergeView) Apply() {
-	if v.model == nil || v.applying {
+	if !v.usable() {
 		return
 	}
 	doApply := func() {
 		ctx := v.Context()
-		if ctx == nil {
+		if ctx == nil || !v.usable() {
 			return
 		}
 		result := v.model.Result()
 		v.applying = true
+		v.panes[resultPane].Core().SetReadOnly(true)
 		src := v.src
 		v.applyID = ctx.Go(func(c context.Context) (any, error) { return nil, src.Apply(c, result) }, tui.Exclusive("apply"))
 	}
@@ -444,6 +459,9 @@ func (v *MergeView) close(applied bool) {
 
 // Reload loads the texts again, asking first when the result was changed.
 func (v *MergeView) Reload() {
+	if v.closed || v.applying {
+		return
+	}
 	if v.model == nil || !v.model.Touched() {
 		v.load()
 		return
@@ -462,11 +480,15 @@ func (v *MergeView) sideChanged() {
 	v.MarkDirty()
 }
 
-// ask asks a yes-or-no question in a dialog, yes running fn.
+// ask asks a yes-or-no question in a dialog, yes running fn. With nowhere to ask (no dialog host,
+// no Confirm option), the action is not done, and the bar says so: an unasked Apply or Reload could
+// drop the user's work.
 func (v *MergeView) ask(question string, fn func()) {
 	host, ok := kit.HostFor[core.ModalHost](v.Context())
 	if !ok {
-		fn() // no host to ask in: the host gave no way to ask, so the answer is the action's
+		v.note, v.noteErr = v.Translate(tui.Msg("tui.mergeview.cannotAsk")), true
+		v.RequestLayout()
+		v.MarkDirty()
 		return
 	}
 	md := core.NewModal(core.NewText(question),
@@ -647,7 +669,7 @@ func (v *MergeView) Layout(c tui.Constraints) tui.Size {
 	v.barText = x
 	right := w
 	for _, b := range []*core.Button{v.cancel, v.apply, v.reload} {
-		bw := place(b, b == v.cancel || (shown && (b == v.apply || v.changed)))
+		bw := place(b, b == v.cancel || (shown && b == v.apply) || (b == v.reload && (v.changed || v.reloadFailed || v.failed != nil)))
 		if bw > 0 {
 			right -= bw
 			ctx.PlaceChild(b, tui.Rect{X: right, Y: y, W: bw, H: 1})
