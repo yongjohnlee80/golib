@@ -49,11 +49,15 @@ func (e *Editor) TopLine() int {
 }
 
 // SetTopLine makes line the first shown, clamped to the text: never above the first line, and never
-// so low that the text's end is above the view's bottom. Before the view is first drawn, it is held
-// and applied then.
+// so low that the text's end is above the view's bottom, in pixels or in the cell fallback's rows.
+// Before the view is first drawn, it is held and applied then.
 func (e *Editor) SetTopLine(line int) {
 	line = max(0, min(line, max(e.core.LineCount()-1, 0)))
+	// the cell fallback's rows: never so low that the last line is above the bottom row
 	e.body.cellTop = line
+	if h := e.body.h; h > 0 {
+		e.body.cellTop = min(line, max(e.core.LineCount()-h, 0))
+	}
 	if e.layout.height <= 0 || e.layout.sh == nil {
 		e.pendingTop = line
 	} else {
