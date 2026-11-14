@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/yongjohnlee80/golib/diff/merge"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 	"github.com/yongjohnlee80/golib/tui/widget/editor"
 	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 	"github.com/yongjohnlee80/golib/tui/widget/mergeview"
@@ -239,7 +241,7 @@ func find(screen, text string) (x, y int, ok bool) {
 func (r *rig) focus(pane, line int) {
 	r.h.OnLoop(func() {
 		l, res, rt := r.v.Panes()
-		ed := [3]*editor.Editor{l, res, rt}[pane]
+		ed := [3]mergeview.Pane{l, res, rt}[pane]
 		r.h.App.FocusInto(ed)
 		ed.Core().SetLine(line, 0)
 	})
@@ -649,5 +651,95 @@ func TestConflictsAtTheEdgesKeepTheirMarksAndTheScroll(t *testing.T) {
 	})
 	if tops != [3]int{20, 20, 20} {
 		t.Fatalf("the left pane at 20: tops %v, want every pane at 20", tops)
+	}
+}
+
+// laterPanes make tui's Editor a pane that tells its top on a later turn of the loop, with the top
+// it had when it moved, as a window's editor does; told counts the tells the view has taken.
+type laterPanes struct{ told atomic.Int64 }
+
+func (lp *laterPanes) pane(spec mergeview.PaneSpec) mergeview.Pane {
+	var e *editor.Editor
+	e = editor.NewEditor(editor.WithCore(spec.Core...), editor.WithEditorWrap(core.WrapNone),
+		editor.WithEditorLineStyle(spec.LineStyle),
+		editor.WithEditorOnScroll(func(top int) {
+			if ctx := e.Context(); ctx != nil {
+				ctx.Update(func() { lp.told.Add(1); spec.OnScroll(top) })
+			}
+		}))
+	return e
+}
+
+func laterPane(spec mergeview.PaneSpec) mergeview.Pane { return new(laterPanes).pane(spec) }
+
+// settled is the panes' tops once the tells queued on the loop have been taken.
+func (r *rig) settled() (tops [3]int) {
+	for range 8 {
+		r.h.OnLoop(func() {})
+	}
+	r.h.OnLoop(func() {
+		l, res, rt := r.v.Panes()
+		tops = [3]int{l.TopLine(), res.TopLine(), rt.TopLine()}
+	})
+	return tops
+}
+
+// A pane that tells later tells back the top the view gave it: that is not a scroll, and the pane
+// that moved stays where it is. The left pane goes into its added lines, where the others have
+// none: they go to the hunk's place, and their tell of it never brings the left to the hunk after.
+func TestALaterPanesTellOfTheTopItWasGivenMovesNothing(t *testing.T) {
+	r := start(t, &source{in: scrollInput()}, mergeview.Options{NewPane: laterPane}, 120, 14)
+	r.loaded()
+	r.h.OnLoop(func() { l, _, _ := r.v.Panes(); l.SetTopLine(11) })
+	if tops := r.settled(); tops != [3]int{11, 10, 10} {
+		t.Fatalf("the left pane at 11, in its added lines: tops %v, want the left kept at 11, the others at 10", tops)
+	}
+}
+
+// A pane that tells later may tell a top it has since left: the view follows only the top it is
+// at. The right pane goes to 40, then 20, before either is told: the panes end at 20's place, and
+// stay there. Following the old tops, the panes would follow each other's old tells back and forth
+// without end.
+func TestALaterPanesTellOfATopItLeftIsDropped(t *testing.T) {
+	var lp laterPanes
+	r := start(t, &source{in: scrollInput()}, mergeview.Options{NewPane: lp.pane}, 120, 14)
+	r.loaded()
+	r.h.OnLoop(func() { _, _, rt := r.v.Panes(); rt.SetTopLine(40); rt.SetTopLine(20) })
+	want := [3]int{23, 20, 20}
+	tops := r.settled()
+	n := lp.told.Load()
+	again := r.settled()
+	if m := lp.told.Load(); m != n {
+		t.Fatalf("the panes kept telling and following: %d tells, then %d; tops %v, then %v", n, m, tops, again)
+	}
+	if tops != want || again != want {
+		t.Fatalf("the right pane at 40, then 20: tops %v, then %v, want the left 3 lower than 20, the others at 20", tops, again)
+	}
+}
+
+// The view makes its panes with Options.NewPane, asking for the left, the result and the right,
+// the result typed in and the sides read-only.
+func TestTheViewMakesItsPanesWithNewPane(t *testing.T) {
+	var asked []mergeview.PaneSpec
+	r := start(t, &source{in: threeWay()}, mergeview.Options{NewPane: func(spec mergeview.PaneSpec) mergeview.Pane {
+		asked = append(asked, spec)
+		return laterPane(spec)
+	}}, 120, 14)
+	r.loaded()
+	if len(asked) != 3 || asked[0].Result || !asked[1].Result || asked[2].Result {
+		t.Fatalf("panes asked for: %d, results %v", len(asked), func() (rs []bool) {
+			for _, a := range asked {
+				rs = append(rs, a.Result)
+			}
+			return rs
+		}())
+	}
+	var ro [3]bool
+	r.h.OnLoop(func() {
+		l, res, rt := r.v.Panes()
+		ro = [3]bool{l.Core().ReadOnly(), res.Core().ReadOnly(), rt.Core().ReadOnly()}
+	})
+	if ro != [3]bool{true, false, true} {
+		t.Fatalf("read-only %v, want the sides only", ro)
 	}
 }

@@ -103,10 +103,20 @@ func (v *MergeView) lineStyle(pane int) func(line int) (style.Style, bool) {
 }
 
 // scrolled keeps the other panes with the one that scrolled: each goes to the same place in the
-// same hunk, its first line where the hunk is shorter.
+// same hunk, its first line where the hunk is shorter. A pane that tells later (a window's) may
+// tell a top it has since left, or the top the view gave it: neither is the user's scroll, and
+// following it would move the panes back. A pane that tells at once (tui's) tells the top it was
+// given while the view is syncing, so its gave stays set until its next tell, which clears it: a
+// tell equal to it would be no move, so none is dropped wrongly.
 func (v *MergeView) scrolled(pane, top int) {
-	if v.syncing || v.model == nil {
+	if v.syncing || v.model == nil || top != v.panes[pane].TopLine() {
 		return
+	}
+	if gave := v.gave[pane]; gave >= 0 {
+		v.gave[pane] = -1
+		if top == gave {
+			return
+		}
 	}
 	h, k := hunkAt(v.spansOf(pane), top)
 	if h < 0 {
@@ -119,7 +129,9 @@ func (v *MergeView) scrolled(pane, top int) {
 			continue
 		}
 		s := v.spansOf(other)[h]
-		v.panes[other].SetTopLine(s.From + min(k, max(s.Len()-1, 0)))
+		p := v.panes[other]
+		p.SetTopLine(s.From + min(k, max(s.Len()-1, 0)))
+		v.gave[other] = p.TopLine() // as clamped
 	}
 	v.MarkDirty() // the connectors follow
 }

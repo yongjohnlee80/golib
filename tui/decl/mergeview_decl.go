@@ -14,29 +14,40 @@ func MergeViewOf(c tui.Component) (*mergeview.MergeView, bool) {
 	return v, ok
 }
 
-func buildMergeView(b Build) (tui.Component, []string, error) {
-	consumed, err := b.ReadProps(map[string]field{})
-	if err != nil {
-		return nil, nil, err
+// BuildMergeViewWith is the MergeView type's Build, its views made with opts. A style that makes
+// the panes its own way (gui's native editors, through Options.NewPane) sets it as the type's
+// Build, and styles the lines' marks with RestyleMergeViewMarks.
+func BuildMergeViewWith(opts mergeview.Options) func(Build) (tui.Component, []string, error) {
+	return func(b Build) (tui.Component, []string, error) {
+		consumed, err := b.ReadProps(map[string]field{})
+		if err != nil {
+			return nil, nil, err
+		}
+		v := mergeview.NewMergeView(nil, opts)
+		closed := b.EmitterWith("closed")
+		v.OnClose(func(applied bool) { closed(boolValue(applied)) })
+		return v, consumed, nil
 	}
-	v := mergeview.NewMergeView(nil, mergeview.Options{})
-	closed := b.EmitterWith("closed")
-	v.OnClose(func(applied bool) { closed(boolValue(applied)) })
-	return v, consumed, nil
 }
 
 // restyleMergeView gives the panes the Editor's looks (base and text, the selection in highlight)
-// and the lines' marks the palette's diff roles: a role nothing sets keeps its tint.
+// and the lines' marks the palette's diff roles.
 func restyleMergeView(c tui.Component, p palette) {
 	v := c.(*mergeview.MergeView)
 	st, _ := p.editorStyles()
 	v.SetPaneStyles(st)
+	RestyleMergeViewMarks(v, Palette{p})
+}
+
+// RestyleMergeViewMarks gives a MergeView's line marks the palette's diff roles: a role nothing
+// sets keeps its tint.
+func RestyleMergeViewMarks(v *mergeview.MergeView, p Palette) {
 	var ms mergeview.Style
 	for _, r := range []struct {
 		role Role
 		to   *style.Style
 	}{{roleDiffAdded, &ms.Added}, {roleDiffDeleted, &ms.Deleted}, {roleDiffChanged, &ms.Changed}, {roleDiffConflict, &ms.Conflict}} {
-		if col, ok := p[r.role]; ok {
+		if col, ok := p.Color(r.role); ok {
 			*r.to = style.New().Background(col)
 		}
 	}
@@ -45,7 +56,7 @@ func restyleMergeView(c tui.Component, p palette) {
 
 var mergeViewType = Type{
 	Name: "MergeView", Children: NoChildren().Because("its panes and bar are its own"),
-	Build:   buildMergeView,
+	Build:   BuildMergeViewWith(mergeview.Options{}),
 	restyle: restyleMergeView,
 	Getters: map[string]Getter{
 		"changes": getter(func(v *mergeview.MergeView) (qml.SpecValue, error) {
