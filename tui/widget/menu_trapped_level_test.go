@@ -92,6 +92,7 @@ func TestAContextMenuSubmenuRowRunsOnAClick(t *testing.T) {
 	x, y := cellOfRun(t, h, "2. 125%")
 	leftClick(h, x, y)
 	h.waitFor("the menu closed", func() bool { return !menuOpen(h, ed) })
+	h.eventually(func() bool { return chose.Load() == 125 }) // the row runs on the turn after the menu closes
 	if got := chose.Load(); got != 125 {
 		t.Errorf("chose %d%%, want 125%%: the click on the level's row did not run it", got)
 	}
@@ -107,6 +108,7 @@ func TestAContextMenuSubmenuRowRunsFromItsMnemonic(t *testing.T) {
 
 	h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: '3'})
 	h.waitFor("the menu closed", func() bool { return !menuOpen(h, ed) })
+	h.eventually(func() bool { return chose.Load() == 150 }) // the row runs on the turn after the menu closes
 	if got := chose.Load(); got != 150 {
 		t.Errorf("chose %d%%, want 150%%", got)
 	}

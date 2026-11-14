@@ -111,9 +111,12 @@ func TestEditorContextMenu_CopyTakesTheSelection(t *testing.T) {
 	h.waitFor("the menu closed", func() bool { return !menuOpen(h, ed) })
 	var reg string
 	var focused bool
-	h.onLoop(func() {
-		reg, _ = ed.Core().Register()
-		focused = ed.Context().Focused()
+	h.eventually(func() bool { // the row runs on the turn after the menu closes
+		h.onLoop(func() {
+			reg, _ = ed.Core().Register()
+			focused = ed.Context().Focused()
+		})
+		return reg == "hello"
 	})
 	if reg != "hello" {
 		t.Errorf("register = %q, want %q", reg, "hello")
@@ -147,7 +150,10 @@ func TestEditorContextMenu_PasteNeedsARegisterAndCopyNeedsASelection(t *testing.
 	h.inject(key(tui.KeyEnter)) // the only enabled row: Paste
 	h.waitFor("the menu closed", func() bool { return !menuOpen(h, ed) })
 	var v string
-	h.onLoop(func() { v = ed.Core().Value() })
+	h.eventually(func() bool { // the row runs on the turn after the menu closes
+		h.onLoop(func() { v = ed.Core().Value() })
+		return strings.HasPrefix(v, "XYhello")
+	})
 	if !strings.HasPrefix(v, "XYhello") {
 		t.Errorf("value = %q, want the register pasted before the cursor", v)
 	}
@@ -214,9 +220,13 @@ func TestEditorContextMenu_ConsumerRowsRun(t *testing.T) {
 	h.inject(tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: x, Y: y})
 	h.waitFor("the menu closed", func() bool { return !menuOpen(h, ed) })
 	var v string
-	h.onLoop(func() { v = ed.Core().Value() })
-	if ran != 1 || !strings.HasPrefix(v, "HELLO WORLD") {
-		t.Errorf("ran %d, value %q", ran, v)
+	var n int
+	h.eventually(func() bool { // the row runs on the turn after the menu closes; ran is the loop's
+		h.onLoop(func() { v, n = ed.Core().Value(), ran })
+		return n == 1 && strings.HasPrefix(v, "HELLO WORLD")
+	})
+	if n != 1 || !strings.HasPrefix(v, "HELLO WORLD") {
+		t.Errorf("ran %d, value %q", n, v)
 	}
 }
 
