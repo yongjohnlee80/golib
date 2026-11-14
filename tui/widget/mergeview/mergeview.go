@@ -36,6 +36,47 @@ type Options struct {
 	// ConfirmReload asks before loading again over a result that was changed; reload loads. nil:
 	// the view asks in a dialog of its own.
 	ConfirmReload func(reload func())
+	// NewPane makes each of the three panes, as spec asks: a window's native editors. nil: tui's
+	// Editor.
+	NewPane func(spec PaneSpec) Pane
+}
+
+// Pane is one of the view's three editors: tui's Editor, or a host's own (Options.NewPane). A pane
+// draws one line a row from its first row, never wraps, and scrolls by whole lines: the connectors
+// beside it mark its lines by row.
+type Pane interface {
+	tui.Component
+	Core() *editor.EditorCore
+	SetValue(text string)
+	// TopLine is the first line shown, and SetTopLine shows line first, clamped to the text.
+	TopLine() int
+	SetTopLine(line int)
+	// SetLineStyle gives the lines their looks and draws them again: the view calls it with
+	// PaneSpec.LineStyle each time the looks change.
+	SetLineStyle(fn func(line int) (style.Style, bool))
+}
+
+// PaneSpec is what the view asks of a pane it makes.
+type PaneSpec struct {
+	// Result is the middle pane, typed in; a side is read-only.
+	Result bool
+	// Core are the pane's EditorCore options: read-only, the keys left to the view, the result's
+	// change hook.
+	Core []editor.CoreOption
+	// LineStyle is each line's look, asked for as the pane draws the line.
+	LineStyle func(line int) (style.Style, bool)
+	// OnScroll is told the first line shown each time it changes. A pane may tell it on a later
+	// turn of the loop, with the line it had then: the view drops a tell that is no longer the
+	// pane's top, and one that is the top the view itself gave it.
+	OnScroll func(top int)
+}
+
+// terminalPane is tui's Editor as a pane.
+func terminalPane(spec PaneSpec) Pane {
+	return editor.NewEditor(editor.WithCore(spec.Core...),
+		editor.WithEditorWrap(core.WrapNone), // a wrapped line would break the panes' rows apart
+		editor.WithEditorLineStyle(spec.LineStyle),
+		editor.WithEditorOnScroll(spec.OnScroll))
 }
 
 // The panes, by index.
@@ -56,7 +97,7 @@ type MergeView struct {
 	style Style
 
 	model *merge.Model
-	panes [3]*editor.Editor
+	panes [3]Pane
 	looks [3][]look // each pane's line looks, by line
 
 	acceptLeft, acceptRight, mergeAll, apply, cancel, reload *core.Button
@@ -70,9 +111,10 @@ type MergeView struct {
 	changed         bool // a side changed under the view: a reload is offered
 	reloadFailed    bool // a reload failed: the merge shown stays, and a reload is offered again
 	details         bool
-	cur             int  // the change last moved to, or -1
-	syncing         bool // panes being scrolled to follow another
-	replaying       bool // an operation's edit being put in the result pane
+	cur             int    // the change last moved to, or -1
+	syncing         bool   // panes being scrolled to follow another
+	gave            [3]int // the top the view last gave each pane, until the pane tells it; -1: none
+	replaying       bool   // an operation's edit being put in the result pane
 	closed          bool
 	onClose         func(applied bool)
 	stopWatch       context.CancelFunc // ends the watch of the source's Changed
@@ -88,21 +130,19 @@ type MergeView struct {
 
 // NewMergeView is a view of src's merge. It loads once it is mounted.
 func NewMergeView(src merge.MergeSource, opts Options) *MergeView {
-	v := &MergeView{src: src, opts: opts, style: opts.Style.over(), cur: -1}
-	side := func(i int) *editor.Editor {
-		return editor.NewEditor(
-			editor.WithCore(editor.CoreReadOnly(true), editor.CoreKeymap(leftToTheView(true))),
-			editor.WithEditorWrap(core.WrapNone), // a wrapped line would break the panes' rows apart
-			editor.WithEditorLineStyle(v.lineStyle(i)),
-			editor.WithEditorOnScroll(func(top int) { v.scrolled(i, top) }))
+	v := &MergeView{src: src, opts: opts, style: opts.Style.over(), cur: -1, gave: [3]int{-1, -1, -1}}
+	newPane := opts.NewPane
+	if newPane == nil {
+		newPane = terminalPane
 	}
-	v.panes[leftPane] = side(leftPane)
-	v.panes[rightPane] = side(rightPane)
-	v.panes[resultPane] = editor.NewEditor(
-		editor.WithCore(editor.CoreOnChange(v.resultChanged), editor.CoreKeymap(leftToTheView(false))),
-		editor.WithEditorWrap(core.WrapNone),
-		editor.WithEditorLineStyle(v.lineStyle(resultPane)),
-		editor.WithEditorOnScroll(func(top int) { v.scrolled(resultPane, top) }))
+	for i := range v.panes {
+		spec := PaneSpec{Result: i == resultPane, LineStyle: v.lineStyle(i), OnScroll: func(top int) { v.scrolled(i, top) },
+			Core: []editor.CoreOption{editor.CoreReadOnly(true), editor.CoreKeymap(leftToTheView(true))}}
+		if spec.Result {
+			spec.Core = []editor.CoreOption{editor.CoreOnChange(v.resultChanged), editor.CoreKeymap(leftToTheView(false))}
+		}
+		v.panes[i] = newPane(spec)
+	}
 	button := func(id string, fn func()) *core.Button {
 		return core.NewButton("", core.WithLabelMessage(tui.Msg(id)), core.WithOnActivate(fn))
 	}
@@ -159,7 +199,7 @@ func (v *MergeView) Counts() (changes, conflicts int) {
 }
 
 // Panes are the left, result and right editors.
-func (v *MergeView) Panes() (left, result, right *editor.Editor) {
+func (v *MergeView) Panes() (left, result, right Pane) {
 	return v.panes[leftPane], v.panes[resultPane], v.panes[rightPane]
 }
 
@@ -224,10 +264,13 @@ func (v *MergeView) SetStyle(st Style) {
 	v.refresh()
 }
 
-// SetPaneStyles gives the three panes their text's looks, as an Editor's WithStyles does.
+// SetPaneStyles gives the three panes their text's looks, as an Editor's WithStyles does. A pane a
+// host made (Options.NewPane) is the host's to style.
 func (v *MergeView) SetPaneStyles(st core.TextInputStyles) {
 	for _, p := range v.panes {
-		p.WithStyles(st)
+		if e, ok := p.(*editor.Editor); ok {
+			e.WithStyles(st)
+		}
 	}
 }
 
@@ -586,8 +629,8 @@ func (v *MergeView) refresh() {
 		}
 		v.mergeAll.SetEnabled(has)
 	}
-	for _, p := range v.panes {
-		p.MarkDirty()
+	for i, p := range v.panes {
+		p.SetLineStyle(v.lineStyle(i))
 	}
 	v.MarkDirty()
 	v.RequestLayout()
