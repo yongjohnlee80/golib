@@ -59,6 +59,14 @@ type Editor struct {
 	sw        *modeSwitch
 	tabs      *core.TabStrip // the host's tabs on the title bar (Tabs)
 
+	// onScroll is told the first line shown at each change, toldTop the line it was told last, and
+	// pendingTop a SetTopLine made before the view was first drawn (-1: none); lineStyle is each
+	// line's own look (editor_scroll.go)
+	onScroll   func(top int)
+	toldTop    int
+	pendingTop int
+	lineStyle  func(line int) (style.Style, bool)
+
 	// doc is the Rendered state: the view chosen (View), whether the document can render, and the
 	// whole-document Rendered view (editor_document.go). The Renderer is the editor's own.
 	doc      editor.DocumentSlot
@@ -93,6 +101,9 @@ type editorConfig struct {
 	wrap     core.WrapMode
 	numbers  bool
 	ruler    int
+	// onScroll and lineStyle are the host's: told the top line, and each line's look (editor_scroll.go)
+	onScroll  func(top int)
+	lineStyle func(line int) (style.Style, bool)
 }
 
 // WithRenderer gives the Editor a Rendered mode drawn by r.
@@ -140,7 +151,8 @@ func NewEditor(opts ...EditorOption) *Editor {
 		}
 	}
 	e := &Editor{core: editor.NewEditorCore(cfg.core...), render: cfg.render, fontSize: cfg.fontSize,
-		wrap: core.WrapNone, numbers: cfg.numbers, ruler: cfg.ruler}
+		wrap: core.WrapNone, numbers: cfg.numbers, ruler: cfg.ruler,
+		onScroll: cfg.onScroll, lineStyle: cfg.lineStyle, pendingTop: -1}
 	e.doc.PutDocument(cfg.doc)
 	if cfg.wrap == core.WrapSoft {
 		e.wrap = core.WrapSoft
