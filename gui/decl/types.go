@@ -126,7 +126,7 @@ func fillColorSetter(c tui.Component, v qml.SpecValue) error {
 	}
 	col, ok := csscolor.Parse(v.Raw, color.NRGBA{})
 	if !ok {
-		return fmt.Errorf("Shape: fillColor %q is not a colour (at %s)", v.Raw, v.Pos)
+		return fmt.Errorf("fillColor %q is not a colour (at %s)", v.Raw, v.Pos)
 	}
 	s.SetFillColor(col)
 	return nil

@@ -211,15 +211,30 @@ func TestTerminalTabsPlusOpensTheAddMenu(t *testing.T) {
 	if err := h.TB.Inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter}); err != nil {
 		t.Fatal(err)
 	}
-	if !menuOpen(false) || len(picked) != 1 || picked[0] != "" || added != 0 {
-		t.Fatalf("Claude ran with %v (want no tab), the add callback %d times, the menu open %v", picked, added, open)
+	// the chosen row runs on the loop's next turn after the menu closes (the strip's popMenu): wait
+	// for it there, reading what it wrote on the loop too
+	var ran []TerminalTabID
+	var adds int
+	if menuOpen(false) {
+		for range 300 {
+			h.OnLoop(func() { ran, adds = picked, added })
+			if len(ran) != 1 || ran[0] != "unset" {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+	if open || len(ran) != 1 || ran[0] != "" || adds != 0 {
+		t.Fatalf("Claude ran with %v (want no tab), the add callback %d times, the menu open %v", ran, adds, open)
 	}
 	h.OnLoop(func() { tabs.Context().RequestFocus() })
 	if err := h.TB.Inject(tui.KeyEvent{Kind: tui.KeyPress, Text: "+"}); err != nil {
 		t.Fatal(err)
 	}
-	if !menuOpen(true) || added != 0 {
-		t.Fatalf("+ on the strip opened no add menu (the add callback %d times):\n%s", added, h.TB.String())
+	opened := menuOpen(true)
+	h.OnLoop(func() { adds = added })
+	if !opened || adds != 0 {
+		t.Fatalf("+ on the strip opened no add menu (the add callback %d times):\n%s", adds, h.TB.String())
 	}
 }
 

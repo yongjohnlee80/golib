@@ -94,7 +94,7 @@ func TestBlockElementsFillTheirShareOfTheCell(t *testing.T) {
 		if out := img.RGBAAt(4, 4).R; out != 0 {
 			t.Errorf("%q drew outside its cell: (4,4) is %d", r, out)
 		}
-		if hi-lo > 2 || lo <= prev || hi >= 0xff {
+		if hi-lo > 2 || lo <= prev || hi == 0xff {
 			t.Errorf("%q is %d..%d; want one level within 2, above the lighter shade's %d and below full", r, lo, hi, prev)
 		}
 		prev = hi
