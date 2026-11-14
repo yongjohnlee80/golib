@@ -123,3 +123,18 @@ func TestALineStyleFillsTheLinesRow(t *testing.T) {
 		}
 	}
 }
+
+// In the cell fallback too, SetTopLine never sets the top so low that the last line is above the
+// bottom row: 60 lines in 12 rows top out at 48.
+func TestSetTopLineClampsInTheCellFallback(t *testing.T) {
+	e := NewEditor(WithCore(editor.CoreInitialText(sixtyLines())))
+	e.body.Layout(tui.Constraints{MaxW: 40, MaxH: 12})
+	e.SetTopLine(1000)
+	if got := e.TopLine(); got != 48 {
+		t.Fatalf("SetTopLine(1000) in 12 cell rows: top %d, want 48", got)
+	}
+	e.SetTopLine(-3)
+	if got := e.TopLine(); got != 0 {
+		t.Fatalf("SetTopLine(-3): top %d", got)
+	}
+}
