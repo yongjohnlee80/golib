@@ -72,7 +72,7 @@ func (l *pixelLayout) scrollTo(line int) {
 	if r, ok := l.caretAt(line, 0); ok {
 		y = r.Y
 	}
-	l.scroll = max(min(y, l.total()-(l.height-2*padY)), 0)
+	l.scroll = l.snap(max(min(y, l.total()-(l.height-2*l.padY())), 0))
 }
 
 // toldScroll tells the host the first line shown, after a draw, when it is another than it was

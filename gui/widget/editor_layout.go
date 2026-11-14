@@ -2,6 +2,7 @@ package widget
 
 import (
 	"image/color"
+	"math"
 
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/gui/flow"
@@ -85,10 +86,10 @@ func (l *pixelLayout) Reveal(line, col int) {
 	switch {
 	case r.Y < l.scroll:
 		l.scroll = r.Y
-	case r.Y+r.H > l.scroll+l.height-2*padY:
-		l.scroll = min(r.Y, r.Y+r.H-(l.height-2*padY))
+	case r.Y+r.H > l.scroll+l.height-2*l.padY():
+		l.scroll = min(r.Y, r.Y+r.H-(l.height-2*l.padY()))
 	}
-	l.scroll = max(l.scroll, 0)
+	l.scroll = l.snap(max(l.scroll, 0))
 	if l.sideways() {
 		cw := l.monoCell()
 		switch {
@@ -149,7 +150,7 @@ func (l *pixelLayout) VisibleLines() (first, last int) {
 	if l.height <= 0 || len(l.blocks) == 0 {
 		return cur, cur
 	}
-	bottom := l.scroll + l.height - 2*padY
+	bottom := l.scroll + l.height - 2*l.padY()
 	first, last, under := -1, -1, cur
 	var y float32
 	for i, b := range l.blocks {
@@ -195,7 +196,7 @@ func (l *pixelLayout) ScrollLines(delta int) {
 		y = r.Y
 	}
 	was := l.scroll
-	l.scroll = max(min(y, l.total()-(l.height-2*padY)), 0)
+	l.scroll = l.snap(max(min(y, l.total()-(l.height-2*l.padY())), 0))
 	if delta > 0 && l.scroll < was || delta < 0 && l.scroll > was {
 		l.scroll = was
 	}
@@ -306,10 +307,35 @@ func (l *pixelLayout) blockOf(line int) int {
 
 // monoFont returns the theme's monospace font or defaults to the cell family.
 func (l *pixelLayout) monoFont() gui.Font {
-	if l.th.Mono.Size > 0 {
+	if l.th.Mono.Size > 0 && !l.e.cellPitch {
 		return l.th.Mono
 	}
 	return gui.Font{Family: gui.CellFamily, Size: max(l.cell.H/gui.LineHeight, 10)} // before the first paint: about the cells' font
+}
+
+// padY is the room above and below the text: none in a pane of cells (WithEditorCellPitch).
+func (l *pixelLayout) padY() float32 {
+	if l.e.cellPitch {
+		return 0
+	}
+	return padY
+}
+
+// rawLineHeight is the Raw view's line height, in its font's sizes: in a pane of cells, the
+// cells' own, so a line is one cell high (monoFont is the cells' font there).
+func (l *pixelLayout) rawLineHeight() float32 {
+	if l.e.cellPitch {
+		return gui.LineHeight
+	}
+	return rawLineHeight
+}
+
+// snap is a scroll in a pane of cells moved to the nearest whole line; any other scroll as it is.
+func (l *pixelLayout) snap(scroll float32) float32 {
+	if !l.e.cellPitch || l.cell.H <= 0 {
+		return scroll
+	}
+	return float32(math.Round(float64(scroll/l.cell.H))) * l.cell.H
 }
 
 // lineHeight calculates the default line height for font f.
@@ -400,7 +426,7 @@ func (l *pixelLayout) lay(i int, frame *editor.HighlightFrame) *laidBlock {
 	if l.e.wrap == core.WrapNone {
 		ws = flow.Pre // one row per line; the view scrolls sideways instead
 	}
-	p := flow.Lay(spans, flow.Options{Width: l.width, WhiteSpace: ws, Color: l.th.Text, LineHeight: rawLineHeight}, l.sh)
+	p := flow.Lay(spans, flow.Options{Width: l.width, WhiteSpace: ws, Color: l.th.Text, LineHeight: l.rawLineHeight()}, l.sh)
 	lb := &laidBlock{inside: inside, width: l.width, text: text, colors: colors,
 		bl: BlockLayout{Lines: []LineLayout{{Para: p, Spans: spans}}, Height: p.Height}}
 	l.laid[i] = lb
@@ -519,7 +545,7 @@ func (l *pixelLayout) at(x, y float32) (line, col int) {
 	if len(l.blocks) == 0 || l.sh == nil {
 		return 0, 0
 	}
-	dy := y - padY + l.scroll
+	dy := y - l.padY() + l.scroll
 	var top float32
 	i := 0
 	for ; i < len(l.blocks)-1; i++ {
@@ -553,7 +579,7 @@ func (l *pixelLayout) at(x, y float32) (line, col int) {
 // scrollBy moves the view by dy pixels, within the text.
 func (l *pixelLayout) scrollBy(dy float32) bool {
 	was := l.scroll
-	l.scroll = max(min(l.scroll+dy, l.total()-(l.height-2*padY)), 0)
+	l.scroll = l.snap(max(min(l.scroll+dy, l.total()-(l.height-2*l.padY())), 0))
 	return l.scroll != was
 }
 
