@@ -1,6 +1,6 @@
 module github.com/yongjohnlee80/golib/gui
 
-go 1.26.10
+go 1.26.11
 
 require (
 	github.com/yongjohnlee80/golib v0.8.55

@@ -1,6 +1,6 @@
 module github.com/yongjohnlee80/golib/dao/bigquery
 
-go 1.26.10
+go 1.26.11
 
 require (
 	cloud.google.com/go v0.123.0
