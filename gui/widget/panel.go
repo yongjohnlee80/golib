@@ -57,7 +57,9 @@ type Panel struct {
 	titleEnd int
 	hover    control
 	pressed  control // the control a left press landed on: only a release on it acts
-	barSt    style.Style
+	// bare: no title bar; the content fills the panel (an Editor's WithEditorCellPitch)
+	bare  bool
+	barSt style.Style
 	// the native bar's colours, from its last paint: what a leading widget draws in, so it sits
 	// on the bar rather than on the cells' reversed row
 	barText, barFill, barPage color.NRGBA
@@ -229,6 +231,9 @@ func (p *Panel) controls() []control {
 // Layout puts the trailing widgets on the title row before the controls, the leading ones after
 // one cell, within their share, and the content under it.
 func (p *Panel) Layout(c tui.Constraints) tui.Size {
+	if p.bare {
+		return p.layoutBare(c)
+	}
 	w := c.MaxW
 	if w == tui.Unbounded {
 		w = max(c.MinW, len(p.title)+4+controlCells*len(p.controls()))
@@ -262,6 +267,19 @@ func (p *Panel) Layout(c tui.Constraints) tui.Size {
 	return c.Constrain(tui.Size{W: w, H: h})
 }
 
+// layoutBare lays a panel without its title bar: the content in all of it, the bar's widgets nowhere.
+func (p *Panel) layoutBare(c tui.Constraints) tui.Size {
+	for _, l := range append(append([]tui.Component(nil), p.leading...), p.trailing...) {
+		p.ctx.LayoutChild(l, tui.Tight(tui.Size{}))
+		p.ctx.PlaceChild(l, tui.Rect{})
+	}
+	p.titleX, p.titleEnd = 0, 0
+	sz := p.ctx.LayoutChild(p.content, tui.Constraints{MinW: c.MaxW, MaxW: c.MaxW, MinH: c.MinH, MaxH: c.MaxH})
+	p.ctx.PlaceChild(p.content, tui.Rect{W: sz.W, H: sz.H})
+	p.w, p.h = sz.W, sz.H
+	return c.Constrain(sz)
+}
+
 // controlAt is the control under column x of the title row.
 func (p *Panel) controlAt(x int) control {
 	cs := p.controls()
@@ -283,6 +301,9 @@ func (p *Panel) Render(s tui.Surface) {
 	}
 	// A window is opaque: what lies under it never shows where its content paints nothing.
 	s.Fill(tui.Rect{W: sz.W, H: sz.H}, " ", style.New())
+	if p.bare {
+		return
+	}
 	s.Fill(tui.Rect{W: sz.W, H: 1}, " ", p.barSt)
 	if p.titleX < p.titleEnd {
 		tui.DrawText(s.Sub(tui.Rect{W: p.titleEnd, H: 1}), p.titleX, 0, p.title, p.barSt.Bold(true))
@@ -313,6 +334,9 @@ func (p *Panel) HandleEvent(ev tui.Event) bool {
 // mouse handles mouse events for the panel's title bar: its controls' hover, press and release, and
 // a double-click on it, which maximizes or restores a maximizable panel.
 func (p *Panel) mouse(m tui.MouseEvent) bool {
+	if p.bare {
+		return false
+	}
 	switch m.Kind {
 	case tui.MouseMotion:
 		if m.Y == 0 {
@@ -435,6 +459,9 @@ func (p *Panel) NativeScope() tui.NativeScope { return tui.ScopeChrome }
 
 // paintBar is the panel's title row (titleRow), keeping its colours for BarColors.
 func (p *Panel) paintBar(c gui.Canvas) {
+	if p.bare {
+		return
+	}
 	row := titleRow{title: p.title, titleX: p.titleX, titleEnd: p.titleEnd, fit: len(p.trailing) > 0,
 		controls: p.controls(), hover: p.hover}
 	if text, fill, page, ok := row.paint(c); ok {

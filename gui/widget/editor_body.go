@@ -423,7 +423,7 @@ func (v bodyView) Paint(c gui.Canvas) {
 	sel := selColor(th)
 	for i := top; i < len(l.blocks) && y-l.scroll < h; i++ {
 		lb := l.lay(i, frame)
-		oy := padY + y - l.scroll
+		oy := l.padY() + y - l.scroll
 		if lb.bl.Background.A > 0 {
 			c.FillRect(gui.Rect{X: textLeft - padX/2, Y: oy, W: l.width + padX, H: lb.bl.Height}, gui.Solid(lb.bl.Background))
 		}
@@ -506,7 +506,7 @@ func (v bodyView) Paint(c gui.Canvas) {
 	// Reveal, can leave the scroll past the text's end
 	if l.relaid {
 		l.relaid = false
-		if s := max(min(l.scroll, l.total()-(h-2*padY)), 0); s != l.scroll {
+		if s := l.snap(max(min(l.scroll, l.total()-(h-2*l.padY())), 0)); s != l.scroll {
 			l.scroll = s
 			b.MarkDirty()
 		}
@@ -518,7 +518,7 @@ func (v bodyView) Paint(c gui.Canvas) {
 		// after the blocks, not with its own: a hidden fold has no height, and no block is painted for it
 		if r, hidden, ok := l.foldRect(cl); ok {
 			r.X += textLeft
-			r.Y += padY - l.scroll
+			r.Y += l.padY() - l.scroll
 			paintFold(c, r, hidden, th)
 		}
 	}

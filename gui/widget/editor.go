@@ -83,6 +83,8 @@ type Editor struct {
 	numberSet bool
 	ruler     int         // a guide at this column, 1-based, in the Raw view; 0 for none
 	page      style.Style // the cells' look the view reads its colours from (SetPageStyle)
+	// cellPitch: a pane in a grid of cells, each line one cell high (WithEditorCellPitch)
+	cellPitch bool
 }
 
 // EditorOption sets up an Editor under construction.
@@ -104,6 +106,7 @@ type editorConfig struct {
 	// onScroll and lineStyle are the host's: told the top line, and each line's look (editor_scroll.go)
 	onScroll  func(top int)
 	lineStyle func(line int) (style.Style, bool)
+	cellPitch bool
 }
 
 // WithRenderer gives the Editor a Rendered mode drawn by r.
@@ -139,6 +142,12 @@ func WithWrap(m core.WrapMode) EditorOption { return func(c *editorConfig) { c.w
 // WithLineNumbers shows each line's number in a gutter at the left.
 func WithLineNumbers(v bool) EditorOption { return func(c *editorConfig) { c.numbers = v } }
 
+// WithEditorCellPitch lays the editor out as a pane in a grid of cells, as the merge view's panes
+// beside the connectors it draws in cells: no title bar, no room above the text, the text in the
+// cells' font with each line one cell high, and scrolled by whole lines, so the n-th line shown is
+// on the pane's n-th row. It is for a Raw editor.
+func WithEditorCellPitch() EditorOption { return func(c *editorConfig) { c.cellPitch = true } }
+
 // WithRuler marks column col (1-based) of the Raw view with a vertical guide; 0 draws none.
 func WithRuler(col int) EditorOption { return func(c *editorConfig) { c.ruler = max(col, 0) } }
 
@@ -152,7 +161,7 @@ func NewEditor(opts ...EditorOption) *Editor {
 	}
 	e := &Editor{core: editor.NewEditorCore(cfg.core...), render: cfg.render, fontSize: cfg.fontSize,
 		wrap: core.WrapNone, numbers: cfg.numbers, ruler: cfg.ruler,
-		onScroll: cfg.onScroll, lineStyle: cfg.lineStyle, pendingTop: -1}
+		onScroll: cfg.onScroll, lineStyle: cfg.lineStyle, pendingTop: -1, cellPitch: cfg.cellPitch}
 	e.doc.PutDocument(cfg.doc)
 	if cfg.wrap == core.WrapSoft {
 		e.wrap = core.WrapSoft
@@ -173,6 +182,7 @@ func NewEditor(opts ...EditorOption) *Editor {
 	e.tabs = core.NewTabStrip()
 	// the host's tabs at the bar's left, in all its room up to Raw | Rendered at its right
 	e.panel = NewPanel(e.stack, append([]PanelOption{WithTitleLeading(e.tabs), WithTitleTrailing(e.sw)}, cfg.panel...)...)
+	e.panel.bare = cfg.cellPitch
 	// the strip's bar is the title bar's own colour, the panel's as it painted it last. The callback
 	// holds the panel weakly: the registry is global, and a callback holding the editor (or anything
 	// that holds its strip) would keep the strip, its weak key, alive, and every editor with it
