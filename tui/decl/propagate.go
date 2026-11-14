@@ -196,7 +196,8 @@ func (a *Adapter) refresh(id decl.NodeID) {
 
 // windowTheme makes the root Window's palette the App's token theme: what a widget styled in
 // tokens rather than roles wears (a toast, a resize grip), so it follows the document's theme
-// instead of golib's default. A palette that sets no highlight leaves the App's theme as it is.
+// instead of golib's default, light or dark as its base is. A palette that sets no highlight
+// leaves the App's theme as it is.
 func (a *Adapter) windowTheme(p palette) {
 	a.windowPal = p
 	th, ok := tokenTheme(p)
@@ -246,7 +247,10 @@ func tokenTheme(p palette) (style.Theme, bool) {
 	if base, ok := p[roleBase]; ok {
 		if r, g, b, ok := base.RGBValues(); ok {
 			dim := func(v uint8) uint8 { return uint8(float64(v) * 0.65) }
-			opts = append(opts, style.WithToken(style.TokenBoost, style.RGB(dim(r), dim(g), dim(b))))
+			opts = append(opts, style.WithToken(style.TokenBoost, style.RGB(dim(r), dim(g), dim(b))),
+				// light or dark as the page is: an Adaptive colour takes the variant for the page the
+				// document paints, never the one for the terminal's or the window's own background
+				style.WithDark(style.Dark(r, g, b)))
 		}
 	}
 	return style.NewTheme(primary, opts...), true

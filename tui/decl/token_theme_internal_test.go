@@ -71,3 +71,26 @@ func TestTheTokenThemeReadsTheDocumentAccent(t *testing.T) {
 		t.Errorf("the plain accent %v, want the menu's own, untouched by the document's", c)
 	}
 }
+
+// The token theme is light or dark as its page is: an Adaptive colour takes the page's variant,
+// whatever the backend reports of its own background. A page with no colour of its own (the
+// terminal's default) leaves it to the backend's.
+func TestTheTokenThemeIsDarkAsItsPageIs(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		base         style.Color
+		dark, forced bool
+	}{
+		{"sepia", style.RGB(0xe6, 0xd9, 0xb9), false, true},
+		{"dark", style.RGB(0x1c, 0x1c, 0x1c), true, true},
+		{"the terminal's default", style.Default(), false, false},
+	} {
+		th, ok := tokenTheme(palette{roleHighlight: style.RGB(0x8a, 0x5a, 0x2b), roleBase: tc.base})
+		if !ok {
+			t.Fatalf("%s: no theme", tc.name)
+		}
+		if dark, forced := th.Dark(); dark != tc.dark || forced != tc.forced {
+			t.Errorf("%s: Dark() = %v (forced %v), want %v (forced %v)", tc.name, dark, forced, tc.dark, tc.forced)
+		}
+	}
+}

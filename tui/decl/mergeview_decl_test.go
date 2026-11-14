@@ -133,3 +133,32 @@ func TestAStyleMakesAMergeViewsPanesItsOwnWay(t *testing.T) {
 		t.Fatalf("the conflict's line: background %+v, want palette.diffConflict's red", bg)
 	}
 }
+
+// A MergeView in a light page wears the light tints though the backend reports a dark background
+// (a window's, a dark terminal's): its conflict's line is the light conflict tint, under which the
+// page's dark text reads.
+func TestAMergeViewInALightPageWearsTheLightTints(t *testing.T) {
+	src := &mergeSource{applied: make(chan string, 1), in: merge.Input{
+		Left: "same\nleft side\n", Right: "same\nright side\n", ResultSide: merge.Right}}
+	give := func(p *tuidecl.Program) error {
+		c, _ := p.Find("mv")
+		if v, ok := tuidecl.MergeViewOf(c); ok {
+			v.SetSource(src)
+		}
+		return nil
+	}
+	doc := "import tui 1.0\nWindow {\n palette.base: \"#e6d9b9\"; palette.text: \"#5b4636\"; palette.highlight: \"#8a5a2b\"\n MergeView { id: mv } }"
+	s := decltest.RunWith(t, 120, 12, give, tuidecl.LayoutSource("main.qml", []byte(doc)))
+	s.WaitForText(t, "left side")
+	var x, y int
+	for row, line := range strings.Split(s.String(), "\n") {
+		if i := strings.Index(line, "left side"); i >= 0 {
+			x, y = len([]rune(line[:i])), row
+			break
+		}
+	}
+	light := tui.CellColor{Kind: tui.CellColorRGB, R: 0xf4, G: 0xdf, B: 0xb6}
+	if bg := s.Backend.Snapshot()[y][x].Attrs.BG; bg != light {
+		t.Fatalf("the conflict's line in a sepia page: background %+v, want the light conflict tint %+v", bg, light)
+	}
+}
