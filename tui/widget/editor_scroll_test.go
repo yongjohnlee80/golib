@@ -219,3 +219,28 @@ func TestALineStyleIsAskedOncePerLineAFrame(t *testing.T) {
 		t.Fatalf("the Rendered view asked the looks of lines %v", got)
 	}
 }
+
+// In the Rendered view too, SetTopLine never sets the top below the one that shows the last row at
+// the view's bottom: SetTopLine(1000) is where G's reveal of the last line puts it, no blank rows
+// under the text.
+func TestSetTopLineClampsInTheRenderedView(t *testing.T) {
+	var text strings.Builder
+	for i := range 40 {
+		fmt.Fprintf(&text, "# heading %02d\n", i)
+	}
+	ed := editor.NewEditor(editor.WithCore(editor.CoreInitialText(strings.TrimSuffix(text.String(), "\n"))))
+	ed.SetRenderer(&editor.MarkdownCellRenderer{})
+	ed.SetView(editor.ViewRendered)
+	sh := newShell(ed)
+	h := startApp(t, sh, 40, 10)
+	h.onLoop(func() { h.app.FocusInto(ed) })
+	h.barrier(sh)
+	h.inject(key('G')) // the last line revealed: the lowest top, its row at the bottom
+	h.barrier(sh)
+	var lowest, set int
+	h.onLoop(func() { lowest = ed.TopLine() })
+	h.onLoop(func() { ed.SetTopLine(0); ed.SetTopLine(1000); set = ed.TopLine() })
+	if lowest <= 0 || set != lowest {
+		t.Fatalf("SetTopLine(1000) in the Rendered view: top %d, want %d, where the last line's reveal puts it", set, lowest)
+	}
+}

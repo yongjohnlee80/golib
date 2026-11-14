@@ -32,9 +32,13 @@ func (e *Editor) TopLine() int { return e.cells.top }
 func (e *Editor) SetTopLine(line int) {
 	line = max(0, min(line, max(e.core.LineCount()-1, 0)))
 	l := &e.cells
-	switch {
-	case l.h <= 0 || e.rowMap().r != nil: // not laid out yet, or the Rendered view: by lines
+	switch m := e.rowMap(); {
+	case l.h <= 0: // not laid out yet: by lines, clamped at the layout
 		l.top, l.topIn = line, 0
+		e.topMoved()
+		e.MarkDirty()
+	case m.r != nil: // the Rendered view: by rows, never below the top that shows the last row at the bottom
+		l.top, l.topIn = m.r.atRow(max(0, min(m.r.topRow(line), len(m.r.rows)-l.h)))
 		e.topMoved()
 		e.MarkDirty()
 	default:
