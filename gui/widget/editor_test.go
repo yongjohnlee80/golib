@@ -82,7 +82,12 @@ const cellW, cellH = 8, 16
 
 func startEditor(t *testing.T, w, h int, opts ...EditorOption) *edHarness {
 	t.Helper()
-	e := NewEditor(opts...)
+	return startWith(t, NewEditor(opts...), w, h)
+}
+
+// startWith is startEditor over an editor the test made, and may have set up before it is shown.
+func startWith(t *testing.T, e *Editor, w, h int) *edHarness {
+	t.Helper()
 	tb := tui.NewTestBackend(w, h, tui.WithTestCapabilities(tui.Capabilities{NativeViews: true}))
 	sh := &shell{child: e}
 	app := tui.NewApp(sh, tui.WithBackend(&nativeTB{TestBackend: tb}))
