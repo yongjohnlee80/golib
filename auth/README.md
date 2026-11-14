@@ -60,6 +60,14 @@ system rather than by a comment telling you not to.
 Plus `auth.Throttle` + `auth.MemTracker` in the core: per-subject and
 per-source-address failure counting with exponential backoff.
 
+`auth/totp` is a building block rather than a method: RFC 6238 codes
+(SHA-1, 6 digits, 30 s by default), a `Verify` that allows one step of clock
+drift and refuses any step at or before the last one accepted, the
+`otpauth://totp/` URI for enrolment, and one-time recovery codes. It has no
+`Factor`; storing the secret encrypted, the last accepted step, the recovery
+codes' hashes, and rate limiting (`auth.Throttle`) stay the caller's. Standard
+library only.
+
 The core imports **no third-party module**.
 
 ## Adapters

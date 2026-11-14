@@ -789,6 +789,11 @@ SAML, JWT issuance or validation, LDAP/AD, WebAuthn/passkeys**, and user
   same-subject binding. There is no concrete caller (WebTUI does not accept
   passwords, so it needs no second factor), and a half-specified TOTP is worse
   than none. It returns when a caller exists.
+  *Returned 2026-11-15, with AutoPanel as the caller:* `auth/totp` ships the
+  primitives only (codes, a `Verify` that refuses the last accepted step and
+  older, the enrolment URI, recovery codes). It is not a `Factor`; secret
+  storage, the last-step store, rate limits and subject binding are the
+  caller's, as listed above.
 - **`Identity.Attributes` (an open mutable map)** — proposed in rev 0 on the
   grounds that adding it later would be a breaking change. That reasoning is
   backwards: an exported mutable map **is itself** a public compatibility
