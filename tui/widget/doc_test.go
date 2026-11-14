@@ -152,6 +152,22 @@ func (h *harness) settle() {
 }
 
 // waitFor polls cond until it holds or the deadline expires.
+// eventually polls cond as waitFor does, and reports whether it came true instead of failing, so the
+// cell's own assertion says what was wrong. A menu's row runs on the loop's turn after its menu
+// closes (the strip's and the editor's menus alike), so a cell that saw the menu close waits for the
+// row's effect this way before it asserts it.
+func (h *harness) eventually(cond func() bool) bool {
+	h.t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return true
+		}
+		time.Sleep(time.Millisecond)
+	}
+	return false
+}
+
 func (h *harness) waitFor(desc string, cond func() bool) {
 	h.t.Helper()
 	deadline := time.Now().Add(3 * time.Second)

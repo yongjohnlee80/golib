@@ -149,9 +149,13 @@ func TestTerminalTabsOpenTheirOwnMenuForATab(t *testing.T) {
 	if err := h.TB.Inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter}); err != nil { // the first row, Close
 		t.Fatal(err)
 	}
-	menuOpen(false)
-	if len(ran) != 1 || ran[0] != b || open {
-		t.Fatalf("Close ran for %v (want beta, %s), the menu open %v", ran, b, open)
+	// the row runs on the loop's turn after the menu closes: wait for it there, reading ran there too
+	var closed []TerminalTabID
+	if menuOpen(false) {
+		widgettest.Wait(h, func() bool { closed = slices.Clone(ran); return len(closed) == 1 })
+	}
+	if len(closed) != 1 || closed[0] != b || open {
+		t.Fatalf("Close ran for %v (want beta, %s), the menu open %v", closed, b, open)
 	}
 	// Enter on the focused strip opens it for the active tab
 	h.OnLoop(func() { tabs.Context().RequestFocus() })
