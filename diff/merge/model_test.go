@@ -13,7 +13,6 @@ import (
 var (
 	buffer = Origin{Kind: Buffer, Location: "notes.md", Revision: "7"}
 	disk   = Origin{Kind: File, Location: "/work/notes.md", Revision: "2026-11-13T10:00:00Z"}
-	ours   = Origin{Kind: Git, Location: "notes.md", Revision: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678"}
 )
 
 func text(lines ...string) string { return strings.Join(lines, "\n") + "\n" }
