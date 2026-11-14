@@ -24,6 +24,7 @@ type editorBody struct {
 	focused    bool
 	w, h       int // in cells
 	cellTop    int // the cell fallback's first line
+	cellCursor int // the cursor's line at the cell fallback's last draw: a move is revealed
 	styleTheme *style.Theme
 
 	caret     gui.Rect // the native caret, in the view's pixels, after a paint
@@ -79,17 +80,31 @@ func (b *editorBody) Render(s tui.Surface) {
 	b.styleTheme = s.Theme()
 	sz := s.Size()
 	s.Fill(tui.Rect{W: sz.W, H: sz.H}, " ", b.e.page)
+	// a top set before the rows were known (SetTopLine before the first draw): never so low that the
+	// last line is above the bottom row
+	if sz.H > 0 {
+		b.cellTop = min(b.cellTop, max(b.e.core.LineCount()-sz.H, 0))
+	}
 	ln, _ := b.e.core.Line()
-	if ln < b.cellTop {
-		b.cellTop = ln
+	if ln != b.cellCursor { // the cursor moved: kept in view; a top set by the host stays otherwise
+		b.cellCursor = ln
+		if ln < b.cellTop {
+			b.cellTop = ln
+		}
+		if sz.H > 0 && ln >= b.cellTop+sz.H {
+			b.cellTop = ln - sz.H + 1
+		}
 	}
-	if sz.H > 0 && ln >= b.cellTop+sz.H {
-		b.cellTop = ln - sz.H + 1
-	}
+	defer b.e.toldScroll()
 	for y := range sz.H {
 		i := b.cellTop + y
 		if i >= b.e.core.LineCount() {
 			break
+		}
+		page := b.e.page
+		if ls, ok := b.e.lineLook(i); ok { // the line's own look, across its row
+			page = ls.Inherit(page)
+			s.Fill(tui.Rect{Y: y, W: sz.W, H: 1}, " ", page)
 		}
 		// ci is c's cluster index: counted here, not found again from the line's start for each
 		// cluster (which made a long line quadratic, on every frame), and the cluster drawn even
@@ -99,7 +114,7 @@ func (b *editorBody) Render(s tui.Surface) {
 			if x >= sz.W {
 				break
 			}
-			st := b.e.page
+			st := page
 			if b.e.core.Highlighted(i, ci, b.focused) {
 				st = st.Reverse(true)
 			}
@@ -364,6 +379,11 @@ func (v bodyView) Paint(c gui.Canvas) {
 	}
 	l.th, l.width, l.height = th, max(w, 1), h
 	l.ensure()
+	if e.pendingTop >= 0 { // a SetTopLine made before the view was first drawn
+		l.scrollTo(e.pendingTop)
+		e.pendingTop = -1
+	}
+	defer e.toldScroll()
 	c.FillRect(gui.Rect{W: c.Size().W, H: h}, gui.Solid(bg))
 	// The text's own canvas: clipped to its area, so a line scrolled sideways never draws over
 	// the gutter, and placed at the text's left edge.
@@ -410,6 +430,12 @@ func (v bodyView) Paint(c gui.Canvas) {
 		numbered := -1
 		for _, ll := range lb.bl.Lines {
 			at := gui.Pt(-l.left, oy+ll.Y)
+			// the line's own look (WithEditorLineStyle) across its whole row, under all that follows
+			if len(ll.Spans) > 0 {
+				if lf, ok := e.lineFill(ll.Spans[0].Line, b.styleTheme, bg, l.pal); ok {
+					c.FillRect(gui.Rect{X: textLeft - padX/2, Y: oy + ll.Y, W: l.width + padX, H: ll.Para.Height}, gui.Solid(lf))
+				}
+			}
 			// under the text, lowest first: the line's own marks (a quote's bar, a table header's
 			// background) and its spans' backgrounds (an inline code span's chip), the core's overlay (a
 			// find's every match, the host's marks, in Rendered as the text's highlighting shows them in
@@ -464,6 +490,9 @@ func (v bodyView) Paint(c gui.Canvas) {
 				b.caretFG, b.caretBG = th.Text, bg
 				if lb.bl.Background.A > 0 {
 					b.caretBG = lb.bl.Background
+				}
+				if lf, ok := e.lineFill(cl, b.styleTheme, bg, l.pal); ok {
+					b.caretBG = lf
 				}
 				if e.core.Highlighted(cl, ccol, b.focused) {
 					b.caretBG = sel // painted under the caret's cluster above
