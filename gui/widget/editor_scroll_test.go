@@ -137,4 +137,12 @@ func TestSetTopLineClampsInTheCellFallback(t *testing.T) {
 	if got := e.TopLine(); got != 0 {
 		t.Fatalf("SetTopLine(-3): top %d", got)
 	}
+	// set before the rows are known, clamped by the first draw in cells
+	early := NewEditor(WithCore(editor.CoreInitialText(sixtyLines())))
+	early.SetTopLine(1000)
+	early.body.cellCursor = 0 // the cursor where the draw finds it: no reveal moves the top
+	early.body.Render(newRowRecorder(40, 12))
+	if got := early.TopLine(); got != 48 {
+		t.Fatalf("SetTopLine(1000) before the first cell draw, then a 12-row draw: top %d, want 48", got)
+	}
 }

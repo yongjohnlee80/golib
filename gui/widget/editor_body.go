@@ -80,6 +80,11 @@ func (b *editorBody) Render(s tui.Surface) {
 	b.styleTheme = s.Theme()
 	sz := s.Size()
 	s.Fill(tui.Rect{W: sz.W, H: sz.H}, " ", b.e.page)
+	// a top set before the rows were known (SetTopLine before the first draw): never so low that the
+	// last line is above the bottom row
+	if sz.H > 0 {
+		b.cellTop = min(b.cellTop, max(b.e.core.LineCount()-sz.H, 0))
+	}
 	ln, _ := b.e.core.Line()
 	if ln != b.cellCursor { // the cursor moved: kept in view; a top set by the host stays otherwise
 		b.cellCursor = ln
