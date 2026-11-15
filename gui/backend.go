@@ -183,6 +183,7 @@ func NewBackend(opts ...Option) *Backend {
 		render:  newRenderer(cells, fallbackChain(cfg.typeface), cfg.theme),
 		images:  newImageTable(),
 	}
+	b.render.baker = b.NewPictureBaker()
 	if cfg.stage != nil {
 		cfg.stage.b = b
 	}

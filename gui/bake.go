@@ -1,0 +1,203 @@
+package gui
+
+import (
+	"errors"
+	"image"
+	"math"
+	"sync"
+
+	"github.com/yongjohnlee80/gio/f32"
+	"github.com/yongjohnlee80/gio/font/gofont"
+	"github.com/yongjohnlee80/gio/gpu/headless"
+	"github.com/yongjohnlee80/gio/op"
+	"github.com/yongjohnlee80/gio/op/paint"
+	"github.com/yongjohnlee80/gio/text"
+	"github.com/yongjohnlee80/gio/unit"
+	"github.com/yongjohnlee80/golib/errs"
+)
+
+// PictureBaker draws a view once into an image, on a headless GPU, as its window would draw it:
+// in the window's fonts, at the scale the caller paints at, transparent where the view paints
+// nothing. A picture the window would otherwise fill as vector paths every frame (a chart, a
+// diagram) is then painted as one image. Make it with Backend.NewPictureBaker.
+//
+// Bake runs on the calling goroutine, one at a time; call it off the window's and tui's loops (it
+// draws and reads back on the GPU). A machine with no headless GPU answers ErrNoGPU, once and for
+// every Bake after: the caller draws the view as it would have. On Windows gio has no headless GPU.
+type PictureBaker struct {
+	b *Backend
+
+	mu      sync.Mutex
+	r       *renderer // the window's fonts, rebuilt on a font change
+	fontGen uint64
+	wins    []*bakeWindow // reused headless windows, the most recently used first
+	err     error         // the headless GPU's failure: every Bake answers it
+	closed  bool
+}
+
+// bakeWindow is a headless window a bake draws in, of a whole number of bakeBucket pixels a side:
+// a bake of any size it holds draws in it, and reads back only its own pixels.
+type bakeWindow struct {
+	hw   *headless.Window
+	w, h int
+}
+
+const (
+	bakeBucket  = 256 // a headless window's sides are whole multiples of it
+	bakeWindows = 3   // headless windows kept: EGL refuses some of many made in a row
+)
+
+// Baked is a view drawn into an image: Image is Pixels device pixels (RGBA, the same pixels),
+// drawn at Scale (device pixels per dp) in the window's fonts of generation FontGen (Fonts.Gen).
+type Baked struct {
+	Image   *Image
+	RGBA    *image.RGBA
+	Pixels  image.Point
+	Scale   float32
+	FontGen uint64
+}
+
+// ErrBakerClosed is a Bake after Release.
+var ErrBakerClosed = errors.New("gui: the picture baker is released")
+
+// NewPictureBaker is a baker for this window's pictures.
+func (b *Backend) NewPictureBaker() *PictureBaker { return &PictureBaker{b: b} }
+
+// BakedPixels is the device-pixel size a bake of size dp at scale is: each side rounded up.
+func BakedPixels(size Size, scale float32) image.Point {
+	return image.Pt(int(math.Ceil(float64(size.W*scale))), int(math.Ceil(float64(size.H*scale))))
+}
+
+// Bake draws v of size dp at scale into an image of BakedPixels(size, scale).
+func (pb *PictureBaker) Bake(v View, size Size, scale float32) (Baked, error) {
+	pb.mu.Lock()
+	defer pb.mu.Unlock()
+	switch {
+	case pb.closed:
+		return Baked{}, ErrBakerClosed
+	case pb.err != nil:
+		return Baked{}, pb.err
+	case scale <= 0:
+		return Baked{}, errors.New("gui: Bake: scale is not positive")
+	}
+	px := BakedPixels(size, scale)
+	if px.X <= 0 || px.Y <= 0 {
+		return Baked{}, errors.New("gui: Bake: an empty picture")
+	}
+	fs := pb.b.font.load()
+	if pb.r == nil || fs.gen != pb.fontGen {
+		// the window's shaping: golib's fonts and the system's beside them, the window's families
+		pb.r = newRenderer(text.NewShaper(text.WithCollection(gofont.Collection())), fs.typeface, pb.b.cfg.theme)
+		pb.r.fonts = fs.fonts
+		pb.fontGen = fs.gen
+	}
+	win, err := pb.window(px)
+	if err != nil {
+		return Baked{}, err
+	}
+	m := metrics{scale: scale}
+	mm := measure(fs.fm, fs.size, 0, image.Point{}, unit.Metric{PxPerDp: scale, PxPerSp: scale})
+	m.ppem, m.cell, m.baseline = mm.ppem, mm.cell, mm.baseline
+	ops := new(op.Ops)
+	v.Paint(&gioCanvas{ops: ops, r: pb.r, m: m, size: size, clip: image.Rectangle{Max: px}, paintState: opaque()})
+	pb.r.paths.endFrame()
+	if err := win.hw.Frame(ops); err != nil {
+		return Baked{}, errs.Wrap(err, "gui: Bake: drawing")
+	}
+	// the whole window read back, then its corner kept: a read of the picture's size alone is the
+	// window's at its GPU's origin, not where the view drew
+	whole := image.NewRGBA(image.Rect(0, 0, win.w, win.h))
+	if err := win.hw.Screenshot(whole); err != nil {
+		return Baked{}, errs.Wrap(err, "gui: Bake: reading back")
+	}
+	img := image.NewRGBA(image.Rectangle{Max: px})
+	for y := range px.Y {
+		copy(img.Pix[y*img.Stride:y*img.Stride+4*px.X], whole.Pix[y*whole.Stride:y*whole.Stride+4*px.X])
+	}
+	return Baked{Image: NewImage(img), RGBA: img, Pixels: px, Scale: scale, FontGen: fs.gen}, nil
+}
+
+// window is a headless window that holds px: the smallest kept one, else a new one of whole
+// buckets, the least recently used released past bakeWindows. A first failure is ErrNoGPU's.
+func (pb *PictureBaker) window(px image.Point) (*bakeWindow, error) {
+	best := -1
+	for i, w := range pb.wins {
+		if w.w >= px.X && w.h >= px.Y && (best < 0 || w.w*w.h < pb.wins[best].w*pb.wins[best].h) {
+			best = i
+		}
+	}
+	if best >= 0 {
+		w := pb.wins[best]
+		pb.wins = append([]*bakeWindow{w}, append(pb.wins[:best:best], pb.wins[best+1:]...)...)
+		return w, nil
+	}
+	bw, bh := bucketed(px.X), bucketed(px.Y)
+	hw, err := headless.NewWindow(bw, bh)
+	if err != nil {
+		if len(pb.wins) == 0 {
+			pb.err = errs.WrapCause(ErrNoGPU, err, "gui: Bake")
+			return nil, pb.err
+		}
+		return nil, errs.Wrap(err, "gui: Bake: a headless window")
+	}
+	w := &bakeWindow{hw: hw, w: bw, h: bh}
+	pb.wins = append([]*bakeWindow{w}, pb.wins...)
+	for len(pb.wins) > bakeWindows {
+		pb.wins[len(pb.wins)-1].hw.Release()
+		pb.wins = pb.wins[:len(pb.wins)-1]
+	}
+	return w, nil
+}
+
+// bucketed is n rounded up to whole bakeBuckets.
+func bucketed(n int) int { return (n + bakeBucket - 1) / bakeBucket * bakeBucket }
+
+// Release lets the baker's headless windows go; a Bake after it answers ErrBakerClosed.
+func (pb *PictureBaker) Release() {
+	pb.mu.Lock()
+	defer pb.mu.Unlock()
+	for _, w := range pb.wins {
+		w.hw.Release()
+	}
+	pb.wins, pb.closed = nil, true
+}
+
+// BakerOf is the PictureBaker of the window c paints in; nil for a canvas of no window's (a
+// recording, an SVG, a snapshot), where a picture is drawn as it is.
+func BakerOf(c Canvas) *PictureBaker {
+	if g, ok := c.(*gioCanvas); ok && g.r != nil {
+		return g.r.baker
+	}
+	return nil
+}
+
+// DrawBaked paints b with its corner at at (dp), b's pixels its size at b.Scale. On a window's
+// canvas at that scale with no rotation or scale of its own it is drawn pixel for pixel, its corner
+// on the nearest whole device pixel, so its text and hairlines stay as sharp as they were drawn;
+// on any other canvas it is drawn as DrawImage draws it, into its size.
+func DrawBaked(c Canvas, b Baked, at Point) {
+	if b.Image == nil || b.Scale <= 0 || b.Pixels.X <= 0 || b.Pixels.Y <= 0 {
+		return
+	}
+	dst := Rect{X: at.X, Y: at.Y, W: float32(b.Pixels.X) / b.Scale, H: float32(b.Pixels.Y) / b.Scale}
+	g, ok := c.(*gioCanvas)
+	if !ok || g.m.scale != b.Scale {
+		c.DrawImage(b.Image, dst, Rect{})
+		return
+	}
+	m := g.deviceTransform()
+	if sx, hx, _, hy, sy, _ := m.Elems(); hx != 0 || hy != 0 || sx != b.Scale || sy != b.Scale {
+		c.DrawImage(b.Image, dst, Rect{})
+		return
+	}
+	p := m.Transform(f32.Pt(at.X, at.Y))
+	x, y := int(math.Round(float64(p.X))), int(math.Round(float64(p.Y)))
+	countImage()
+	pp := pushPaint(g.ops, image.Rect(x, y, x+b.Pixels.X, y+b.Pixels.Y).Intersect(g.clip), g.alpha)
+	countTransform()
+	tr := op.Offset(image.Pt(x, y)).Push(g.ops)
+	b.Image.op.Add(g.ops)
+	paint.PaintOp{}.Add(g.ops)
+	tr.Pop()
+	pp.pop()
+}

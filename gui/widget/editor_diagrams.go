@@ -55,8 +55,16 @@ func (l *pixelLayout) Diagram(d Diagrammer, b Block, req DiagramRequest) Diagram
 		return ready
 	})
 	s.to = b.To
+	s.wake = l.wakeBody
 	l.diagrams[b.From] = s
 	return s.answer()
+}
+
+// wakeBody marks the body to paint again, from any goroutine: a picture's image is drawn.
+func (l *pixelLayout) wakeBody() {
+	if ctx := l.e.body.Context(); ctx != nil {
+		ctx.Update(l.e.body.MarkDirty)
+	}
 }
 
 // diagramReady handles a request's ready on the loop: a current generation marks the slot to

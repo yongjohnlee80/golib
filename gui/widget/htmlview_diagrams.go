@@ -90,6 +90,13 @@ func (l *htmlLayout) diagrammer() (Diagrammer, uint64) {
 
 func (l *htmlLayout) context() *tui.Context { return l.v.Context() }
 
+// wake marks the view to paint again, from any goroutine: a picture's image is drawn.
+func (m *htmlDiagrams) wake() {
+	if ctx := m.l.context(); ctx != nil {
+		ctx.Update(ctx.MarkDirty)
+	}
+}
+
 func (l *htmlLayout) textShaper() *gui.TextShaper { return l.shaper }
 
 // diagramTheme is the diagrams' theme from the page's colours.
@@ -165,6 +172,7 @@ func (m *htmlDiagrams) answer(dg pageDiagram, width float32) DiagramAnswer {
 		}
 		return ready
 	})
+	s.wake = m.wake
 	m.slots[dg] = s
 	return s.answer()
 }

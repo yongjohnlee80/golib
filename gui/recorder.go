@@ -157,6 +157,9 @@ func (r *inputRecorder) close() {
 // completion signalled for Stop to wait on.
 func (b *Backend) finishRun() {
 	b.rec.close()
+	if b.render != nil && b.render.baker != nil {
+		b.render.baker.Release() // the window is gone: its pictures' headless windows go with it
+	}
 	close(b.runDone)
 }
 

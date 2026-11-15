@@ -196,7 +196,13 @@ func TestTheEditorDrawsAFlowchart(t *testing.T) {
 		t.Fatal("the flowchart fence never became a picture")
 	}
 	var laid bool
-	h.onLoop(func() { _, laid = h.e.layout.lay(h.e.layout.blockOf(1), nil).bl.Picture.(*mermaid.Laid) })
+	h.onLoop(func() {
+		pic := h.e.layout.lay(h.e.layout.blockOf(1), nil).bl.Picture
+		if c, ok := pic.(*cachedPicture); ok { // drawn from its image once baked: the picture is its
+			pic = c.pic
+		}
+		_, laid = pic.(*mermaid.Laid)
+	})
 	if !laid {
 		t.Error("the picture is not the native layout")
 	}

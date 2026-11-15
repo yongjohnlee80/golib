@@ -56,6 +56,7 @@ type renderer struct {
 	paths    *shapeCache // the shaper's outline paths, kept while on screen, for the cells and the native views
 	typeface font.Typeface
 	theme    Theme
+	baker    *PictureBaker // the window's (NewBackend); nil for a snapshot's or a stream's renderer
 
 	m         metrics     // the metrics the row cache was recorded under
 	pageBG    color.NRGBA // the grid's most common background: the frame around it (drawMargins)
