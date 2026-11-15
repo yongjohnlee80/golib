@@ -26,9 +26,10 @@ type queryDAO[R any, C ~string, K ~string, ID any] struct {
 	local       []LocalSetting // WithLocalSettings, checked at acquisition
 	lock        RowLock        // WithRowLock, checked at acquisition; 0 is none
 
-	q   queryState
-	w   writeState
-	err error
+	q     queryState
+	w     writeState
+	binds map[C][]any // Bind: the values of the Param fields a query selects
+	err   error
 }
 
 // compile-time: *queryDAO satisfies the K-free DAO interface.
@@ -342,6 +343,25 @@ func (d *queryDAO[R, C, K, ID]) OrderBy(sorts ...Sort) DAO[R, C, ID] {
 	return d
 }
 
+// Bind implements [FieldBinder]: field, a Param field, gets the values its SQL
+// binds when the query selects it, one per its expression's arity, on every
+// engine, whether or not this one's spelling binds them.
+func (d *queryDAO[R, C, K, ID]) Bind(field C, args ...any) DAO[R, C, ID] {
+	if _, ok := d.schema.fieldParam[field]; !ok {
+		if _, known := d.schema.fields[field]; !known {
+			d.fail(fmt.Errorf("%w: %v", ErrUnknownField, any(field)))
+		} else {
+			d.fail(errs.Wrap(errs.ErrInvalidArgument, "dao: field %q binds no values (only a Param field does)", any(field)))
+		}
+		return d
+	}
+	if d.binds == nil {
+		d.binds = map[C][]any{}
+	}
+	d.binds[field] = append([]any(nil), args...)
+	return d
+}
+
 func (d *queryDAO[R, C, K, ID]) Limit(n uint64) DAO[R, C, ID]  { d.q.limit = &n; return d }
 func (d *queryDAO[R, C, K, ID]) Offset(n uint64) DAO[R, C, ID] { d.q.offset = &n; return d }
 
@@ -377,7 +397,7 @@ func (d *queryDAO[R, C, K, ID]) Get(cols ...C) (R, error) {
 	if perr != nil {
 		return zero, perr
 	}
-	sqlCols, joins, plan, err := d.schema.resolve(cols)
+	sqlCols, joins, plan, err := d.schema.resolve(cols, d.binds)
 	if err != nil {
 		return zero, err
 	}
@@ -421,7 +441,7 @@ func (d *queryDAO[R, C, K, ID]) Select(cols ...C) ([]R, error) {
 	if perr != nil {
 		return nil, perr
 	}
-	sqlCols, joins, plan, err := d.schema.resolve(cols)
+	sqlCols, joins, plan, err := d.schema.resolve(cols, d.binds)
 	if err != nil {
 		return nil, err
 	}
@@ -460,7 +480,7 @@ func (d *queryDAO[R, C, K, ID]) Iterate(cols ...C) (Iterator[R], error) {
 	if perr != nil {
 		return nil, perr
 	}
-	sqlCols, joins, plan, err := d.schema.resolve(cols)
+	sqlCols, joins, plan, err := d.schema.resolve(cols, d.binds)
 	if err != nil {
 		return nil, err
 	}
@@ -557,12 +577,15 @@ func (d *queryDAO[R, C, K, ID]) CountDistinct(field C) (uint64, error) {
 	if perr != nil {
 		return 0, perr
 	}
-	sqlCols, joins, _, err := d.schema.resolve([]C{field})
+	if _, ok := d.schema.fieldParam[field]; ok {
+		return 0, errs.Wrap(errs.ErrInvalidArgument, "dao: field %q is a Param field: it is only selected", any(field))
+	}
+	sqlCols, joins, _, err := d.schema.resolve([]C{field}, nil)
 	if err != nil {
 		return 0, err
 	}
 	b := d.newBuilder()
-	q := b.buildCountDistinct(d.schema.table, sqlCols[0], d.collectJoins(joins), d.q.where)
+	q := b.buildCountDistinct(d.schema.table, sqlCols[0].sql, d.collectJoins(joins), d.q.where)
 	args := b.args
 	h, lr, xerr := d.exec(OpCount, pl, &q, &args)
 	if xerr != nil {

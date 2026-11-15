@@ -30,6 +30,15 @@ type Field[R any] struct {
 	// Setting both Column and Expr is a declaration error: [New] panics.
 	Expr Expr
 
+	// Param is a field whose SQL binds values when the query renders, such as
+	// [SnippetQuery]: a query selecting it gives them with [Bind], and
+	// they are bound with the statement's other values, in the order it reads.
+	// A Param field is selected by name only: it is ReadOnly (New panics
+	// otherwise), never in the implicit default columns, and not a filter,
+	// sort or write column. Setting Param with Column or Expr is a
+	// declaration error: [New] panics.
+	Param ParamExpr
+
 	// Scan returns a pointer into the row struct for this field, called with a
 	// freshly-allocated R during scanning. Nil for write-only fields.
 	Scan func(R) any

@@ -47,6 +47,7 @@ type Schema[R any, C ~string, K ~string, ID any] struct {
 	table         string
 	idColumn      string
 	fields        map[C]Field[R]
+	fieldParam    map[C]boundField // Param fields, resolved for this engine
 	defaults      []C
 	optionalJoins map[JoinKey]joinClause
 	sortExpr      map[string]string // stringified sort key -> ORDER BY expression
@@ -102,6 +103,7 @@ func New[R any, C ~string, K ~string, ID any](conn DataConn, opts ...Option[R, C
 		dialect:       conn.Dialect(),
 		table:         cfg.table,
 		fields:        cfg.fields,
+		fieldParam:    map[C]boundField{},
 		optionalJoins: map[JoinKey]joinClause{},
 		sortExpr:      map[string]string{},
 		sortParam:     map[string]boundSort{},
@@ -118,14 +120,28 @@ func New[R any, C ~string, K ~string, ID any](conn DataConn, opts ...Option[R, C
 		if !ok {
 			panic(fmt.Sprintf("dao.New: ID field %q is not in Fields", any(cfg.idField)))
 		}
+		if f.Param.isSet() {
+			panic(fmt.Sprintf("dao.New: ID field %q is a Param field", any(cfg.idField)))
+		}
 		s.idColumn = f.writeCol()
 	}
 
-	// defaults: explicit, else all fields in a stable order
+	// Param fields, resolved once: a query selecting one binds its values
+	for k, f := range cfg.fields {
+		if f.Param.isSet() {
+			s.fieldParam[k] = resolveFieldParam(conn.Dialect(), fmt.Sprint(k), f.Param)
+		}
+	}
+
+	// defaults: explicit, else all fields but the Param ones in a stable order
 	if len(cfg.defaults) > 0 {
 		s.defaults = cfg.defaults
 	} else {
-		s.defaults = sortedFieldKeys(cfg.fields)
+		for _, k := range sortedFieldKeys(cfg.fields) {
+			if !cfg.fields[k].Param.isSet() {
+				s.defaults = append(s.defaults, k)
+			}
+		}
 	}
 
 	// optional joins + validate that every field-declared join is registered
@@ -179,6 +195,9 @@ func New[R any, C ~string, K ~string, ID any](conn DataConn, opts ...Option[R, C
 		bound := op
 		if fb, ok := op.(fieldSearchOp); ok {
 			if f, ok2 := cfg.fields[C(fb.fieldKey())]; ok2 {
+				if f.Param.isSet() {
+					panic(fmt.Sprintf("dao.New: search op %q is on field %q, a Param field (one is only selected)", op.Token(), fb.fieldKey()))
+				}
 				bound = fb.withColumn(f.Column)
 			}
 		}
@@ -247,6 +266,14 @@ func New[R any, C ~string, K ~string, ID any](conn DataConn, opts ...Option[R, C
 func resolveFields[R any, C ~string](d Dialect, in map[C]Field[R]) map[C]Field[R] {
 	out := make(map[C]Field[R], len(in))
 	for key, f := range in {
+		if f.Param.isSet() {
+			switch {
+			case f.Column != "" || f.Expr.isSet():
+				panic(fmt.Sprintf("dao.New: field %q sets Param with Column or Expr", any(key)))
+			case !f.ReadOnly:
+				panic(fmt.Sprintf("dao.New: field %q sets Param and is not ReadOnly", any(key)))
+			}
+		}
 		if f.Expr.isSet() {
 			if f.Column != "" {
 				panic(fmt.Sprintf("dao.New: field %q sets both Column and Expr", any(key)))
@@ -384,7 +411,7 @@ func (s *Schema[R, C, K, ID]) OnCtx(ctx context.Context, opts ...QueryOption) DA
 // resolve walks the requested field keys (or the default set if none) and derives
 // — in one pass — the SQL projection, the de-duplicated joins to apply, and the
 // scan plan. An unknown field key is a fail-fast error.
-func (s *Schema[R, C, K, ID]) resolve(fields []C) (cols []string, joins []joinClause, plan []func(R) any, err error) {
+func (s *Schema[R, C, K, ID]) resolve(fields []C, binds map[C][]any) (cols []selectCol, joins []joinClause, plan []func(R) any, err error) {
 	if len(fields) == 0 {
 		fields = s.defaults
 	}
@@ -394,7 +421,16 @@ func (s *Schema[R, C, K, ID]) resolve(fields []C) (cols []string, joins []joinCl
 		if !ok {
 			return nil, nil, nil, fmt.Errorf("%w: %v", ErrUnknownField, any(key))
 		}
-		cols = append(cols, f.Column)
+		if bf, ok := s.fieldParam[key]; ok {
+			args, bound := binds[key]
+			c, err := bf.column(s.dialect, fmt.Sprint(key), args, bound)
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			cols = append(cols, c)
+		} else {
+			cols = append(cols, selectCol{sql: f.Column})
+		}
 		plan = append(plan, f.Scan)
 		if f.Join != "" && !seen[f.Join] {
 			seen[f.Join] = true
@@ -407,7 +443,7 @@ func (s *Schema[R, C, K, ID]) resolve(fields []C) (cols []string, joins []joinCl
 // column returns the SQL column expression for a field key.
 func (s *Schema[R, C, K, ID]) column(key C) (string, bool) {
 	f, ok := s.fields[key]
-	if !ok {
+	if !ok || f.Param.isSet() {
 		return "", false
 	}
 	return f.Column, true

@@ -48,8 +48,10 @@ dao/fulltext.go	RankQuery	bb6d79cc291468ed	1	construction	dao.RankQuery: weight 
 dao/fulltext.go	RankQuery	a11b5d1d51212d68	1	construction	dao.RankQuery: a weight that is not finite — the weights are a declaration's, checked while the Schema's options are built
 dao/fulltext.go	Snippet	6c97024b27ae9940	1	construction	dao.Snippet: a column not in the index — the column names a declaration constant, checked while the Schema's fields are built
 dao/fulltext.go	Snippet.func$1	4900e2f0aec04cc1	1	construction	dao.Snippet: the engine could not render the markers — a snippet renders only while dao.New resolves the field; Cmp checks the markers (needs) before any query-time render
+dao/fulltext.go	SnippetQuery	46da79bda8f688f4	1	construction	dao.SnippetQuery: a column not in the index — the column names a declaration constant, checked at the call while the Schema's fields are built
 dao/options.go	SortParam	bb44b9e6e706c118	1	construction	dao.SortParam: a zero ParamExpr — the option is built while declaring the Schema
 dao/paramexpr.go	resolveSortParam	83f95180674c144f	1	construction	a bound sort key whose declaration is wrong on every engine (an invalid index) — reached only from dao.New; an engine merely lacking the capability is kept as the key's ErrUnsupported instead
+dao/paramexpr.go	resolveFieldParam	b99b90588f1a1a67	1	construction	a Param field whose declaration is wrong on every engine (an invalid index) — reached only from dao.New; an engine that cannot render it (no capability, or marks it refuses) is kept as the field's ErrUnsupported instead
 dao/query.go	Cmp	b7dedd63dae06591	1	invariant	dao.Cmp: an operator outside the OpEq..OpGte constants — CmpOp is a typed constant set; only a caller converting an arbitrary string reaches this, which is programmer error, not data
 dao/schema.go	New	83bd0006c349d7de	1	construction	dao.New: nil DataConn — validated before the Schema exists; nothing is running yet
 dao/schema.go	New	9abdc415ab30493a	1	construction	dao.New: Table is required — construction-time validation
@@ -62,7 +64,11 @@ dao/schema.go	New	8dd61367a5ed26bb	1	construction	dao.New: Conflict field is not
 dao/schema.go	New	3a7f482f3334d02a	1	construction	dao.New: DefaultValues field is not in Fields — construction-time validation
 dao/schema.go	New	241c1698c43cf7a2	1	construction	dao.New: nil hook — construction-time validation
 dao/schema.go	New	549eef755cc8dc82	1	construction	dao.New: duplicate hook name — construction-time validation
+dao/schema.go	New	de65f0aeb8526971	1	construction	dao.New: the ID field is a Param field — construction-time validation
+dao/schema.go	New	0a310d1fd313c810	1	construction	dao.New: a search op on a Param field — construction-time validation
 dao/schema.go	resolveFields	ccc9764a071bce12	1	construction	resolveFields is called only from dao.New; same construction phase
+dao/schema.go	resolveFields	8d8d866ad43cfd97	1	construction	dao.New: a field sets Param with Column or Expr — resolveFields is called only from dao.New
+dao/schema.go	resolveFields	3710c511558f2ebd	1	construction	dao.New: a Param field that is not ReadOnly — resolveFields is called only from dao.New
 dao/transaction.go	RunTx.func$1	4fa2355b6dd3517d	1	repanic	RunTx's deferred recover rolls back and re-raises the ORIGINAL panic, preserving its stack. Not a new failure mode. The func$ segment in the path is the deferred closure it lives in.
 dao/vector.go	Distance	b56eb44fc9a847f1	1	construction	dao.Distance: a metric other than the constants — the metric is a declaration's, checked while the Schema's options are built
 dao/vector.go	DistanceAs	6e7aaea9fe2b23bf	1	construction	dao.DistanceAs: a metric other than the constants — the metric is a declaration's, checked while the Schema's options are built

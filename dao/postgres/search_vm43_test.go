@@ -12,9 +12,11 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"math"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/yongjohnlee80/golib/dao"
@@ -375,5 +377,77 @@ func TestFullTextPG_TSQueryMatchesLiterally(t *testing.T) {
 		if ids := docIDs(got); !reflect.DeepEqual(ids, tc.want) && !(len(ids) == 0 && len(tc.want) == 0) {
 			t.Errorf("%q matched %v, want %v", q, ids, tc.want)
 		}
+	}
+}
+
+// snipRow is a document's id and its snippet.
+type snipRow struct {
+	ID      int64
+	Snippet string
+}
+
+// A snippet field bound to its own query, a Match, a filter, a rank bound to a
+// third query and a LIMIT, in one Select: each value reaches its own
+// placeholder, which the database shows by marking the snippet's term, not the
+// match's or the rank's. Stemming is the configuration's: "runs" marks
+// "running". The excerpt is one fragment of at most MaxWords words, with no
+// ellipsis.
+func TestFullTextPG_SnippetBindsWithTheRank(t *testing.T) {
+	conn, schema := searchSchema(t)
+	table := schema + ".doc"
+	docTable(t, conn, table)
+	long := strings.Repeat("filler words go here and there ", 8)
+	mustExec(t, conn, "INSERT INTO "+table+` (id, ws, crumb, body) VALUES
+		(1, 'a', 'x', '`+long+`she was running fast past the meadow gate `+long+`'),
+		(2, 'a', 'x', 'nothing about it'),
+		(3, 'b', 'x', 'running fast elsewhere')`)
+	ix := dao.FullTextIndex{Name: "tsv_en", Table: table, Columns: []string{"body"}, Config: "english"}
+	const (
+		sID   dfield = "id"
+		sWS   dfield = "ws"
+		sSnip dfield = "snippet"
+	)
+	s := dao.New(conn,
+		dao.Table[*snipRow, dfield, dsort, int64](table),
+		dao.ID[*snipRow, dfield, dsort, int64](sID),
+		dao.Fields[*snipRow, dfield, dsort, int64](map[dfield]dao.Field[*snipRow]{
+			sID: {Expr: dao.T(table, sID), Scan: func(r *snipRow) any { return &r.ID }},
+			sWS: {Expr: dao.T(table, sWS), Scan: func(r *snipRow) any { return new(string) }},
+			sSnip: {Param: dao.SnippetQuery(ix, "body", dao.SnippetMarks{Open: "\x02", Close: "\x03", Ellipsis: "…", Tokens: 16}),
+				ReadOnly: true, Scan: func(r *snipRow) any { return &r.Snippet }},
+		}),
+		dao.SortParam[*snipRow, dfield, dsort, int64](dByRank, dao.RankQuery(ix)),
+	)
+	d := s.DAO().WithPredicate(dao.Match(ix, "fast")).With(sWS, "a").OrderBy(dao.AscBy(dByRank, "meadow"))
+	got, err := dao.Bind(d, sSnip, "runs").Limit(5).Select(sID, sSnip)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].ID != 1 {
+		t.Fatalf("rows %+v, want document 1 alone", got)
+	}
+	snip := got[0].Snippet
+	if !strings.Contains(snip, "\x02running\x03") || strings.Contains(snip, "\x02fast\x03") || strings.Contains(snip, "\x02meadow\x03") {
+		t.Errorf("the snippet marks %q; want the bound term's stem, running, alone", snip)
+	}
+	if n := len(strings.Fields(snip)); n > 16 || strings.Contains(snip, "…") {
+		t.Errorf("the snippet %q: %d words (want at most 16), no ellipsis", snip, n)
+	}
+
+	// A mark ts_headline can't carry fails the query selecting the field, and
+	// the schema serves every other query.
+	bad := dao.New(conn,
+		dao.Table[*snipRow, dfield, dsort, int64](table),
+		dao.Fields[*snipRow, dfield, dsort, int64](map[dfield]dao.Field[*snipRow]{
+			sID: {Expr: dao.T(table, sID), Scan: func(r *snipRow) any { return &r.ID }},
+			sSnip: {Param: dao.SnippetQuery(ix, "body", dao.SnippetMarks{Open: `"`, Close: "]", Tokens: 16}),
+				ReadOnly: true, Scan: func(r *snipRow) any { return &r.Snippet }},
+		}),
+	)
+	if _, err := dao.Bind(bad.DAO(), sSnip, "runs").Select(sID, sSnip); !errors.Is(err, dao.ErrUnsupported) {
+		t.Errorf("a double quote in a mark: %v, want ErrUnsupported", err)
+	}
+	if got, err := bad.DAO().Select(sID); err != nil || len(got) != 3 {
+		t.Errorf("a query not selecting it: %d rows, %v", len(got), err)
 	}
 }

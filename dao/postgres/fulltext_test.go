@@ -58,8 +58,8 @@ func TestFullTextPG_WeightsGoToTheirClass(t *testing.T) {
 	}
 }
 
-// PostgreSQL has matching and query ranking, not FullTexter: its rank and
-// snippet would need the query bound again.
+// PostgreSQL has matching, query ranking and query snippets, not FullTexter:
+// its rank and snippet need the query bound again.
 func TestFullTextPG_CapabilityHonesty(t *testing.T) {
 	t.Parallel()
 	var d dao.Dialect = PostgresDialect{}
@@ -71,5 +71,46 @@ func TestFullTextPG_CapabilityHonesty(t *testing.T) {
 	}
 	if _, ok := d.(dao.FullTextQueryRanker); !ok {
 		t.Error("PostgresDialect lacks dao.FullTextQueryRanker")
+	}
+	if _, ok := d.(dao.FullTextQuerySnippeter); !ok {
+		t.Error("PostgresDialect lacks dao.FullTextQuerySnippeter")
+	}
+}
+
+// The snippet is ts_headline over the content column, against the query bound
+// at its placeholder, the marks double-quoted inside the options literal.
+// Control-character marks (STX and ETX, 16 words) render; what ts_headline's
+// options cannot carry is refused as an error, never rendered.
+func TestFullTextPG_QuerySnippet(t *testing.T) {
+	t.Parallel()
+	d := PostgresDialect{}
+	got, err := d.FullTextQuerySnippet(pgIX, 1, dao.SnippetMarks{Open: "<b>", Close: "</b>", Ellipsis: "…", Tokens: 16}, "$1")
+	want := `ts_headline('simple'::regconfig, "app"."chunk"."body", to_tsquery('simple'::regconfig, $1), 'StartSel="<b>", StopSel="</b>", MaxWords=16, MinWords=8, MaxFragments=1')`
+	if err != nil || got != want {
+		t.Errorf("snippet\n got: %s %v\nwant: %s", got, err, want)
+	}
+	got, err = d.FullTextQuerySnippet(pgIX, 1, dao.SnippetMarks{Open: "it's", Close: "]", Tokens: 3}, "$2")
+	want = `ts_headline('simple'::regconfig, "app"."chunk"."body", to_tsquery('simple'::regconfig, $2), 'StartSel="it''s", StopSel="]", MaxWords=3, MinWords=1, MaxFragments=1')`
+	if err != nil || got != want {
+		t.Errorf("a quote in a mark\n got: %s %v\nwant: %s", got, err, want)
+	}
+	if _, err := d.FullTextQuerySnippet(pgIX, 1, dao.SnippetMarks{Open: "\x02", Close: "\x03", Ellipsis: "…", Tokens: 16}, "$1"); err != nil {
+		t.Errorf("STX and ETX marks: %v", err)
+	}
+	for name, m := range map[string]dao.SnippetMarks{
+		"a double quote": {Open: `"`, Close: "]", Tokens: 16},
+		"a newline":      {Open: "[", Close: "\n", Tokens: 16},
+		"a return":       {Open: "[\r", Close: "]", Tokens: 16},
+		"a NUL":          {Open: "[\x00", Close: "]", Tokens: 16},
+		"no open mark":   {Close: "]", Tokens: 16},
+		"one word":       {Open: "[", Close: "]", Tokens: 1},
+		"65 words":       {Open: "[", Close: "]", Tokens: 65},
+	} {
+		if s, err := d.FullTextQuerySnippet(pgIX, 1, m, "$1"); err == nil {
+			t.Errorf("%s: rendered %s", name, s)
+		}
+	}
+	if s, err := d.FullTextQuerySnippet(pgIX, 2, dao.SnippetMarks{Open: "[", Close: "]", Tokens: 16}, "$1"); err == nil {
+		t.Errorf("a column past the index's: rendered %s", s)
 	}
 }

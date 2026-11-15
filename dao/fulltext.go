@@ -113,6 +113,15 @@ type FullTextQueryRanker interface {
 	FullTextQueryRank(ix FullTextIndex, weights []float64, placeholder string) string
 }
 
+// FullTextQuerySnippeter is an optional [Dialect] capability: an excerpt of
+// column (an index into Columns) around the matches of the query bound at
+// placeholder, the matches between open and close, about tokens long. It
+// returns an error for marks or a length the engine cannot render.
+// [SnippetQuery] uses it where an engine has it.
+type FullTextQuerySnippeter interface {
+	FullTextQuerySnippet(ix FullTextIndex, column int, m SnippetMarks, placeholder string) (string, error)
+}
+
 // FullTexter is an optional [Dialect] capability: the SQL of full-text search.
 // It renders pieces of a query and runs nothing, so the query runs as any other
 // DAO query, in whatever transaction the caller holds. Callers use [Match],
@@ -293,6 +302,67 @@ func Snippet(ix FullTextIndex, column string, m SnippetMarks) Expr {
 		_, err := d.(FullTexter).FullTextSnippet(ix, col, m)
 		return err
 	})}
+}
+
+// SnippetQuery is an excerpt of column around the matches of the query bound
+// when the statement renders, for a [Field]'s Param; a query selects it with
+// the same query text [Match] binds:
+//
+//	ChunkSnippet: {Param: dao.SnippetQuery(ChunkFTS, "body", marks), ReadOnly: true, …}
+//	d := chunks.DAO().WithPredicate(dao.Match(ChunkFTS, q))
+//	dao.Bind(d, ChunkSnippet, q).Select(…, ChunkSnippet)
+//	// PostgreSQL: ts_headline('simple'::regconfig, "chunk"."body", to_tsquery('simple'::regconfig, $1), '…')
+//	// SQLite:     snippet("chunk_fts", 3, '[', ']', '…', 16), binding nothing
+//
+// On an engine with [FullTextQuerySnippeter] it binds the query; on one with
+// only [FullTexter] (SQLite, whose snippet reads the match it already has) it
+// renders the plain snippet and binds nothing, so one field works on both.
+// The engines cut differently: SQLite marks a cut with the ellipsis at either
+// end, while PostgreSQL's ts_headline separates fragments only, so its one
+// fragment carries no leading or trailing ellipsis.
+//
+// A column not in the index panics at the call; an invalid index panics at
+// [New]. Marks or a length an engine cannot render are the error a query
+// selecting the field returns on that engine, never a panic.
+func SnippetQuery(ix FullTextIndex, column string, m SnippetMarks) ParamExpr {
+	col := -1
+	for i, c := range ix.Columns {
+		if c == column {
+			col = i
+		}
+	}
+	if col < 0 {
+		panic(errs.Fatal{Op: "dao.SnippetQuery", Rule: "the column must be one of the index's columns", Detail: column})
+	}
+	return ParamExpr{
+		arity: 1,
+		render: func(d Dialect, ph func(any) string, args []any) string {
+			if qs, ok := d.(FullTextQuerySnippeter); ok {
+				sql, _ := qs.FullTextQuerySnippet(ix, col, m, ph(args[0])) // checked by needs at New
+				return sql
+			}
+			sql, _ := d.(FullTexter).FullTextSnippet(ix, col, m)
+			return sql
+		},
+		needs: func(d Dialect) error {
+			if err := ix.Validate(); err != nil {
+				return err
+			}
+			var err error
+			switch qs, ok := d.(FullTextQuerySnippeter); {
+			case ok:
+				_, err = qs.FullTextQuerySnippet(ix, col, m, "$1")
+			case SupportsFullText(d):
+				_, err = d.(FullTexter).FullTextSnippet(ix, col, m)
+			default:
+				return fmt.Errorf("%w: full-text snippets on %s", ErrUnsupported, d.Name())
+			}
+			if err != nil {
+				return fmt.Errorf("%w: the snippet on %s: %v", ErrUnsupported, d.Name(), err)
+			}
+			return nil
+		},
+	}
 }
 
 // Match is the condition that a row matches q, a query in the engine's
