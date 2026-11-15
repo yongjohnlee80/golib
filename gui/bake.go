@@ -5,6 +5,7 @@ import (
 	"image"
 	"math"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/yongjohnlee80/gio/f32"
@@ -22,9 +23,12 @@ import (
 // nothing. A picture the window would otherwise fill as vector paths every frame (a chart, a
 // diagram) is then painted as one image. Make it with Backend.NewPictureBaker.
 //
-// Bake runs on the calling goroutine, one at a time; call it off the window's and tui's loops (it
-// draws and reads back on the GPU). A machine with no headless GPU answers ErrNoGPU, once and for
-// every Bake after: the caller draws the view as it would have. On Windows gio has no headless GPU.
+// A bake is two steps, so a view is painted only on its loop (View's contract): Record paints the
+// view into a recording on the calling goroutine, the view's loop, and does no GPU work; Draw puts
+// the recording on the GPU and reads it back, off the loops. Bake is the two at once, for a caller
+// that owns its view on its own goroutine. A machine with no headless GPU answers ErrNoGPU, once
+// and for every call after: the caller draws the view as it would have. On Windows gio has no
+// headless GPU.
 //
 // The baker keeps one headless window, as large as the largest bake yet, and lets it go (its GPU
 // context, framebuffer and read-back buffer) after BakeIdle with no bake: a page's pictures are
@@ -33,16 +37,21 @@ import (
 type PictureBaker struct {
 	b *Backend
 
-	mu      sync.Mutex
-	r       *renderer // the window's fonts, rebuilt on a font change
+	closed atomic.Bool
+	noGPU  atomic.Bool // the headless GPU failed: every Record and Draw answers ErrNoGPU
+
+	rmu     sync.Mutex // the recording side: the view's loop
+	r       *renderer  // the window's fonts, rebuilt on a font change
 	fontGen uint64
-	win     *bakeWindow // the headless window; nil before the first bake and after an idle spell
-	made    bool        // a headless window was made: a later failure is not "no GPU"
-	idle    time.Duration
-	bakes   uint64 // bakes so far: the idle timer lets the window go if none came since
-	timer   *time.Timer
-	err     error // the headless GPU's failure: every Bake answers it
-	closed  bool
+
+	wmu      sync.Mutex  // the drawing side: off the loops
+	win      *bakeWindow // the headless window; nil before the first draw and after an idle spell
+	made     bool        // a headless window was made: a later failure is not "no GPU"
+	idle     time.Duration
+	draws    uint64 // draws so far: the idle timer lets the window go if none came since
+	timer    *time.Timer
+	err      error    // the headless GPU's failure
+	released []func() // OnRelease's
 }
 
 // bakeWindow is the headless window a bake draws in, of a whole number of bakeBucket pixels a
@@ -68,7 +77,15 @@ type Baked struct {
 	FontGen uint64
 }
 
-// ErrBakerClosed is a Bake after Release.
+// A Recording is a view painted for a bake (Record), for Draw to put on the GPU.
+type Recording struct {
+	ops     *op.Ops
+	px      image.Point
+	scale   float32
+	fontGen uint64
+}
+
+// ErrBakerClosed is a Record or a Draw after Release.
 var ErrBakerClosed = errors.New("gui: the picture baker is released")
 
 // NewPictureBaker is a baker for this window's pictures.
@@ -79,22 +96,23 @@ func BakedPixels(size Size, scale float32) image.Point {
 	return image.Pt(int(math.Ceil(float64(size.W*scale))), int(math.Ceil(float64(size.H*scale))))
 }
 
-// Bake draws v of size dp at scale into an image of BakedPixels(size, scale).
-func (pb *PictureBaker) Bake(v View, size Size, scale float32) (Baked, error) {
-	pb.mu.Lock()
-	defer pb.mu.Unlock()
+// Record paints v of size dp at scale for a bake, on the calling goroutine, which owns v (its
+// loop). Its image will be BakedPixels(size, scale).
+func (pb *PictureBaker) Record(v View, size Size, scale float32) (*Recording, error) {
 	switch {
-	case pb.closed:
-		return Baked{}, ErrBakerClosed
-	case pb.err != nil:
-		return Baked{}, pb.err
+	case pb.closed.Load():
+		return nil, ErrBakerClosed
+	case pb.noGPU.Load():
+		return nil, pb.gpuErr()
 	case scale <= 0:
-		return Baked{}, errors.New("gui: Bake: scale is not positive")
+		return nil, errors.New("gui: Bake: scale is not positive")
 	}
 	px := BakedPixels(size, scale)
 	if px.X <= 0 || px.Y <= 0 {
-		return Baked{}, errors.New("gui: Bake: an empty picture")
+		return nil, errors.New("gui: Bake: an empty picture")
 	}
+	pb.rmu.Lock()
+	defer pb.rmu.Unlock()
 	fs := pb.b.font.load()
 	if pb.r == nil || fs.gen != pb.fontGen {
 		// the window's shaping: golib's fonts and the system's beside them, the window's families
@@ -102,18 +120,35 @@ func (pb *PictureBaker) Bake(v View, size Size, scale float32) (Baked, error) {
 		pb.r.fonts = fs.fonts
 		pb.fontGen = fs.gen
 	}
-	win, err := pb.window(px)
-	if err != nil {
-		return Baked{}, err
-	}
-	defer pb.armIdle()
 	m := metrics{scale: scale}
 	mm := measure(fs.fm, fs.size, 0, image.Point{}, unit.Metric{PxPerDp: scale, PxPerSp: scale})
 	m.ppem, m.cell, m.baseline = mm.ppem, mm.cell, mm.baseline
 	ops := new(op.Ops)
 	v.Paint(&gioCanvas{ops: ops, r: pb.r, m: m, size: size, clip: image.Rectangle{Max: px}, paintState: opaque()})
 	pb.r.paths.endFrame()
-	if err := win.hw.Frame(ops); err != nil {
+	return &Recording{ops: ops, px: px, scale: scale, fontGen: fs.gen}, nil
+}
+
+// Draw puts rec on the headless GPU and reads its pixels back, on the calling goroutine (off the
+// loops: it waits on the GPU).
+func (pb *PictureBaker) Draw(rec *Recording) (Baked, error) {
+	pb.wmu.Lock()
+	defer pb.wmu.Unlock()
+	switch {
+	case pb.closed.Load():
+		return Baked{}, ErrBakerClosed
+	case pb.err != nil:
+		return Baked{}, pb.err
+	case rec == nil:
+		return Baked{}, errors.New("gui: Bake: no recording")
+	}
+	px := rec.px
+	win, err := pb.window(px)
+	if err != nil {
+		return Baked{}, err
+	}
+	defer pb.armIdle()
+	if err := win.hw.Frame(rec.ops); err != nil {
 		return Baked{}, errs.Wrap(err, "gui: Bake: drawing")
 	}
 	// the whole window read back, then its corner kept: a read of the picture's size alone is the
@@ -126,11 +161,31 @@ func (pb *PictureBaker) Bake(v View, size Size, scale float32) (Baked, error) {
 	for y := range px.Y {
 		copy(img.Pix[y*img.Stride:y*img.Stride+4*px.X], whole.Pix[y*whole.Stride:y*whole.Stride+4*px.X])
 	}
-	return Baked{Image: NewImage(img), RGBA: img, Pixels: px, Scale: scale, FontGen: fs.gen}, nil
+	return Baked{Image: NewImage(img), RGBA: img, Pixels: px, Scale: rec.scale, FontGen: rec.fontGen}, nil
+}
+
+// Bake draws v of size dp at scale into an image of BakedPixels(size, scale): Record, then Draw,
+// on the calling goroutine, which owns v.
+func (pb *PictureBaker) Bake(v View, size Size, scale float32) (Baked, error) {
+	rec, err := pb.Record(v, size, scale)
+	if err != nil {
+		return Baked{}, err
+	}
+	return pb.Draw(rec)
+}
+
+// gpuErr is the headless GPU's failure, ErrNoGPU's.
+func (pb *PictureBaker) gpuErr() error {
+	pb.wmu.Lock()
+	defer pb.wmu.Unlock()
+	if pb.err != nil {
+		return pb.err
+	}
+	return ErrNoGPU
 }
 
 // window is the headless window, made to hold px when it does not: as large as the largest bake
-// yet, so a page's pictures share one. A first failure is ErrNoGPU's.
+// yet, so a page's pictures share one. A first failure is ErrNoGPU's. Under pb.wmu.
 func (pb *PictureBaker) window(px image.Point) (*bakeWindow, error) {
 	if w := pb.win; w != nil && w.w >= px.X && w.h >= px.Y {
 		return w, nil
@@ -145,6 +200,7 @@ func (pb *PictureBaker) window(px image.Point) (*bakeWindow, error) {
 	if err != nil {
 		if !pb.made {
 			pb.err = errs.WrapCause(ErrNoGPU, err, "gui: Bake")
+			pb.noGPU.Store(true)
 			return nil, pb.err
 		}
 		return nil, errs.Wrap(err, "gui: Bake: a headless window")
@@ -154,17 +210,17 @@ func (pb *PictureBaker) window(px image.Point) (*bakeWindow, error) {
 	return pb.win, nil
 }
 
-// armIdle lets the window go after pb.idle with no bake. Under pb.mu.
+// armIdle lets the window go after pb.idle with no draw. Under pb.wmu.
 func (pb *PictureBaker) armIdle() {
-	pb.bakes++
-	n := pb.bakes
+	pb.draws++
+	n := pb.draws
 	if pb.timer != nil {
 		pb.timer.Stop()
 	}
 	pb.timer = time.AfterFunc(pb.idle, func() {
-		pb.mu.Lock()
-		defer pb.mu.Unlock()
-		if pb.bakes == n && pb.win != nil {
+		pb.wmu.Lock()
+		defer pb.wmu.Unlock()
+		if pb.draws == n && pb.win != nil {
 			pb.win.hw.Release()
 			pb.win = nil
 		}
@@ -174,17 +230,40 @@ func (pb *PictureBaker) armIdle() {
 // bucketed is n rounded up to whole bakeBuckets.
 func bucketed(n int) int { return (n + bakeBucket - 1) / bakeBucket * bakeBucket }
 
-// Release lets the baker's headless windows go; a Bake after it answers ErrBakerClosed.
+// OnRelease calls fn when the baker is released (its window closed): a cache of its images lets
+// them go. After Release, fn is called at once.
+func (pb *PictureBaker) OnRelease(fn func()) {
+	pb.wmu.Lock()
+	if !pb.closed.Load() {
+		pb.released = append(pb.released, fn)
+		pb.wmu.Unlock()
+		return
+	}
+	pb.wmu.Unlock()
+	fn()
+}
+
+// Release lets the baker's headless window go and tells OnRelease's; a Record or a Draw after it
+// answers ErrBakerClosed.
 func (pb *PictureBaker) Release() {
-	pb.mu.Lock()
-	defer pb.mu.Unlock()
+	pb.wmu.Lock()
+	if pb.closed.Swap(true) {
+		pb.wmu.Unlock()
+		return
+	}
 	if pb.timer != nil {
 		pb.timer.Stop()
 	}
 	if pb.win != nil {
 		pb.win.hw.Release()
 	}
-	pb.win, pb.closed = nil, true
+	pb.win = nil
+	fns := pb.released
+	pb.released = nil
+	pb.wmu.Unlock()
+	for _, fn := range fns {
+		fn()
+	}
 }
 
 // BakerOf is the PictureBaker of the window c paints in; nil for a canvas of no window's (a
