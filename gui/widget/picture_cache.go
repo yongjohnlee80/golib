@@ -2,6 +2,7 @@ package widget
 
 import (
 	"errors"
+	"image"
 	"sync"
 	"sync/atomic"
 
@@ -11,12 +12,14 @@ import (
 
 // PICTURE CACHE — a diagram's or chart's picture drawn once into an image by its window's
 // PictureBaker, and painted from that image after: a page of charts scrolled would otherwise fill
-// every chart's vector paths at every frame. The image is the picture's at one scale and one
-// generation of the window's fonts, and a picture is its diagram's request (source, width, scale,
-// theme: diagramKey), so a change of any of them draws it again. Until its image is drawn, and
-// where none can be (no window, no headless GPU, a picture past the cache's size), a picture is
-// drawn as it is. The cache keeps PictureCacheLimit baked pixels, the least recently painted going
-// first.
+// every chart's vector paths at every frame. The image is one picture's (each slot's Ready picture
+// is one cachedPicture, and another request is another slot), at one scale and one generation of
+// the window's fonts: a change of any of them draws it again, and two pictures never share one,
+// whatever drew them. The picture is painted for its image on its view's loop (View's contract);
+// a worker puts that on the GPU. Until its image is drawn, and where none can be (no window, no
+// headless GPU, a picture past the cache's size), a picture is drawn as it is. The cache keeps
+// PictureCacheLimit baked pixels, the least recently painted going first, and lets a window's go
+// when the window closes.
 
 // PictureCacheLimit is the baked pixels the cache keeps across windows: 48 Mpx, about 192 MB of
 // RGBA. A picture larger than it is drawn as it is.
@@ -24,7 +27,9 @@ const PictureCacheLimit = 48 << 20
 
 // pictureBaker is what the cache asks of a window's gui.PictureBaker.
 type pictureBaker interface {
-	Bake(v gui.View, size gui.Size, scale float32) (gui.Baked, error)
+	Record(v gui.View, size gui.Size, scale float32) (*gui.Recording, error)
+	Draw(rec *gui.Recording) (gui.Baked, error)
+	OnRelease(fn func())
 }
 
 // bakerOf is the baker of the window c paints in, nil off a window.
@@ -48,11 +53,11 @@ func SetPictureLogger(l logger.Logger) {
 	pictureLog.Store(&l)
 }
 
-// bakeKey is one baked picture: its window, its request, the scale and font generation it was
-// drawn at.
+// bakeKey is one baked picture: its window, the picture (cachedPicture.id), the scale and font
+// generation it was drawn at.
 type bakeKey struct {
 	baker pictureBaker
-	pic   diagramKey
+	pic   uint64
 	scale float32
 	fonts uint64
 }
@@ -64,12 +69,11 @@ type bakedPicture struct {
 
 type bakeJob struct {
 	key  bakeKey
-	pic  gui.View
-	size gui.Size
+	rec  *gui.Recording
 	wake func()
 }
 
-// pictureCache is every window's baked pictures, and the one worker that bakes them in turn.
+// pictureCache is every window's baked pictures, and the one worker that draws them in turn.
 type pictureCache struct {
 	mu      sync.Mutex
 	limit   int
@@ -79,16 +83,20 @@ type pictureCache struct {
 	pending map[bakeKey]bool
 	skip    map[bakeKey]bool      // never baked: past the limit, or its bake failed
 	dead    map[pictureBaker]bool // no headless GPU: its window's pictures stay as they are
+	watched map[pictureBaker]bool // its release lets its entries go (OnRelease)
 	jobs    chan bakeJob
-	bakes   atomic.Int64 // bakes done, for the cells
+	bakes   atomic.Int64 // draws done, for the cells
 }
 
 func newPictureCache(limit int) *pictureCache {
 	return &pictureCache{limit: limit, baked: map[bakeKey]*bakedPicture{}, pending: map[bakeKey]bool{},
-		skip: map[bakeKey]bool{}, dead: map[pictureBaker]bool{}}
+		skip: map[bakeKey]bool{}, dead: map[pictureBaker]bool{}, watched: map[pictureBaker]bool{}}
 }
 
 var pictures = newPictureCache(PictureCacheLimit)
+
+// pictureIDs numbers the cachedPictures.
+var pictureIDs atomic.Uint64
 
 // get is k's image, marked as just used.
 func (pc *pictureCache) get(k bakeKey) (gui.Baked, bool) {
@@ -103,57 +111,82 @@ func (pc *pictureCache) get(k bakeKey) (gui.Baked, bool) {
 	return e.b, true
 }
 
-// request asks for k's image, unless it is drawn, asked for, never to be, or its window has no GPU.
-// The worker bakes it, then calls wake.
-func (pc *pictureCache) request(j bakeJob) {
+// reserve claims k for a bake of px pixels: false when it is drawn, asked for, never to be, or its
+// window has no GPU. watch is whether k's window is new to the cache: its release is to be heard.
+func (pc *pictureCache) reserve(k bakeKey, px image.Point) (ok, watch bool) {
 	pc.mu.Lock()
 	defer pc.mu.Unlock()
-	if pc.dead[j.key.baker] || pc.pending[j.key] || pc.skip[j.key] || pc.baked[j.key] != nil {
-		return
+	if pc.dead[k.baker] || pc.pending[k] || pc.skip[k] || pc.baked[k] != nil {
+		return false, false
 	}
-	px := gui.BakedPixels(j.size, j.key.scale)
 	if px.X*px.Y > pc.limit || px.X <= 0 || px.Y <= 0 {
-		pc.skip[j.key] = true
-		return
+		pc.skip[k] = true
+		return false, false
 	}
+	pc.pending[k] = true
+	if !pc.watched[k.baker] {
+		pc.watched[k.baker] = true
+		return true, true
+	}
+	return true, false
+}
+
+// failed takes a recording's or a draw's failure: no GPU marks the window's baker, another the
+// picture, each said once. Under pc.mu.
+func (pc *pictureCache) failed(k bakeKey, err error) {
+	switch {
+	case errors.Is(err, gui.ErrBakerClosed):
+	case errors.Is(err, gui.ErrNoGPU):
+		if !pc.dead[k.baker] {
+			pc.dead[k.baker] = true
+			logPicture("no headless GPU: the window's charts and diagrams are drawn from their paths at every frame", err)
+		}
+	default:
+		pc.skip[k] = true
+		logPicture("a picture could not be drawn into an image: it is drawn from its paths", err)
+	}
+}
+
+// enqueue hands j to the worker, starting it the first time; a full queue lets k go, to be asked
+// again at the next paint.
+func (pc *pictureCache) enqueue(j bakeJob) {
+	pc.mu.Lock()
+	defer pc.mu.Unlock()
 	if pc.jobs == nil {
 		pc.jobs = make(chan bakeJob, 64)
 		go pc.work(pc.jobs)
 	}
 	select {
 	case pc.jobs <- j:
-		pc.pending[j.key] = true
-	default: // the worker is behind: the next paint asks again
+	default:
+		delete(pc.pending, j.key)
 	}
 }
 
-// work bakes each job in turn, off the loops.
+// work draws each job in turn, off the loops.
 func (pc *pictureCache) work(jobs <-chan bakeJob) {
 	for j := range jobs {
-		b, err := j.key.baker.Bake(j.pic, j.size, j.key.scale)
+		b, err := j.key.baker.Draw(j.rec)
 		pc.bakes.Add(1)
 		pc.mu.Lock()
 		delete(pc.pending, j.key)
+		kept := false
 		switch {
-		case errors.Is(err, gui.ErrNoGPU):
-			if !pc.dead[j.key.baker] {
-				pc.dead[j.key.baker] = true
-				logPicture("no headless GPU: the window's charts and diagrams are drawn from their paths at every frame", err)
-			}
+		case !pc.watched[j.key.baker]: // its window closed while it was drawn
 		case err != nil:
-			pc.skip[j.key] = true
-			logPicture("a picture could not be drawn into an image: it is drawn from its paths", err)
+			pc.failed(j.key, err)
 		default:
 			pc.put(j.key, b)
+			kept = true
 		}
 		pc.mu.Unlock()
-		if err == nil && j.wake != nil {
+		if kept && j.wake != nil {
 			j.wake()
 		}
 	}
 }
 
-// put keeps b as k's image, letting the least recently painted go until it fits.
+// put keeps b as k's image, letting the least recently painted go until it fits. Under pc.mu.
 func (pc *pictureCache) put(k bakeKey, b gui.Baked) {
 	px := b.Pixels.X * b.Pixels.Y
 	for pc.pixels+px > pc.limit && len(pc.baked) > 0 {
@@ -165,13 +198,43 @@ func (pc *pictureCache) put(k bakeKey, b gui.Baked) {
 				oldest, at, first = key, e.used, false
 			}
 		}
-		o := pc.baked[oldest]
-		pc.pixels -= o.b.Pixels.X * o.b.Pixels.Y
-		delete(pc.baked, oldest)
+		pc.drop(oldest)
 	}
 	pc.tick++
 	pc.baked[k] = &bakedPicture{b: b, used: pc.tick}
 	pc.pixels += px
+}
+
+// drop lets k's image go. Under pc.mu.
+func (pc *pictureCache) drop(k bakeKey) {
+	if e := pc.baked[k]; e != nil {
+		pc.pixels -= e.b.Pixels.X * e.b.Pixels.Y
+		delete(pc.baked, k)
+	}
+}
+
+// release lets everything of a closed window's baker go, so neither its images nor the window are
+// kept.
+func (pc *pictureCache) release(baker pictureBaker) {
+	pc.mu.Lock()
+	defer pc.mu.Unlock()
+	for k := range pc.baked {
+		if k.baker == baker {
+			pc.drop(k)
+		}
+	}
+	for k := range pc.pending {
+		if k.baker == baker {
+			delete(pc.pending, k)
+		}
+	}
+	for k := range pc.skip {
+		if k.baker == baker {
+			delete(pc.skip, k)
+		}
+	}
+	delete(pc.dead, baker)
+	delete(pc.watched, baker)
 }
 
 func logPicture(what string, err error) {
@@ -180,27 +243,48 @@ func logPicture(what string, err error) {
 	}
 }
 
-// cachedPicture is a diagram's picture (pic, of size, for its request key), painted from its
-// baked image when its window has drawn one, and as it is until then. wake marks the view that
-// shows it to paint again, when its image is drawn.
+// cachedPicture is a diagram's picture (pic, of size), painted from its baked image when its window
+// has drawn one, and as it is until then. id is its own: no other picture's image is ever its.
+// wake marks the view that shows it to paint again, when its image is drawn.
 type cachedPicture struct {
+	id   uint64
 	pic  gui.View
-	key  diagramKey
 	size gui.Size
 	wake func()
 }
 
+func newCachedPicture(pic gui.View, size gui.Size, wake func()) *cachedPicture {
+	return &cachedPicture{id: pictureIDs.Add(1), pic: pic, size: size, wake: wake}
+}
+
+// Paint is on the view's loop (View's contract): it paints the picture's image, or the picture
+// and, the first time, the picture again for its image, which the worker draws.
 func (p *cachedPicture) Paint(c gui.Canvas) {
 	pb := bakerOf(c)
 	if pb == nil {
 		p.pic.Paint(c)
 		return
 	}
-	k := bakeKey{baker: pb, pic: p.key, scale: c.Scale(), fonts: c.Fonts().Gen}
+	k := bakeKey{baker: pb, pic: p.id, scale: c.Scale(), fonts: c.Fonts().Gen}
 	if b, ok := pictures.get(k); ok {
 		gui.DrawBaked(c, b, gui.Point{})
 		return
 	}
 	p.pic.Paint(c)
-	pictures.request(bakeJob{key: k, pic: p.pic, size: p.size, wake: p.wake})
+	ok, watch := pictures.reserve(k, gui.BakedPixels(p.size, k.scale))
+	if !ok {
+		return
+	}
+	if watch {
+		pb.OnRelease(func() { pictures.release(pb) })
+	}
+	rec, err := pb.Record(p.pic, p.size, k.scale)
+	if err != nil {
+		pictures.mu.Lock()
+		delete(pictures.pending, k)
+		pictures.failed(k, err)
+		pictures.mu.Unlock()
+		return
+	}
+	pictures.enqueue(bakeJob{key: k, rec: rec, wake: p.wake})
 }

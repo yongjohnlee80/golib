@@ -13,22 +13,38 @@ import (
 	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
-// fakeBaker bakes on demand, counting its bakes; err, when set, is every bake's answer.
+// fakeBaker records and draws on demand, counting its draws; err, when set, is every draw's
+// answer. Its recording's size is its next draw's. release is what OnRelease registered.
 type fakeBaker struct {
-	mu    sync.Mutex
-	bakes int
-	err   error
+	mu      sync.Mutex
+	bakes   int
+	err     error
+	px      image.Point
+	scale   float32
+	release []func()
 }
 
-func (f *fakeBaker) Bake(v gui.View, size gui.Size, scale float32) (gui.Baked, error) {
+func (f *fakeBaker) Record(v gui.View, size gui.Size, scale float32) (*gui.Recording, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.px, f.scale = gui.BakedPixels(size, scale), scale
+	return new(gui.Recording), nil
+}
+
+func (f *fakeBaker) Draw(*gui.Recording) (gui.Baked, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.bakes++
 	if f.err != nil {
 		return gui.Baked{}, f.err
 	}
-	px := gui.BakedPixels(size, scale)
-	return gui.Baked{Image: gui.NewImage(image.NewRGBA(image.Rectangle{Max: px})), Pixels: px, Scale: scale}, nil
+	return gui.Baked{Image: gui.NewImage(image.NewRGBA(image.Rectangle{Max: f.px})), Pixels: f.px, Scale: f.scale}, nil
+}
+
+func (f *fakeBaker) OnRelease(fn func()) {
+	f.mu.Lock()
+	f.release = append(f.release, fn)
+	f.mu.Unlock()
 }
 
 func (f *fakeBaker) count() int { f.mu.Lock(); defer f.mu.Unlock(); return f.bakes }
@@ -63,8 +79,7 @@ func TestAPictureIsDrawnFromItsImageOnceBaked(t *testing.T) {
 	fb := &fakeBaker{}
 	withBaker(t, fb, 1<<20)
 	woke := make(chan struct{}, 4)
-	p := &cachedPicture{pic: vectorPic, key: diagramKey{lang: "mermaid", src: "a"}, size: gui.Size{W: 40, H: 20},
-		wake: func() { woke <- struct{}{} }}
+	p := newCachedPicture(vectorPic, gui.Size{W: 40, H: 20}, func() { woke <- struct{}{} })
 	if got := paintedFrom(p); got != "vector" {
 		t.Fatalf("before its bake the picture is drawn from its %s", got)
 	}
@@ -79,24 +94,33 @@ func TestAPictureIsDrawnFromItsImageOnceBaked(t *testing.T) {
 	}
 }
 
-// A picture's image is its request's at a scale and a generation of the window's fonts: another
-// source, width, scale or font generation is another image.
-func TestAPicturesImageIsKeyedByItsRequestScaleAndFonts(t *testing.T) {
-	pc := withBaker(t, &fakeBaker{}, 1<<20)
-	base := bakeKey{baker: &fakeBaker{}, pic: diagramKey{lang: "vega-lite", src: "{}", width: 400, scale: 1}, scale: 1, fonts: 1}
+// A picture's image is its own, at a scale and a generation of the window's fonts: two pictures
+// of one request (two Diagrammers might draw it two ways) are two images, and another scale, font
+// generation or window is another image.
+func TestAPicturesImageIsItsOwnAtAScaleAndFonts(t *testing.T) {
+	fb := &fakeBaker{}
+	withBaker(t, fb, 1<<20)
+	woke := make(chan struct{}, 4)
+	a := newCachedPicture(vectorPic, gui.Size{W: 40, H: 20}, func() { woke <- struct{}{} })
+	b := newCachedPicture(vectorPic, gui.Size{W: 40, H: 20}, func() { woke <- struct{}{} })
+	paintedFrom(a)
+	<-woke
+	if paintedFrom(b) != "vector" {
+		t.Fatal("another picture of the same request is drawn from the first one's image")
+	}
+	<-woke
+	if n := fb.count(); n != 2 {
+		t.Fatalf("%d bakes for two pictures, want two", n)
+	}
+	pc := pictures
+	base := bakeKey{baker: fb, pic: a.id, scale: 1, fonts: 1}
 	pc.mu.Lock()
 	pc.put(base, gui.Baked{Pixels: image.Pt(4, 4), Scale: 1})
 	pc.mu.Unlock()
-	if _, ok := pc.get(base); !ok {
-		t.Fatal("the key put is not found")
-	}
 	others := map[string]bakeKey{}
 	k := base
-	k.pic.src = "{ }"
-	others["source"] = k
-	k = base
-	k.pic.width = 401
-	others["width"] = k
+	k.pic = b.id
+	others["picture"] = k
 	k = base
 	k.scale = 1.5
 	others["scale"] = k
@@ -106,6 +130,9 @@ func TestAPicturesImageIsKeyedByItsRequestScaleAndFonts(t *testing.T) {
 	k = base
 	k.baker = &fakeBaker{}
 	others["window"] = k
+	if _, ok := pc.get(base); !ok {
+		t.Fatal("the key put is not found")
+	}
 	for what, other := range others {
 		if _, ok := pc.get(other); ok {
 			t.Errorf("another %s finds the image", what)
@@ -113,10 +140,48 @@ func TestAPicturesImageIsKeyedByItsRequestScaleAndFonts(t *testing.T) {
 	}
 }
 
+// A window closed lets go of everything of its: its images, and its baker, so the window is not
+// kept; a draw that ends after it is not kept either.
+func TestAClosedWindowsPicturesAreLetGo(t *testing.T) {
+	fb := &fakeBaker{}
+	pc := withBaker(t, fb, 1<<20)
+	woke := make(chan struct{}, 4)
+	p := newCachedPicture(vectorPic, gui.Size{W: 40, H: 20}, func() { woke <- struct{}{} })
+	paintedFrom(p)
+	<-woke
+	fb.mu.Lock()
+	release := append([]func(){}, fb.release...)
+	fb.mu.Unlock()
+	if len(release) != 1 {
+		t.Fatalf("the cache asked to hear of the window's release %d times, want once", len(release))
+	}
+	for _, fn := range release {
+		fn()
+	}
+	pc.mu.Lock()
+	left := len(pc.baked) + len(pc.pending) + len(pc.skip) + len(pc.dead) + len(pc.watched)
+	pixels := pc.pixels
+	pc.mu.Unlock()
+	if left != 0 || pixels != 0 {
+		t.Fatalf("after the window closed the cache holds %d entries of %d pixels, want none", left, pixels)
+	}
+	pc.mu.Lock() // a draw that ends now, its window gone
+	pc.pending[bakeKey{baker: fb, pic: p.id, scale: 1}] = true
+	pc.mu.Unlock()
+	pc.enqueue(bakeJob{key: bakeKey{baker: fb, pic: p.id, scale: 1}, rec: new(gui.Recording)})
+	waitFor(t, "the late draw", func() bool { pc.mu.Lock(); defer pc.mu.Unlock(); return len(pc.pending) == 0 })
+	pc.mu.Lock()
+	defer pc.mu.Unlock()
+	if len(pc.baked) != 0 {
+		t.Fatal("a draw that ended after its window closed was kept")
+	}
+}
+
 // The cache keeps its limit of pixels, the least recently painted going first.
 func TestTheCacheKeepsItsLimitLeastRecentlyPaintedFirst(t *testing.T) {
 	pc := withBaker(t, &fakeBaker{}, 100)
-	key := func(src string) bakeKey { return bakeKey{pic: diagramKey{src: src}, scale: 1} }
+	ids := map[string]uint64{"a": 1, "b": 2, "c": 3}
+	key := func(src string) bakeKey { return bakeKey{pic: ids[src], scale: 1} }
 	put := func(src string) {
 		pc.mu.Lock()
 		pc.put(key(src), gui.Baked{Pixels: image.Pt(8, 5), Scale: 1}) // 40 pixels each
@@ -141,8 +206,8 @@ func TestTheCacheKeepsItsLimitLeastRecentlyPaintedFirst(t *testing.T) {
 func TestWithNoGPUOrTooLargeAPictureStaysVector(t *testing.T) {
 	fb := &fakeBaker{err: gui.ErrNoGPU}
 	withBaker(t, fb, 1<<20)
-	a := &cachedPicture{pic: vectorPic, key: diagramKey{src: "a"}, size: gui.Size{W: 40, H: 20}}
-	b := &cachedPicture{pic: vectorPic, key: diagramKey{src: "b"}, size: gui.Size{W: 40, H: 20}}
+	a := newCachedPicture(vectorPic, gui.Size{W: 40, H: 20}, nil)
+	b := newCachedPicture(vectorPic, gui.Size{W: 40, H: 20}, nil)
 	paintedFrom(a)
 	waitFor(t, "the first bake", func() bool { return fb.count() == 1 })
 	waitFor(t, "the baker marked without a GPU", func() bool {
@@ -161,7 +226,7 @@ func TestWithNoGPUOrTooLargeAPictureStaysVector(t *testing.T) {
 
 	big := &fakeBaker{}
 	withBaker(t, big, 100)
-	huge := &cachedPicture{pic: vectorPic, key: diagramKey{src: "huge"}, size: gui.Size{W: 40, H: 20}} // 800 pixels
+	huge := newCachedPicture(vectorPic, gui.Size{W: 40, H: 20}, nil) // 800 pixels
 	for range 3 {
 		if paintedFrom(huge) != "vector" {
 			t.Fatal("a picture past the limit is drawn from an image")

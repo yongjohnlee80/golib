@@ -94,7 +94,7 @@ func (s *diagramSlot) picture() gui.View {
 		return s.pic
 	}
 	if s.cached == nil {
-		s.cached = &cachedPicture{pic: s.pic, key: s.key, size: s.size, wake: s.wake}
+		s.cached = newCachedPicture(s.pic, s.size, s.wake)
 	}
 	return s.cached
 }

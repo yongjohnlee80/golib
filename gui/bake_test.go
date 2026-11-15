@@ -122,8 +122,8 @@ func TestABakersWindowGrowsAndGoesWhenIdle(t *testing.T) {
 	pb.idle = 150 * time.Millisecond
 	v := ViewFunc(func(c Canvas) { c.FillRect(Rect{W: 4, H: 4}, Solid(color.NRGBA{R: 0xc0, A: 0xff})) })
 	side := func() (w, h int, ok bool) {
-		pb.mu.Lock()
-		defer pb.mu.Unlock()
+		pb.wmu.Lock()
+		defer pb.wmu.Unlock()
 		if pb.win == nil {
 			return 0, 0, false
 		}
@@ -156,5 +156,48 @@ func TestABakersWindowGrowsAndGoesWhenIdle(t *testing.T) {
 	}
 	if _, _, ok := side(); !ok {
 		t.Fatal("no window after a bake that followed the idle spell")
+	}
+}
+
+// Recording a bake paints the view on the calling goroutine and draws nothing yet: the headless
+// window is made by Draw, off the loop; Release tells the baker's OnRelease, and one registered
+// after it at once, and a released baker records and draws nothing.
+func TestARecordingIsDrawnByDrawAndReleaseIsTold(t *testing.T) {
+	pb := NewBackend().NewPictureBaker()
+	painted := 0
+	v := ViewFunc(func(c Canvas) { painted++; c.FillRect(Rect{W: 4, H: 4}, Solid(color.NRGBA{R: 0xc0, A: 0xff})) })
+	rec, err := pb.Record(v, Size{W: 8, H: 8}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pb.wmu.Lock()
+	made := pb.win != nil
+	pb.wmu.Unlock()
+	if painted != 1 || made {
+		t.Fatalf("Record painted the view %d times and made a window: %v; want once, and no window", painted, made)
+	}
+	b, err := pb.Draw(rec)
+	if errors.Is(err, ErrNoGPU) {
+		t.Skipf("no headless GPU here: %v", err)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if painted != 1 || b.RGBA.RGBAAt(1, 1).R < 0xa0 {
+		t.Fatalf("Draw painted the view again (%d) or lost its pixels: %v", painted, b.RGBA.RGBAAt(1, 1))
+	}
+	told := 0
+	pb.OnRelease(func() { told++ })
+	pb.Release()
+	pb.Release()
+	pb.OnRelease(func() { told++ })
+	if told != 2 {
+		t.Fatalf("OnRelease told %d times, want once before Release and once at once after", told)
+	}
+	if _, err := pb.Record(v, Size{W: 8, H: 8}, 1); !errors.Is(err, ErrBakerClosed) {
+		t.Fatalf("Record after Release: %v", err)
+	}
+	if _, err := pb.Draw(rec); !errors.Is(err, ErrBakerClosed) {
+		t.Fatalf("Draw after Release: %v", err)
 	}
 }
