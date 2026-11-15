@@ -95,6 +95,10 @@ func newPictureCache(limit int) *pictureCache {
 
 var pictures = newPictureCache(PictureCacheLimit)
 
+// skipLimit bounds the pictures kept as never to be baked: past it they are forgotten, and asked
+// about again (a size is checked at once; a failed bake is tried once more).
+const skipLimit = 4096
+
 // pictureIDs numbers the cachedPictures.
 var pictureIDs atomic.Uint64
 
@@ -120,7 +124,7 @@ func (pc *pictureCache) reserve(k bakeKey, px image.Point) (ok, watch bool) {
 		return false, false
 	}
 	if px.X*px.Y > pc.limit || px.X <= 0 || px.Y <= 0 {
-		pc.skip[k] = true
+		pc.skipOne(k)
 		return false, false
 	}
 	pc.pending[k] = true
@@ -142,9 +146,17 @@ func (pc *pictureCache) failed(k bakeKey, err error) {
 			logPicture("no headless GPU: the window's charts and diagrams are drawn from their paths at every frame", err)
 		}
 	default:
-		pc.skip[k] = true
+		pc.skipOne(k)
 		logPicture("a picture could not be drawn into an image: it is drawn from its paths", err)
 	}
+}
+
+// skipOne keeps k as never to be baked, the kept ones forgotten past skipLimit. Under pc.mu.
+func (pc *pictureCache) skipOne(k bakeKey) {
+	if len(pc.skip) >= skipLimit {
+		clear(pc.skip)
+	}
+	pc.skip[k] = true
 }
 
 // enqueue hands j to the worker, starting it the first time; a full queue lets k go, to be asked

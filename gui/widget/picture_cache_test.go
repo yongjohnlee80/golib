@@ -371,3 +371,19 @@ func TestScrollingAPageOfDiagramsBakesEachOnce(t *testing.T) {
 		t.Fatalf("bakes: %d after warming, %d after two more passes; want 4, then none", n, got)
 	}
 }
+
+// The pictures kept as never to be baked are bounded: past skipLimit they are forgotten.
+func TestThePicturesNeverBakedAreBounded(t *testing.T) {
+	pc := withBaker(t, &fakeBaker{}, 100)
+	for i := range skipLimit + 10 {
+		ok, _ := pc.reserve(bakeKey{pic: uint64(i + 1), scale: 1}, image.Pt(20, 20)) // 400 pixels: past the limit
+		if ok {
+			t.Fatal("a picture past the limit was reserved")
+		}
+	}
+	pc.mu.Lock()
+	defer pc.mu.Unlock()
+	if n := len(pc.skip); n > skipLimit {
+		t.Fatalf("%d pictures kept as never baked, want at most %d", n, skipLimit)
+	}
+}
