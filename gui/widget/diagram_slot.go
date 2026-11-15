@@ -85,12 +85,16 @@ func (s *diagramSlot) answer() DiagramAnswer {
 	return DiagramAnswer{State: s.state, Pic: s.picture(), Size: s.size}
 }
 
-// picture is the slot's picture as its view paints it: a Ready one from its baked image once its
-// window has drawn one (cachedPicture), one per slot so its identity holds across lays; a Pending
-// stand-in as it is. A slot's picture is set when the slot is made and never after, so the one
-// made stands; pictures are never compared (a ViewFunc is not comparable).
+// picture is the slot's picture as its view paints it: a Ready one that is gui.Still from its
+// baked image once its window has drawn one (cachedPicture), one per slot so its identity holds
+// across lays; any other picture, and a Pending stand-in, as it is. A slot's picture is set when
+// the slot is made and never after, so the one made stands; pictures are never compared (a
+// ViewFunc is not comparable).
 func (s *diagramSlot) picture() gui.View {
 	if s.pic == nil || s.state != Ready {
+		return s.pic
+	}
+	if _, still := s.pic.(gui.Still); !still {
 		return s.pic
 	}
 	if s.cached == nil {

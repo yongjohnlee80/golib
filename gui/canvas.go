@@ -54,6 +54,15 @@ type View interface {
 	Paint(c Canvas)
 }
 
+// Still is a [View] whose pixels never change once it is made: painted at one size, scale and
+// font, it draws the same every time, and what it reads is its own. A Still can be drawn once into
+// an image ([PictureBaker]) and that image painted in its place; any other View is painted every
+// time. A laid chart or diagram is one; a view of state that changes is not.
+type Still interface {
+	View
+	Still()
+}
+
 // ViewFunc wraps a standalone painting function into a [View].
 type ViewFunc func(c Canvas)
 
