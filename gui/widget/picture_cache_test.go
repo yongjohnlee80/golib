@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"strings"
 	"sync"
 	"testing"
 
@@ -385,5 +386,36 @@ func TestThePicturesNeverBakedAreBounded(t *testing.T) {
 	defer pc.mu.Unlock()
 	if n := len(pc.skip); n > skipLimit {
 		t.Fatalf("%d pictures kept as never baked, want at most %d", n, skipLimit)
+	}
+}
+
+// BenchmarkRecordingAReportChart is what the loop pays once per picture and key: recording a
+// report-sized chart (a 500-point line over 900 dp) for its bake.
+func BenchmarkRecordingAReportChart(b *testing.B) {
+	var vals []string
+	for i := range 500 {
+		vals = append(vals, fmt.Sprintf(`{"d":%d,"v":%d}`, i, (i*37)%101))
+	}
+	req := DiagramRequest{Lang: "vega-lite", Width: 900, Scale: 1,
+		Theme: Theme{Background: rgb(0xe6d9b9), Text: rgb(0x5b4636), Accent: rgb(0x8a5a2b), Muted: rgb(0x8c7656)},
+		Src: `{"data":{"values":[` + strings.Join(vals, ",") + `]},"mark":"line",` +
+			`"encoding":{"x":{"field":"d","type":"quantitative"},"y":{"field":"v","type":"quantitative"}}}`}
+	d := Diagrams(nil)
+	ready := make(chan struct{}, 1)
+	a := d.Diagram(context.Background(), req, func() { ready <- struct{}{} })
+	if a.State == Pending {
+		<-ready
+		a = d.Diagram(context.Background(), req, func() {})
+	}
+	if a.State != Ready {
+		b.Fatalf("the chart is %v", a.State)
+	}
+	pb := gui.NewBackend().NewPictureBaker()
+	defer pb.Release()
+	b.ReportAllocs()
+	for b.Loop() {
+		if _, err := pb.Record(a.Pic, a.Size, 1); err != nil {
+			b.Fatal(err)
+		}
 	}
 }

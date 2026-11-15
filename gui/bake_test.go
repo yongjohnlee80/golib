@@ -2,8 +2,10 @@ package gui
 
 import (
 	"errors"
+	"fmt"
 	"image"
 	"image/color"
+	"strings"
 	"testing"
 	"time"
 )
@@ -199,5 +201,69 @@ func TestARecordingIsDrawnByDrawAndReleaseIsTold(t *testing.T) {
 	}
 	if _, err := pb.Draw(rec); !errors.Is(err, ErrBakerClosed) {
 		t.Fatalf("Draw after Release: %v", err)
+	}
+}
+
+// The loop records picture after picture, each with its own text, while the worker draws the
+// earlier ones: a recording is the worker's alone once handed over, and the two sides share
+// nothing it holds (run under -race: the shaper's caches, the recording's ops). The last picture
+// drawn has its text.
+func TestRecordingWhileDrawingSharesNothing(t *testing.T) {
+	pb := NewBackend().NewPictureBaker()
+	defer pb.Release()
+	recs := make(chan *Recording, 8)
+	type result struct {
+		b   Baked
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		var last result
+		for r := range recs {
+			b, err := pb.Draw(r)
+			if err != nil {
+				done <- result{err: err}
+				for range recs {
+				}
+				return
+			}
+			last = result{b: b}
+		}
+		done <- last
+	}()
+	ink := Solid(color.NRGBA{A: 0xff})
+	for i := range 300 {
+		label := fmt.Sprintf("Sales %d, quarter %d, %s", i, i%4, strings.Repeat("x", i%17))
+		v := ViewFunc(func(c Canvas) {
+			c.FillRect(Rect{W: 160, H: 24}, Solid(color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff}))
+			c.DrawText(c.Text().Layout(label, Font{Size: 12 + float32(i%5)}, 0), Pt(2, 2), ink)
+		})
+		r, err := pb.Record(v, Size{W: 160, H: 24}, 1+float32(i%3)*0.5)
+		if errors.Is(err, ErrNoGPU) {
+			close(recs)
+			t.Skipf("no headless GPU here: %v", err)
+		}
+		if err != nil {
+			close(recs)
+			t.Fatal(err)
+		}
+		recs <- r
+	}
+	close(recs)
+	last := <-done
+	if errors.Is(last.err, ErrNoGPU) {
+		t.Skipf("no headless GPU here: %v", last.err)
+	}
+	if last.err != nil {
+		t.Fatal(last.err)
+	}
+	dark := 0
+	for i := 0; i+3 < len(last.b.RGBA.Pix); i += 4 {
+		if last.b.RGBA.Pix[i] < 0x80 {
+			dark++
+		}
+	}
+	if dark < 20 {
+		t.Fatalf("the last picture drawn has %d dark pixels: its text is not there", dark)
 	}
 }
