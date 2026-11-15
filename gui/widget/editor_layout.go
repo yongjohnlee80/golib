@@ -307,6 +307,9 @@ func (l *pixelLayout) blockOf(line int) int {
 
 // monoFont returns the theme's monospace font or defaults to the cell family.
 func (l *pixelLayout) monoFont() gui.Font {
+	if l.e.cellPitch && l.cell.H > 0 { // the cells' own font at their size, however small: a line is one cell
+		return gui.Font{Family: gui.CellFamily, Size: l.cell.H / gui.LineHeight}
+	}
 	if l.th.Mono.Size > 0 && !l.e.cellPitch {
 		return l.th.Mono
 	}
