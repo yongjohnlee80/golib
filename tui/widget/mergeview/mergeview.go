@@ -639,24 +639,29 @@ func (v *MergeView) refresh() {
 // errNotText reports whether err is the source's "not text".
 func errNotText(err error) bool { return errors.Is(err, merge.ErrNotText) }
 
-// header is a pane's header text: its origin's kind, title and short revision.
+// header is a pane's header text: its origin's title, then its kind after a separator ("On disk ·
+// File"), or the kind alone when it has no title, and its short revision. The result's names where
+// it goes once: "Result → Your unsaved edits".
 func (v *MergeView) header(pane int) string {
 	if v.model == nil {
 		return ""
 	}
 	in := v.model.Input()
 	o := [3]merge.Origin{in.LeftFrom, in.ResultTo, in.RightFrom}[pane]
-	parts := []string{v.Translate(tui.Msg("tui.mergeview.kind." + o.Kind.String()))}
-	if pane == resultPane {
-		parts = []string{v.Translate(tui.Msg("tui.mergeview.result")), "→", parts[0]}
+	kind, title := v.Translate(tui.Msg("tui.mergeview.kind."+o.Kind.String())), o.Title()
+	text := kind
+	switch {
+	case pane == resultPane && title != "":
+		text = v.Translate(tui.Msg("tui.mergeview.result")) + " → " + title
+	case pane == resultPane:
+		text = v.Translate(tui.Msg("tui.mergeview.result")) + " → " + kind
+	case title != "":
+		text = title + " · " + kind
 	}
-	if t := o.Title(); t != "" {
-		parts = append(parts, t)
+	if r := o.ShortRevision(); r != "" && r != title {
+		text += " @" + r
 	}
-	if r := o.ShortRevision(); r != "" && r != o.Title() {
-		parts = append(parts, "@"+r)
-	}
-	return strings.Join(parts, " ")
+	return text
 }
 
 // detail is a pane's details row: its origin's full location and revision.

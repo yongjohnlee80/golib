@@ -56,7 +56,7 @@ func TestADeclaredMergeViewTakesItsSourceFromItsHost(t *testing.T) {
 		tuidecl.Singleton("demo", "1.0", "App"),
 		tuidecl.Handlers(map[string]decl.HandlerFunc{"App.log": rec.handler}))
 	s.WaitForText(t, "left side")
-	s.WaitForText(t, "File On disk")
+	s.WaitForText(t, "On disk · File")
 	// The conflict's line in the left pane wears palette.diffConflict.
 	var x, y int
 	for row, line := range strings.Split(s.String(), "\n") {

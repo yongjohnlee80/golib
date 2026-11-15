@@ -255,14 +255,14 @@ func TestEachPaneIsHeadedByItsOrigin(t *testing.T) {
 	in.LeftFrom, in.RightFrom = commit, remote
 	in.ResultTo = buffer
 	r := start(t, &source{in: in}, mergeview.Options{}, 150, 14)
-	s := r.shows("the panes and their headers", "Git notes.md @a1b2c3d", "Remote gs://bucket/notes.md @1699999999123456",
-		"Result → Buffer Your unsaved edits @7", "BETA", "DELTA", "alpha")
+	s := r.shows("the panes and their headers", "notes.md · Git @a1b2c3d", "gs://bucket/notes.md · Remote @1699999999123456",
+		"Result → Your unsaved edits @7", "BETA", "DELTA", "alpha")
 	if !strings.Contains(s, "changes unresolved") {
 		t.Fatalf("no counts in the bar:\n%s", s)
 	}
 	in.LeftFrom, in.RightFrom, in.ResultTo = disk, buffer, buffer
 	r = start(t, &source{in: in}, mergeview.Options{}, 150, 14)
-	r.shows("a file's header", "File On disk @2026-11-13T10:00:00Z", "Buffer Your unsaved edits @7")
+	r.shows("a file's header", "On disk · File @2026-11-13T10:00:00Z", "Your unsaved edits · Buffer @7")
 	r.keys(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyF2})
 	r.shows("the details row", "/work/notes.md 2026-11-13T10:00:00Z", "notes.md 7")
 }
