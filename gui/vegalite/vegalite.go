@@ -67,6 +67,9 @@ type Laid struct {
 // Size is the chart as Paint draws it.
 func (l *Laid) Size() gui.Size { return gui.Size(l.chart.Size()) }
 
+// Still marks the chart as gui.Still: laid, it draws the same every time.
+func (*Laid) Still() {}
+
 // SVG is the chart as a standalone <svg> element, written without a canvas (chart/vegalite's).
 func (l *Laid) SVG() []byte { return l.chart.SVG() }
 

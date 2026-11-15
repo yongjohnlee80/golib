@@ -419,3 +419,24 @@ func BenchmarkRecordingAReportChart(b *testing.B) {
 		}
 	}
 }
+
+// stillPic is a gui.Still picture.
+type stillPic struct{ gui.View }
+
+func (stillPic) Still() {}
+
+// Only a Still picture is drawn from an image: any other is painted every time, as it is, since
+// what it draws may change while its slot stands.
+func TestOnlyAStillPictureIsDrawnFromAnImage(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		pic    gui.View
+		cached bool
+	}{{"a ViewFunc", vectorPic, false}, {"a Still", stillPic{vectorPic}, true}} {
+		s := &diagramSlot{state: Ready, pic: tc.pic, size: gui.Size{W: 40, H: 20}}
+		_, cached := s.answer().Pic.(*cachedPicture)
+		if cached != tc.cached {
+			t.Errorf("%s: drawn from an image: %v, want %v", tc.name, cached, tc.cached)
+		}
+	}
+}

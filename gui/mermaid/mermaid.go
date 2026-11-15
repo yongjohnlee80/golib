@@ -186,6 +186,9 @@ type laidBand struct {
 // Size is the diagram as Paint draws it.
 func (l *Laid) Size() gui.Size { return l.size }
 
+// Still marks the diagram as gui.Still: laid, it draws the same every time.
+func (*Laid) Still() {}
+
 // NodeAt is the id of the node whose box holds p, in Paint's coordinates (the fit applied), and
 // true; false over no node, or over a node its layer kept no id for. Where boxes overlap, the one
 // drawn last (on top) answers.
