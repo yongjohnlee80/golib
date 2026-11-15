@@ -5,6 +5,7 @@ import (
 	"image"
 	"math"
 	"sync"
+	"time"
 
 	"github.com/yongjohnlee80/gio/f32"
 	"github.com/yongjohnlee80/gio/font/gofont"
@@ -24,28 +25,38 @@ import (
 // Bake runs on the calling goroutine, one at a time; call it off the window's and tui's loops (it
 // draws and reads back on the GPU). A machine with no headless GPU answers ErrNoGPU, once and for
 // every Bake after: the caller draws the view as it would have. On Windows gio has no headless GPU.
+//
+// The baker keeps one headless window, as large as the largest bake yet, and lets it go (its GPU
+// context, framebuffer and read-back buffer) after BakeIdle with no bake: a page's pictures are
+// drawn when it is first shown, and the window would otherwise hold its memory for as long as the
+// program runs.
 type PictureBaker struct {
 	b *Backend
 
 	mu      sync.Mutex
 	r       *renderer // the window's fonts, rebuilt on a font change
 	fontGen uint64
-	wins    []*bakeWindow // reused headless windows, the most recently used first
-	err     error         // the headless GPU's failure: every Bake answers it
+	win     *bakeWindow // the headless window; nil before the first bake and after an idle spell
+	made    bool        // a headless window was made: a later failure is not "no GPU"
+	idle    time.Duration
+	bakes   uint64 // bakes so far: the idle timer lets the window go if none came since
+	timer   *time.Timer
+	err     error // the headless GPU's failure: every Bake answers it
 	closed  bool
 }
 
-// bakeWindow is a headless window a bake draws in, of a whole number of bakeBucket pixels a side:
-// a bake of any size it holds draws in it, and reads back only its own pixels.
+// bakeWindow is the headless window a bake draws in, of a whole number of bakeBucket pixels a
+// side, and the buffer its pixels are read back into.
 type bakeWindow struct {
-	hw   *headless.Window
-	w, h int
+	hw    *headless.Window
+	w, h  int
+	whole *image.RGBA
 }
 
-const (
-	bakeBucket  = 256 // a headless window's sides are whole multiples of it
-	bakeWindows = 3   // headless windows kept: EGL refuses some of many made in a row
-)
+const bakeBucket = 256 // a headless window's sides are whole multiples of it
+
+// BakeIdle is how long a baker keeps its headless window with no bake.
+const BakeIdle = 30 * time.Second
 
 // Baked is a view drawn into an image: Image is Pixels device pixels (RGBA, the same pixels),
 // drawn at Scale (device pixels per dp) in the window's fonts of generation FontGen (Fonts.Gen).
@@ -61,7 +72,7 @@ type Baked struct {
 var ErrBakerClosed = errors.New("gui: the picture baker is released")
 
 // NewPictureBaker is a baker for this window's pictures.
-func (b *Backend) NewPictureBaker() *PictureBaker { return &PictureBaker{b: b} }
+func (b *Backend) NewPictureBaker() *PictureBaker { return &PictureBaker{b: b, idle: BakeIdle} }
 
 // BakedPixels is the device-pixel size a bake of size dp at scale is: each side rounded up.
 func BakedPixels(size Size, scale float32) image.Point {
@@ -95,6 +106,7 @@ func (pb *PictureBaker) Bake(v View, size Size, scale float32) (Baked, error) {
 	if err != nil {
 		return Baked{}, err
 	}
+	defer pb.armIdle()
 	m := metrics{scale: scale}
 	mm := measure(fs.fm, fs.size, 0, image.Point{}, unit.Metric{PxPerDp: scale, PxPerSp: scale})
 	m.ppem, m.cell, m.baseline = mm.ppem, mm.cell, mm.baseline
@@ -106,7 +118,7 @@ func (pb *PictureBaker) Bake(v View, size Size, scale float32) (Baked, error) {
 	}
 	// the whole window read back, then its corner kept: a read of the picture's size alone is the
 	// window's at its GPU's origin, not where the view drew
-	whole := image.NewRGBA(image.Rect(0, 0, win.w, win.h))
+	whole := win.whole
 	if err := win.hw.Screenshot(whole); err != nil {
 		return Baked{}, errs.Wrap(err, "gui: Bake: reading back")
 	}
@@ -117,36 +129,46 @@ func (pb *PictureBaker) Bake(v View, size Size, scale float32) (Baked, error) {
 	return Baked{Image: NewImage(img), RGBA: img, Pixels: px, Scale: scale, FontGen: fs.gen}, nil
 }
 
-// window is a headless window that holds px: the smallest kept one, else a new one of whole
-// buckets, the least recently used released past bakeWindows. A first failure is ErrNoGPU's.
+// window is the headless window, made to hold px when it does not: as large as the largest bake
+// yet, so a page's pictures share one. A first failure is ErrNoGPU's.
 func (pb *PictureBaker) window(px image.Point) (*bakeWindow, error) {
-	best := -1
-	for i, w := range pb.wins {
-		if w.w >= px.X && w.h >= px.Y && (best < 0 || w.w*w.h < pb.wins[best].w*pb.wins[best].h) {
-			best = i
-		}
-	}
-	if best >= 0 {
-		w := pb.wins[best]
-		pb.wins = append([]*bakeWindow{w}, append(pb.wins[:best:best], pb.wins[best+1:]...)...)
+	if w := pb.win; w != nil && w.w >= px.X && w.h >= px.Y {
 		return w, nil
 	}
 	bw, bh := bucketed(px.X), bucketed(px.Y)
+	if w := pb.win; w != nil {
+		bw, bh = max(bw, w.w), max(bh, w.h)
+		w.hw.Release()
+		pb.win = nil
+	}
 	hw, err := headless.NewWindow(bw, bh)
 	if err != nil {
-		if len(pb.wins) == 0 {
+		if !pb.made {
 			pb.err = errs.WrapCause(ErrNoGPU, err, "gui: Bake")
 			return nil, pb.err
 		}
 		return nil, errs.Wrap(err, "gui: Bake: a headless window")
 	}
-	w := &bakeWindow{hw: hw, w: bw, h: bh}
-	pb.wins = append([]*bakeWindow{w}, pb.wins...)
-	for len(pb.wins) > bakeWindows {
-		pb.wins[len(pb.wins)-1].hw.Release()
-		pb.wins = pb.wins[:len(pb.wins)-1]
+	pb.made = true
+	pb.win = &bakeWindow{hw: hw, w: bw, h: bh, whole: image.NewRGBA(image.Rect(0, 0, bw, bh))}
+	return pb.win, nil
+}
+
+// armIdle lets the window go after pb.idle with no bake. Under pb.mu.
+func (pb *PictureBaker) armIdle() {
+	pb.bakes++
+	n := pb.bakes
+	if pb.timer != nil {
+		pb.timer.Stop()
 	}
-	return w, nil
+	pb.timer = time.AfterFunc(pb.idle, func() {
+		pb.mu.Lock()
+		defer pb.mu.Unlock()
+		if pb.bakes == n && pb.win != nil {
+			pb.win.hw.Release()
+			pb.win = nil
+		}
+	})
 }
 
 // bucketed is n rounded up to whole bakeBuckets.
@@ -156,10 +178,13 @@ func bucketed(n int) int { return (n + bakeBucket - 1) / bakeBucket * bakeBucket
 func (pb *PictureBaker) Release() {
 	pb.mu.Lock()
 	defer pb.mu.Unlock()
-	for _, w := range pb.wins {
-		w.hw.Release()
+	if pb.timer != nil {
+		pb.timer.Stop()
 	}
-	pb.wins, pb.closed = nil, true
+	if pb.win != nil {
+		pb.win.hw.Release()
+	}
+	pb.win, pb.closed = nil, true
 }
 
 // BakerOf is the PictureBaker of the window c paints in; nil for a canvas of no window's (a

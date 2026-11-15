@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"testing"
+	"time"
 )
 
 // bakeOrSkip is pb's bake, the test skipped where there is no headless GPU.
@@ -110,5 +111,50 @@ func TestABakeOffAWindowAndAfterRelease(t *testing.T) {
 	pb.Release()
 	if _, err := pb.Bake(ViewFunc(func(Canvas) {}), Size{W: 4, H: 4}, 1); !errors.Is(err, ErrBakerClosed) {
 		t.Fatalf("a bake after Release: %v", err)
+	}
+}
+
+// A baker keeps one headless window, grown to the largest bake, and lets it go after an idle
+// spell; the next bake makes it again.
+func TestABakersWindowGrowsAndGoesWhenIdle(t *testing.T) {
+	pb := NewBackend().NewPictureBaker()
+	defer pb.Release()
+	pb.idle = 150 * time.Millisecond
+	v := ViewFunc(func(c Canvas) { c.FillRect(Rect{W: 4, H: 4}, Solid(color.NRGBA{R: 0xc0, A: 0xff})) })
+	side := func() (w, h int, ok bool) {
+		pb.mu.Lock()
+		defer pb.mu.Unlock()
+		if pb.win == nil {
+			return 0, 0, false
+		}
+		return pb.win.w, pb.win.h, true
+	}
+	bakeOrSkip(t, pb, v, Size{W: 20, H: 10}, 1)
+	if w, h, ok := side(); !ok || w != 256 || h != 256 {
+		t.Fatalf("after a 20 x 10 bake the window is %dx%d (%v), want 256 x 256", w, h, ok)
+	}
+	bakeOrSkip(t, pb, v, Size{W: 300, H: 10}, 1)
+	if w, h, ok := side(); !ok || w != 512 || h != 256 {
+		t.Fatalf("after a 300 x 10 bake the window is %dx%d (%v), want 512 x 256: one window, grown", w, h, ok)
+	}
+	bakeOrSkip(t, pb, v, Size{W: 20, H: 10}, 1)
+	if w, _, _ := side(); w != 512 {
+		t.Fatalf("a smaller bake made the window %d wide, want the 512 it is", w)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if _, _, ok := side(); !ok {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the window stayed after an idle spell")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if b := bakeOrSkip(t, pb, v, Size{W: 20, H: 10}, 1); b.Pixels != image.Pt(20, 10) {
+		t.Fatalf("a bake after the idle spell: %v pixels", b.Pixels)
+	}
+	if _, _, ok := side(); !ok {
+		t.Fatal("no window after a bake that followed the idle spell")
 	}
 }
