@@ -5,13 +5,15 @@ import (
 	"strings"
 
 	"github.com/yongjohnlee80/golib/dao"
+	"github.com/yongjohnlee80/golib/errs"
 )
 
 // PostgreSQL's full-text search keeps the document's tsvector as a column of
 // the content table (FullTextIndex.Name on FullTextIndex.Table), so nothing is
 // joined. It matches with @@ and ranks with ts_rank_cd, both against the query
 // bound again at its placeholder; that second binding is why PostgreSQL does
-// not implement dao.FullTexter, whose rank and snippet take none.
+// not implement dao.FullTexter, whose rank and snippet take none. Its snippet
+// is ts_headline over the content column, against the query bound again too.
 //
 // The configuration renders as a quoted regconfig literal. It has already
 // passed FullTextIndex.Validate, so it is an identifier, but it still goes
@@ -40,6 +42,36 @@ func (d PostgresDialect) FullTextQueryRank(ix dao.FullTextIndex, weights []float
 	b.WriteString(placeholder)
 	b.WriteString("))")
 	return b.String()
+}
+
+// FullTextQuerySnippet implements dao.FullTextQuerySnippeter: ts_headline of
+// the content column, one fragment of at most m.Tokens words (and at least
+// half that), the matches between m.Open and m.Close. ts_headline separates
+// fragments with a delimiter and marks no cut at the ends, so m.Ellipsis is
+// not drawn. The marks go inside ts_headline's options as double-quoted
+// values, which have no escape: a mark holding a double quote, a newline or
+// a NUL is refused, as is a length outside 2 to 64 (MinWords must stay below
+// MaxWords).
+func (d PostgresDialect) FullTextQuerySnippet(ix dao.FullTextIndex, column int, m dao.SnippetMarks, placeholder string) (string, error) {
+	if column < 0 || column >= len(ix.Columns) {
+		return "", errs.Wrap(errs.ErrInvalidArgument, "postgres: snippet column %d of %d", column, len(ix.Columns))
+	}
+	if m.Tokens < 2 || m.Tokens > 64 {
+		return "", errs.Wrap(errs.ErrInvalidArgument, "postgres: a snippet is 2 to 64 words, not %d", m.Tokens)
+	}
+	for _, s := range []string{m.Open, m.Close} {
+		if s == "" || strings.ContainsAny(s, "\"\n\r\x00") {
+			return "", errs.Wrap(errs.ErrInvalidArgument, "postgres: a snippet mark is not empty and has no double quote, line break or NUL: %q", s)
+		}
+	}
+	opts := "StartSel=\"" + m.Open + "\", StopSel=\"" + m.Close + "\", MaxWords=" + strconv.Itoa(m.Tokens) +
+		", MinWords=" + strconv.Itoa(max(1, m.Tokens/2)) + ", MaxFragments=1"
+	lit, err := d.QuoteString(opts)
+	if err != nil {
+		return "", err
+	}
+	return "ts_headline(" + d.regconfig(ix) + ", " + d.QuoteTable(ix.Table) + "." + d.QuoteIdent(ix.Columns[column]) +
+		", to_tsquery(" + d.regconfig(ix) + ", " + placeholder + "), " + lit + ")", nil
 }
 
 // tsvector is the index's column on its content table.
@@ -90,6 +122,7 @@ func classWeights(classes []byte, weights []float64) string {
 }
 
 var (
-	_ dao.FullTextMatcher     = PostgresDialect{}
-	_ dao.FullTextQueryRanker = PostgresDialect{}
+	_ dao.FullTextMatcher        = PostgresDialect{}
+	_ dao.FullTextQueryRanker    = PostgresDialect{}
+	_ dao.FullTextQuerySnippeter = PostgresDialect{}
 )

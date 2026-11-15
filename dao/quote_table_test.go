@@ -65,7 +65,7 @@ func TestQuoteTable_OptInSplitsQualifiedNames(t *testing.T) {
 func TestBuilder_QualifiedTablePositions(t *testing.T) {
 	t.Parallel()
 
-	sel := (&builder{dialect: tqDialect{}}).buildSelect("app.users", []string{"users.id"}, nil, nil, nil, nil, nil)
+	sel := (&builder{dialect: tqDialect{}}).buildSelect("app.users", []selectCol{{sql: "users.id"}}, nil, nil, nil, nil, nil)
 	if want := `SELECT users.id FROM "app"."users"`; sel != want {
 		t.Errorf("select = %q, want %q", sel, want)
 	}
@@ -95,7 +95,7 @@ func TestBuilder_QualifiedTablePositions(t *testing.T) {
 	}
 
 	// A non-implementing dialect keeps the historical single-identifier form.
-	old := (&builder{dialect: GenericDialect{}}).buildSelect("app.users", []string{"users.id"}, nil, nil, nil, nil, nil)
+	old := (&builder{dialect: GenericDialect{}}).buildSelect("app.users", []selectCol{{sql: "users.id"}}, nil, nil, nil, nil, nil)
 	if want := `SELECT users.id FROM "app.users"`; old != want {
 		t.Errorf("fallback select = %q, want %q", old, want)
 	}

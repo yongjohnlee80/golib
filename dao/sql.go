@@ -65,8 +65,9 @@ func (b *builder) fromAndJoins(table string, joins []joinClause) {
 
 // buildSelect renders SELECT <cols> FROM <table> <joins> [WHERE] [ORDER BY]
 // [LIMIT] [OFFSET]. cols are already-resolved SQL expressions (Field.Column),
-// emitted verbatim; the table is quoted.
-func (b *builder) buildSelect(table string, cols []string, joins []joinClause,
+// emitted verbatim, or a bound field's renderer, whose values bind first, as
+// the statement reads; the table is quoted.
+func (b *builder) buildSelect(table string, cols []selectCol, joins []joinClause,
 	where []Predicate, order []orderClause, limit, offset *uint64) string {
 	b.sb.WriteString("SELECT ")
 	if b.distinct {
@@ -74,8 +75,16 @@ func (b *builder) buildSelect(table string, cols []string, joins []joinClause,
 	}
 	if len(cols) == 0 {
 		b.sb.WriteByte('*')
-	} else {
-		b.sb.WriteString(strings.Join(cols, ", "))
+	}
+	for i, c := range cols {
+		if i > 0 {
+			b.sb.WriteString(", ")
+		}
+		if c.bound != nil {
+			b.sb.WriteString(c.bound(b.ph))
+		} else {
+			b.sb.WriteString(c.sql)
+		}
 	}
 	b.fromAndJoins(table, joins)
 	b.where(where)

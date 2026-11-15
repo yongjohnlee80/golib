@@ -81,9 +81,35 @@ func CountDistinct[R any, C ~string, ID any](d DAO[R, C, ID], field C) (uint64, 
 	return c.CountDistinct(field)
 }
 
+// FieldBinder is an optional DAO capability: the values a Param field (a
+// [Field] whose SQL binds values, such as a [SnippetQuery]) binds when a query
+// selects it.
+type FieldBinder[R any, C ~string, ID any] interface {
+	Bind(field C, args ...any) DAO[R, C, ID]
+}
+
+// Bind gives field, a Param field, its values for d's query, as [AscBy] gives
+// a bound sort key its own:
+//
+//	d := chunks.DAO().WithPredicate(dao.Match(ChunkFTS, q))
+//	rows, err := dao.Bind(d, ChunkSnippet, q).Select(ChunkPath, ChunkSnippet)
+//
+// Selecting the field without them, or with another count, is an error naming
+// it, and so is binding a field that is not a Param field. A d that does not
+// implement [FieldBinder] is returned as it is: it has no Param fields to
+// select.
+func Bind[R any, C ~string, ID any](d DAO[R, C, ID], field C, args ...any) DAO[R, C, ID] {
+	b, ok := d.(FieldBinder[R, C, ID])
+	if !ok {
+		return d
+	}
+	return b.Bind(field, args...)
+}
+
 // The query DAO has every one of them.
 var (
 	_ SelectiveUpserter[string]     = (*queryDAO[any, string, string, int])(nil)
 	_ DistinctSelector[any, string] = (*queryDAO[any, string, string, int])(nil)
 	_ DistinctCounter[string]       = (*queryDAO[any, string, string, int])(nil)
+	_ FieldBinder[any, string, int] = (*queryDAO[any, string, string, int])(nil)
 )
