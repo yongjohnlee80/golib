@@ -24,6 +24,10 @@ type diagramSlot struct {
 	refresh bool // ready was called: ask the Diagrammer again on the next lay
 	pic     gui.View
 	size    gui.Size
+	// wake marks the view showing the slot's picture to paint again (its image is drawn); cached
+	// is the Ready picture as the view paints it, from its image (picture_cache.go)
+	wake   func()
+	cached *cachedPicture
 }
 
 // diagramKey is a request's identity: everything the picture depends on. A theme change is a
@@ -78,7 +82,21 @@ func (s *diagramSlot) answer() DiagramAnswer {
 	if s.state == Declined {
 		return DiagramAnswer{State: Declined}
 	}
-	return DiagramAnswer{State: s.state, Pic: s.pic, Size: s.size}
+	return DiagramAnswer{State: s.state, Pic: s.picture(), Size: s.size}
+}
+
+// picture is the slot's picture as its view paints it: a Ready one from its baked image once its
+// window has drawn one (cachedPicture), one per slot so its identity holds across lays; a Pending
+// stand-in as it is. A slot's picture is set when the slot is made and never after, so the one
+// made stands; pictures are never compared (a ViewFunc is not comparable).
+func (s *diagramSlot) picture() gui.View {
+	if s.pic == nil || s.state != Ready {
+		return s.pic
+	}
+	if s.cached == nil {
+		s.cached = &cachedPicture{pic: s.pic, key: s.key, size: s.size, wake: s.wake}
+	}
+	return s.cached
 }
 
 // readyTask is a request's ready: called at most once, from any goroutine, it wakes a task on tc
