@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"github.com/yongjohnlee80/golib/vfs/local"
 )
@@ -18,6 +19,14 @@ func TestDirFSIsAnFS(t *testing.T) {
 			t.Fatal(err)
 		}
 		if err := os.WriteFile(p, []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// the folders' times fixed once their files are in: NTFS updates a folder's time in its
+	// parent's listing lazily, so a listing and a stat can differ by a fraction of a millisecond
+	at := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	for _, d := range []string{"themes", "ui"} {
+		if err := os.Chtimes(filepath.Join(dir, d), at, at); err != nil {
 			t.Fatal(err)
 		}
 	}

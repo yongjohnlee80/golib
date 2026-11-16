@@ -10,7 +10,7 @@ import (
 )
 
 // openShared opens path to read, sharing it for delete as well as read and write, so a save that
-// renames over it, or deletes it, while it is open succeeds. Go's os.Open does not share delete.
+// deletes it while it is open succeeds. Go's os.Open does not share delete.
 func openShared(path string) (*os.File, error) {
 	p, err := windows.UTF16PtrFromString(path)
 	if err != nil {

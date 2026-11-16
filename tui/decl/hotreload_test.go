@@ -1,6 +1,8 @@
 package decl_test
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -60,7 +62,15 @@ func (d *hotDir) write(file, src string) {
 	if err := os.WriteFile(tmp, []byte(src), 0o644); err != nil {
 		d.t.Fatal(err)
 	}
-	if err := os.Rename(tmp, path); err != nil {
+	// Windows' rename replaces no file another process holds open, and the poller reads each file
+	// it follows (a momentary hold, as an indexer's or an antivirus's): a writer that renames
+	// retries, as an editor's safe-write does. No reader's sharing makes the rename land (vfs/local
+	// DirFS's doc).
+	err := os.Rename(tmp, path)
+	for deadline := time.Now().Add(2 * time.Second); errors.Is(err, fs.ErrPermission) && time.Now().Before(deadline); err = os.Rename(tmp, path) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if err != nil {
 		d.t.Fatal(err)
 	}
 }

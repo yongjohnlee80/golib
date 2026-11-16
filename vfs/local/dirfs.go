@@ -7,10 +7,11 @@ import (
 	"path/filepath"
 )
 
-// DirFS is os.DirFS(dir) whose files are opened so that another program may rename over them or
-// delete them while they are open (openShared). A program that follows files a user edits, as a
-// hot reload's poller does, must not make the user's editor fail its save: on Windows a file Go's
-// os.Open holds can be neither replaced nor deleted.
+// DirFS is os.DirFS(dir) whose files are opened so that another program may delete them while
+// they are open (openShared). A program that follows files a user edits, as a hot reload's poller
+// does, must not make the user's editor fail its save: on Windows a file Go's os.Open holds can't
+// be deleted. Windows' rename still replaces no file another program holds, however it is shared:
+// a save that renames over a file can only retry.
 func DirFS(dir string) fs.FS { return dirFS{dir: dir, sys: os.DirFS(dir)} }
 
 type dirFS struct {
