@@ -54,7 +54,7 @@ func askAfter(old *diagramSlot, d Diagrammer, req DiagramRequest, gen uint64, re
 	key := keyOf(req)
 	s := &diagramSlot{key: key, gen: gen, state: Pending}
 	if old != nil {
-		old.cancel()
+		old.drop()
 		if old.key.lang == key.lang {
 			s.pic, s.size = old.pic, old.size
 		}
@@ -75,6 +75,14 @@ func askAfter(old *diagramSlot, d Diagrammer, req DiagramRequest, gen uint64, re
 		}
 	}
 	return s
+}
+
+// drop withdraws the slot's request and lets its picture's images go: no view shows the slot now.
+func (s *diagramSlot) drop() {
+	s.cancel()
+	if s.cached != nil {
+		s.cached.pc.forget(s.cached.id)
+	}
 }
 
 // answer is the slot's diagram answer.

@@ -209,7 +209,7 @@ func (m *htmlDiagrams) done(r tui.TaskResult) bool {
 // reset withdraws every request: a new page.
 func (m *htmlDiagrams) reset() {
 	for _, s := range m.slots {
-		s.cancel()
+		s.drop()
 	}
 	m.slots = map[pageDiagram]*diagramSlot{}
 }
