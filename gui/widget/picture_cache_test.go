@@ -288,8 +288,37 @@ func rgb(v uint32) color.NRGBA {
 	return color.NRGBA{R: uint8(v >> 16), G: uint8(v >> 8), B: uint8(v), A: 0xff}
 }
 
+// drawnAlike is whether two drawings of one picture match as a rasteriser's antialiasing lets them:
+// no channel more than 8 levels apart, and at most one channel in 2,000 more than 2 apart.
+//
+// What the bounds sit between, measured on the cell's pictures:
+//   - Linux (EGL) and macOS (Metal): no channel more than 2 apart.
+//   - Windows (Direct3D 11): mermaid at scale 2 has at most 14 channels more than 2 apart, of
+//     109,072 (one in 7,790), and none more than 4. They sit inside opaque glyph pixels, the sign
+//     flipping between neighbours: coverage, not geometry.
+//   - Moved by one device pixel across or down, on each platform: at least 3,041 channels more than
+//     2 apart, of 27,336 (one in 9), and the worst at least 101 apart.
+func drawnAlike(a, b *image.RGBA, dx, dy int) (alike bool, off, worst int) {
+	w, h := a.Rect.Dx(), a.Rect.Dy()
+	for y := range h {
+		for x := range w {
+			bx, by := min(max(x-dx, 0), w-1), min(max(y-dy, 0), h-1)
+			for ch := range 4 {
+				d := int(a.Pix[y*a.Stride+4*x+ch]) - int(b.Pix[by*b.Stride+4*bx+ch])
+				d = max(d, -d)
+				worst = max(worst, d)
+				if d > 2 {
+					off++
+				}
+			}
+		}
+	}
+	return worst <= 8 && off*2000 <= 4*w*h, off, worst
+}
+
 // A chart and a diagram drawn from their images are drawn as their paths draw them, on their page,
-// in sepia, dark and light, at scales 1, 1.5 and 2: every channel of every pixel within two levels.
+// in sepia, dark and light, at scales 1, 1.5 and 2: alike as one rasteriser's antialiasing lets two
+// drawings be (drawnAlike), where the paths moved by one device pixel are not.
 func TestACachedChartIsDrawnAsItsPathsDrawIt(t *testing.T) {
 	pb := gui.NewBackend().NewPictureBaker()
 	defer pb.Release()
@@ -342,17 +371,13 @@ func TestACachedChartIsDrawnAsItsPathsDrawIt(t *testing.T) {
 				if drawn < 100 {
 					t.Fatalf("%s: %d pixels of the cached drawing are not its page: the chart was not drawn", what, drawn)
 				}
-				off, worst := 0, 0
-				for i := range vector.RGBA.Pix {
-					d := int(vector.RGBA.Pix[i]) - int(cached.RGBA.Pix[i])
-					d = max(d, -d)
-					worst = max(worst, d)
-					if d > 2 {
-						off++
-					}
+				if alike, off, worst := drawnAlike(vector.RGBA, cached.RGBA, 0, 0); !alike {
+					t.Errorf("%s: %d channels differ by more than 2 levels, at most %d: not drawn as its paths draw it", what, off, worst)
 				}
-				if off > 0 {
-					t.Errorf("%s: %d channels differ by more than 2 levels (at most %d)", what, off, worst)
+				for _, by := range []image.Point{{X: 1}, {Y: 1}} { // the measure tells a pixel's offset
+					if alike, off, worst := drawnAlike(vector.RGBA, vector.RGBA, by.X, by.Y); alike {
+						t.Errorf("%s: its paths moved by %v device pixels count as alike (%d channels off, at most %d)", what, by, off, worst)
+					}
 				}
 			}
 		}

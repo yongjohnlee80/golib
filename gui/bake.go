@@ -27,8 +27,8 @@ import (
 // view into a recording on the calling goroutine, the view's loop, and does no GPU work; Draw puts
 // the recording on the GPU and reads it back, off the loops. Bake is the two at once, for a caller
 // that owns its view on its own goroutine. A machine with no headless GPU answers ErrNoGPU, once
-// and for every call after: the caller draws the view as it would have. On Windows gio has no
-// headless GPU.
+// and for every call after: the caller draws the view as it would have. The headless GPU is EGL
+// (or Vulkan) on Linux, Metal on macOS and Direct3D 11 on Windows.
 //
 // The baker keeps one headless window, as large as the largest bake yet, and lets it go (its GPU
 // context, framebuffer and read-back buffer) after BakeIdle with no bake: a page's pictures are
