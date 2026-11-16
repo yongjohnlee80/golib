@@ -10,6 +10,7 @@ import (
 	"github.com/yongjohnlee80/golib/diff/merge"
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 	"github.com/yongjohnlee80/golib/tui/widget/mergeview"
 )
 
@@ -111,14 +112,53 @@ func (r *mergeRig) settled() (tops [3]int) {
 func TestAWindowsMergePanesAreNativeEditorsInCellPitch(t *testing.T) {
 	r := startMerge(t)
 	var rows [3]int
-	var pitch [3]bool
+	var pitch, unwrapped [3]bool
 	r.onLoop(func() {
 		for i, e := range r.panes() {
-			rows[i], pitch[i] = e.body.h, e.cellPitch
+			rows[i], pitch[i], unwrapped[i] = e.body.h, e.cellPitch, e.wrap == core.WrapNone
 		}
 	})
 	if pitch != [3]bool{true, true, true} || rows != [3]int{14, 14, 14} {
 		t.Fatalf("panes in cell pitch %v, with %v rows of their text, want all, each with the 14 rows between the headers and the bar", pitch, rows)
+	}
+	if unwrapped != [3]bool{true, true, true} {
+		t.Fatalf("panes unwrapped %v, want all: a wrapped line breaks the rows the connectors mark", unwrapped)
+	}
+}
+
+// A window's merge panes are over the view's cores: the sides read-only, and the text typed into
+// the result pane the merge's result, so Apply writes it.
+func TestTextTypedInAWindowsResultPaneIsTheMergesResult(t *testing.T) {
+	r := startMerge(t)
+	var ro [3]bool
+	var before string
+	r.onLoop(func() {
+		for i, e := range r.panes() {
+			ro[i] = e.Core().ReadOnly()
+		}
+		before = r.v.Result()
+		res := r.panes()[1]
+		r.app.FocusInto(res)
+		res.Core().SetLine(0, 0)
+	})
+	if ro != [3]bool{true, false, true} {
+		t.Fatalf("read-only %v, want the sides only", ro)
+	}
+	// The pane starts in Normal mode, as an editor does: i inserts, and X is then typed.
+	if err := r.tb.Inject(tui.KeyEvent{Kind: tui.KeyPress, Code: 'i', Text: "i"}, tui.KeyEvent{Kind: tui.KeyPress, Code: 'X', Text: "X"}); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; ; i++ {
+		var got string
+		r.onLoop(func() { got = r.v.Result() })
+		if got == "X"+before {
+			break
+		}
+		if i == 300 {
+			first, _, _ := strings.Cut(got, "\n")
+			t.Fatalf("i, then X typed at the result pane's start: the merge's result begins %q, want %q", first, "Xline 00")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
