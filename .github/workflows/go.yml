@@ -7,9 +7,10 @@
 # than once.
 name: go
 
-# Pull requests merge into canary and run no CI (each has its VM43 gate and review); CI runs on
+# Pull requests merge into canary and run no CI here (each has its gate and review); CI runs on
 # each merge into canary, and on the release pull request into main: a release/YYYY-MM-DD branch,
-# canary rebased onto main, merged by rebase, after which canary is reset to main.
+# canary rebased onto main, merged by rebase, after which canary is reset to main. A pull request
+# into canary that changes gui also runs gui-windows.yml's Direct3D job, before its merge.
 on:
   push:
     branches: [canary]
@@ -136,48 +137,14 @@ jobs:
           echo "== packages that fail on Windows"
           jq -r 'select(.Action == "fail" and .Test == null) | .Package' "$RUNNER_TEMP/win.json" | sort -u
 
-  # golib/gui on Windows (Gio's Direct3D 11 backend; no cgo): the packages in
-  # .github/windows-gui-packages.txt, which may only grow. The goldens are Linux's and skip here.
+  # golib/gui on Windows (Gio's Direct3D 11 backend; no cgo): gui-windows.yml, which a pull request
+  # into canary that changes gui also runs, before its merge.
   gui-windows:
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.head_ref == 'canary' || startsWith(github.head_ref, 'release/'))
     name: gui (Windows, Direct3D)
-    runs-on: windows-latest
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - name: check out with LF line endings
-        run: git config --global core.autocrlf false
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
-        with:
-          go-version-file: gui/go.mod
-          cache: true
-          cache-dependency-path: gui/go.sum
-      - name: use this commit's golib
-        run: go work init . ./gui
-      - name: every tested gui package is listed
-        run: cd gui && bash ../.github/gui-packages-check.sh ../.github/windows-gui-packages.txt
-      - name: test the ported gui packages
-        if: ${{ !inputs.discover }}
-        run: |
-          mapfile -t pkgs < <(grep -v '^[#!]' .github/windows-gui-packages.txt | sed 's/[[:space:]]*#.*//' | grep .)
-          cd gui && go test -count=3 -timeout 20m "${pkgs[@]}"
-      - name: discover which gui packages pass on Windows
-        if: ${{ inputs.discover }}
-        continue-on-error: true
-        run: |
-          cd gui
-          go test -count=1 -timeout 30m -json ./... > "$RUNNER_TEMP/gui.json" || true
-          echo "== gui packages that pass on Windows"
-          jq -r 'select(.Action == "pass" and .Test == null) | .Package' "$RUNNER_TEMP/gui.json" | sort -u
-          echo "== gui packages that fail on Windows"
-          jq -r 'select(.Action == "fail" and .Test == null) | .Package' "$RUNNER_TEMP/gui.json" | sort -u
-          echo "== failing tests"
-          jq -r 'select(.Action == "fail" and .Test != null) | "\(.Package) \(.Test)"' "$RUNNER_TEMP/gui.json" | head -60
-          echo "== the failing tests again, verbose"
-          jq -r 'select(.Action == "fail" and .Test != null and (.Test | contains("/") | not)) | "\(.Package) \(.Test)"' "$RUNNER_TEMP/gui.json" | tr -d '\r' | sort -u |
-            while read -r pkg test; do go test -count=1 -run "^${test}\$" -v "$pkg" 2>&1 | grep -E '_test.go:[0-9]+:|^(---|ok|FAIL|panic)' | head -40; done
+    uses: ./.github/workflows/gui-windows.yml
+    with:
+      discover: ${{ inputs.discover == true }}
 
   # golib/gui: its own module, on Gio, with cgo. The root job never compiles it.
   gui:
