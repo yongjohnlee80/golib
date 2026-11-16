@@ -76,6 +76,12 @@ TUI-only golib user never resolves Gio or cgo. `tui` cannot import it.
     shows its first key's mark). With more than one key each mark carries the
     key's place, small (▲¹ ▼²). The first key's title says "(loaded rows)" while
     rows remain to load, when it fits.
+- **A merge view's panes, natively.** Under `gui/decl.Native()` a `MergeView`'s
+  three panes are gui `Editor`s in the cells' pitch (`gui/widget.MergePane`,
+  `WithEditorCellPitch`). Each line is one cell row, and a scroll moves by whole
+  lines, so the connectors and the bar the view draws in cells beside the panes
+  stay on their lines. The palette dresses the panes as it does an `Editor`, and
+  the lines' marks in the diff roles.
 - **Paste and IME.** Ctrl+Shift+V (Cmd+V on macOS) pastes, as in a terminal
   emulator, so Ctrl+V stays the app's. An input method's composition is drawn
   at the caret, and its candidate window opens there.
