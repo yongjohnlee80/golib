@@ -167,11 +167,12 @@ jobs:
       - name: use this commit's golib
         run: go work init . ..
 
+      # and the CJK fonts the pixel cells draw Hangul and Han with (the IME's preedit cells)
       - name: Gio's Linux libraries
         run: |
           sudo apt-get update
           sudo apt-get install -y libwayland-dev libx11-dev libx11-xcb-dev libxkbcommon-x11-dev \
-            libgles2-mesa-dev libegl1-mesa-dev libffi-dev libxcursor-dev libvulkan-dev
+            libgles2-mesa-dev libegl1-mesa-dev libffi-dev libxcursor-dev libvulkan-dev fonts-noto-cjk
 
       - name: gofmt
         run: |
