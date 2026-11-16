@@ -188,8 +188,10 @@ jobs:
       - name: vet
         run: go vet ./...
 
+      # On Mesa's headless EGL, so the cells that check pixels draw them: a skip for want of a
+      # headless GPU fails the step (the script says why).
       - name: test
-        run: go test -race -count=3 -timeout 10m ./...
+        run: bash ../.github/scripts/gui-tests.sh -race -count=3 -timeout 20m
 
   # The dao suites against real servers: PostgreSQL 18 with pgvector (two-phase commit on) and
   # MySQL 8.4, with the integration tag. Without them every database test skips, and the 10
