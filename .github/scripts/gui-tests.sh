@@ -30,10 +30,17 @@ jq -rs 'map(select(.Test != null)) | group_by([.Package, .Test])
 jq -r 'select(.Action == "fail") | "\(.Package)\t\(.Test // "")"' "$log" | sort -u |
   while IFS=$'\t' read -r pkg test; do
     echo "== FAIL $pkg $test"
-    jq -r --arg p "$pkg" --arg t "$test" \
+    jq -j --arg p "$pkg" --arg t "$test" \
       'select(.Package == $p and (.Test // "") == $t and .Action == "output") | .Output' "$log" |
       tr -d '\r' | head -80
   done
+
+# a package that did not compile: go test -json gives the compiler's words as build-output events,
+# not as a test's output
+if jq -e -s 'any(.[]; .Action == "build-fail")' "$log" > /dev/null; then
+  echo "== build failures"
+  jq -j 'select(.Action == "build-output") | .Output' "$log" | tr -d '\r' | head -200
+fi
 
 nogpu=$(jq -r 'select(.Action == "output" and (.Output | test("no headless (GPU|window) here")))
                | "\(.Package) \(.Test): \(.Output | sub("^\\s+"; "") | rtrimstr("\n"))"' "$log" |
