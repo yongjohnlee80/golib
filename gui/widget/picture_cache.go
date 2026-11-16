@@ -1,10 +1,13 @@
 package widget
 
 import (
+	"cmp"
 	"errors"
 	"image"
+	"slices"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/logger"
@@ -18,12 +21,23 @@ import (
 // whatever drew them. The picture is painted for its image on its view's loop (View's contract);
 // a worker puts that on the GPU. Until its image is drawn, and where none can be (no window, no
 // headless GPU, a picture past the cache's size), a picture is drawn as it is. The cache keeps
-// PictureCacheLimit baked pixels, the least recently painted going first, and lets a window's go
-// when the window closes.
+// PictureCacheLimit baked pixels, the least recently painted going first, but never lets go of an
+// image painted within onScreenFor for another: when the pictures on screen together are more than
+// the limit, those past it stay vector rather than each baking over the others at every frame. It
+// lets a picture's images go when its slot drops it (forget), and a window's when the window
+// closes.
 
 // PictureCacheLimit is the baked pixels the cache keeps across windows: 48 Mpx, about 192 MB of
 // RGBA. A picture larger than it is drawn as it is.
 const PictureCacheLimit = 48 << 20
+
+// onScreenFor is how recently an image was painted for it to count as on screen: no picture is
+// baked by letting it go. A view paints its pictures together, a frame apart at most, so a second
+// covers the slowest frame of a page drawing its pictures from their paths.
+const onScreenFor = time.Second
+
+// pictureNow is the cache's clock (a cell's to set).
+var pictureNow = time.Now
 
 // pictureBaker is what the cache asks of a window's gui.PictureBaker.
 type pictureBaker interface {
@@ -64,7 +78,8 @@ type bakeKey struct {
 
 type bakedPicture struct {
 	b    gui.Baked
-	used uint64
+	used uint64    // the cache's tick at its last paint: the least recently painted goes first
+	seen time.Time // its last paint: an image painted within onScreenFor is on screen
 }
 
 type bakeJob struct {
@@ -80,16 +95,16 @@ type pictureCache struct {
 	pixels  int
 	tick    uint64
 	baked   map[bakeKey]*bakedPicture
-	pending map[bakeKey]bool
+	pending map[bakeKey]time.Time // asked for, when: a draw not still asked for is not kept
 	skip    map[bakeKey]bool      // never baked: past the limit, or its bake failed
 	dead    map[pictureBaker]bool // no headless GPU: its window's pictures stay as they are
 	watched map[pictureBaker]bool // its release lets its entries go (OnRelease)
 	jobs    chan bakeJob
-	bakes   atomic.Int64 // draws done, for the cells
+	bakes   atomic.Int64 // draws done and kept or not, for the cells
 }
 
 func newPictureCache(limit int) *pictureCache {
-	return &pictureCache{limit: limit, baked: map[bakeKey]*bakedPicture{}, pending: map[bakeKey]bool{},
+	return &pictureCache{limit: limit, baked: map[bakeKey]*bakedPicture{}, pending: map[bakeKey]time.Time{},
 		skip: map[bakeKey]bool{}, dead: map[pictureBaker]bool{}, watched: map[pictureBaker]bool{}}
 }
 
@@ -111,23 +126,29 @@ func (pc *pictureCache) get(k bakeKey) (gui.Baked, bool) {
 		return gui.Baked{}, false
 	}
 	pc.tick++
-	e.used = pc.tick
+	e.used, e.seen = pc.tick, pictureNow()
 	return e.b, true
 }
 
-// reserve claims k for a bake of px pixels: false when it is drawn, asked for, never to be, or its
-// window has no GPU. watch is whether k's window is new to the cache: its release is to be heard.
+// reserve claims k for a bake of px pixels: false when it is drawn, asked for, never to be, its
+// window has no GPU, or it would only fit by letting an image on screen go (it is asked again at
+// its next paint). watch is whether k's window is new to the cache: its release is to be heard.
 func (pc *pictureCache) reserve(k bakeKey, px image.Point) (ok, watch bool) {
 	pc.mu.Lock()
 	defer pc.mu.Unlock()
-	if pc.dead[k.baker] || pc.pending[k] || pc.skip[k] || pc.baked[k] != nil {
+	_, asked := pc.pending[k]
+	if pc.dead[k.baker] || asked || pc.skip[k] || pc.baked[k] != nil {
 		return false, false
 	}
 	if px.X*px.Y > pc.limit || px.X <= 0 || px.Y <= 0 {
 		pc.skipOne(k)
 		return false, false
 	}
-	pc.pending[k] = true
+	now := pictureNow()
+	if _, fits := pc.room(px.X*px.Y, now); !fits {
+		return false, false
+	}
+	pc.pending[k] = now
 	if !pc.watched[k.baker] {
 		pc.watched[k.baker] = true
 		return true, true
@@ -179,42 +200,69 @@ func (pc *pictureCache) enqueue(j bakeJob) {
 func (pc *pictureCache) work(jobs <-chan bakeJob) {
 	for j := range jobs {
 		b, err := j.key.baker.Draw(j.rec)
-		pc.bakes.Add(1)
 		pc.mu.Lock()
+		asked, still := pc.pending[j.key]
 		delete(pc.pending, j.key)
 		kept := false
 		switch {
-		case !pc.watched[j.key.baker]: // its window closed while it was drawn
+		case !still || !pc.watched[j.key.baker]: // its slot or its window let it go while it was drawn
 		case err != nil:
 			pc.failed(j.key, err)
 		default:
-			pc.put(j.key, b)
-			kept = true
+			kept = pc.put(j.key, b, asked)
 		}
 		pc.mu.Unlock()
+		pc.bakes.Add(1)
 		if kept && j.wake != nil {
 			j.wake()
 		}
 	}
 }
 
-// put keeps b as k's image, letting the least recently painted go until it fits. Under pc.mu.
-func (pc *pictureCache) put(k bakeKey, b gui.Baked) {
+// put keeps b as k's image, asked for at asked, letting the least recently painted go until it
+// fits: false, and nothing let go, when that would let go of an image painted within onScreenFor
+// of asked or since, on screen with k's picture. Under pc.mu.
+func (pc *pictureCache) put(k bakeKey, b gui.Baked, asked time.Time) bool {
 	px := b.Pixels.X * b.Pixels.Y
-	for pc.pixels+px > pc.limit && len(pc.baked) > 0 {
-		var oldest bakeKey
-		var at uint64
-		first := true
-		for key, e := range pc.baked {
-			if first || e.used < at {
-				oldest, at, first = key, e.used, false
-			}
-		}
-		pc.drop(oldest)
+	out, fits := pc.room(px, asked)
+	if !fits {
+		return false
+	}
+	for _, key := range out {
+		pc.drop(key)
 	}
 	pc.tick++
-	pc.baked[k] = &bakedPicture{b: b, used: pc.tick}
+	pc.baked[k] = &bakedPicture{b: b, used: pc.tick, seen: asked}
 	pc.pixels += px
+	return true
+}
+
+// room is the images to let go, least recently painted first, for px more pixels to fit the
+// limit: fits is false when one of them was painted within onScreenFor of at, or after it (on
+// screen with the picture asking), or px is past the limit. Under pc.mu.
+func (pc *pictureCache) room(px int, at time.Time) (out []bakeKey, fits bool) {
+	over := pc.pixels + px - pc.limit
+	if over <= 0 {
+		return nil, true
+	}
+	if px > pc.limit {
+		return nil, false
+	}
+	for key := range pc.baked {
+		out = append(out, key)
+	}
+	slices.SortFunc(out, func(a, b bakeKey) int { return cmp.Compare(pc.baked[a].used, pc.baked[b].used) })
+	since := at.Add(-onScreenFor)
+	for i, key := range out {
+		e := pc.baked[key]
+		if e.seen.After(since) {
+			return nil, false
+		}
+		if over -= e.b.Pixels.X * e.b.Pixels.Y; over <= 0 {
+			return out[:i+1], true
+		}
+	}
+	return nil, false
 }
 
 // drop lets k's image go. Under pc.mu.
@@ -249,6 +297,27 @@ func (pc *pictureCache) release(baker pictureBaker) {
 	delete(pc.watched, baker)
 }
 
+// forget lets every image of picture id go, and its draws in flight: its slot dropped it.
+func (pc *pictureCache) forget(id uint64) {
+	pc.mu.Lock()
+	defer pc.mu.Unlock()
+	for k := range pc.baked {
+		if k.pic == id {
+			pc.drop(k)
+		}
+	}
+	for k := range pc.pending {
+		if k.pic == id {
+			delete(pc.pending, k)
+		}
+	}
+	for k := range pc.skip {
+		if k.pic == id {
+			delete(pc.skip, k)
+		}
+	}
+}
+
 func logPicture(what string, err error) {
 	if l := pictureLog.Load(); l != nil {
 		logger.Info(*l, map[string]any{"event": "picture cache", "what": what, "reason": err.Error()})
@@ -260,13 +329,14 @@ func logPicture(what string, err error) {
 // wake marks the view that shows it to paint again, when its image is drawn.
 type cachedPicture struct {
 	id   uint64
+	pc   *pictureCache // the cache it was made under: its images are there
 	pic  gui.View
 	size gui.Size
 	wake func()
 }
 
 func newCachedPicture(pic gui.View, size gui.Size, wake func()) *cachedPicture {
-	return &cachedPicture{id: pictureIDs.Add(1), pic: pic, size: size, wake: wake}
+	return &cachedPicture{id: pictureIDs.Add(1), pc: pictures, pic: pic, size: size, wake: wake}
 }
 
 // Paint is on the view's loop (View's contract): it paints the picture's image, or the picture
@@ -278,25 +348,25 @@ func (p *cachedPicture) Paint(c gui.Canvas) {
 		return
 	}
 	k := bakeKey{baker: pb, pic: p.id, scale: c.Scale(), fonts: c.Fonts().Gen}
-	if b, ok := pictures.get(k); ok {
+	if b, ok := p.pc.get(k); ok {
 		gui.DrawBaked(c, b, gui.Point{})
 		return
 	}
 	p.pic.Paint(c)
-	ok, watch := pictures.reserve(k, gui.BakedPixels(p.size, k.scale))
+	ok, watch := p.pc.reserve(k, gui.BakedPixels(p.size, k.scale))
 	if !ok {
 		return
 	}
 	if watch {
-		pb.OnRelease(func() { pictures.release(pb) })
+		pb.OnRelease(func() { p.pc.release(pb) })
 	}
 	rec, err := pb.Record(p.pic, p.size, k.scale)
 	if err != nil {
-		pictures.mu.Lock()
-		delete(pictures.pending, k)
-		pictures.failed(k, err)
-		pictures.mu.Unlock()
+		p.pc.mu.Lock()
+		delete(p.pc.pending, k)
+		p.pc.failed(k, err)
+		p.pc.mu.Unlock()
 		return
 	}
-	pictures.enqueue(bakeJob{key: k, rec: rec, wake: p.wake})
+	p.pc.enqueue(bakeJob{key: k, rec: rec, wake: p.wake})
 }

@@ -110,7 +110,7 @@ func (l *pixelLayout) forgetDiagrams(blocks []Block) {
 	}
 	for line, s := range l.diagrams {
 		if !starts[line] {
-			s.cancel()
+			s.drop()
 			delete(l.diagrams, line)
 		}
 	}
@@ -119,7 +119,7 @@ func (l *pixelLayout) forgetDiagrams(blocks []Block) {
 // cancelDiagrams withdraws every request: the body unmounted.
 func (l *pixelLayout) cancelDiagrams() {
 	for line, s := range l.diagrams {
-		s.cancel()
+		s.drop()
 		delete(l.diagrams, line)
 	}
 }

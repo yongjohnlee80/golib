@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/tui/widget/editor"
@@ -23,6 +24,7 @@ type fakeBaker struct {
 	px      image.Point
 	scale   float32
 	release []func()
+	hold    chan struct{} // when set, a draw waits for it to close
 }
 
 func (f *fakeBaker) Record(v gui.View, size gui.Size, scale float32) (*gui.Recording, error) {
@@ -33,6 +35,9 @@ func (f *fakeBaker) Record(v gui.View, size gui.Size, scale float32) (*gui.Recor
 }
 
 func (f *fakeBaker) Draw(*gui.Recording) (gui.Baked, error) {
+	if f.hold != nil {
+		<-f.hold
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.bakes++
@@ -49,6 +54,17 @@ func (f *fakeBaker) OnRelease(fn func()) {
 }
 
 func (f *fakeBaker) count() int { f.mu.Lock(); defer f.mu.Unlock(); return f.bakes }
+
+// withClock gives the cache a clock of its own, moved on by later.
+func withClock(t *testing.T) (later func(time.Duration)) {
+	t.Helper()
+	var mu sync.Mutex
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	old := pictureNow
+	pictureNow = func() time.Time { mu.Lock(); defer mu.Unlock(); return now }
+	t.Cleanup(func() { pictureNow = old })
+	return func(d time.Duration) { mu.Lock(); now = now.Add(d); mu.Unlock() }
+}
 
 // withBaker makes every canvas a window's with baker b, on a cache of its own of limit pixels.
 func withBaker(t *testing.T, b pictureBaker, limit int) *pictureCache {
@@ -116,7 +132,7 @@ func TestAPicturesImageIsItsOwnAtAScaleAndFonts(t *testing.T) {
 	pc := pictures
 	base := bakeKey{baker: fb, pic: a.id, scale: 1, fonts: 1}
 	pc.mu.Lock()
-	pc.put(base, gui.Baked{Pixels: image.Pt(4, 4), Scale: 1})
+	pc.put(base, gui.Baked{Pixels: image.Pt(4, 4), Scale: 1}, time.Now())
 	pc.mu.Unlock()
 	others := map[string]bakeKey{}
 	k := base
@@ -167,7 +183,7 @@ func TestAClosedWindowsPicturesAreLetGo(t *testing.T) {
 		t.Fatalf("after the window closed the cache holds %d entries of %d pixels, want none", left, pixels)
 	}
 	pc.mu.Lock() // a draw that ends now, its window gone
-	pc.pending[bakeKey{baker: fb, pic: p.id, scale: 1}] = true
+	pc.pending[bakeKey{baker: fb, pic: p.id, scale: 1}] = time.Now()
 	pc.mu.Unlock()
 	pc.enqueue(bakeJob{key: bakeKey{baker: fb, pic: p.id, scale: 1}, rec: new(gui.Recording)})
 	waitFor(t, "the late draw", func() bool { pc.mu.Lock(); defer pc.mu.Unlock(); return len(pc.pending) == 0 })
@@ -181,17 +197,19 @@ func TestAClosedWindowsPicturesAreLetGo(t *testing.T) {
 // The cache keeps its limit of pixels, the least recently painted going first.
 func TestTheCacheKeepsItsLimitLeastRecentlyPaintedFirst(t *testing.T) {
 	pc := withBaker(t, &fakeBaker{}, 100)
+	later := withClock(t)
 	ids := map[string]uint64{"a": 1, "b": 2, "c": 3}
 	key := func(src string) bakeKey { return bakeKey{pic: ids[src], scale: 1} }
 	put := func(src string) {
 		pc.mu.Lock()
-		pc.put(key(src), gui.Baked{Pixels: image.Pt(8, 5), Scale: 1}) // 40 pixels each
+		pc.put(key(src), gui.Baked{Pixels: image.Pt(8, 5), Scale: 1}, pictureNow()) // 40 pixels each
 		pc.mu.Unlock()
 	}
 	put("a")
 	put("b")
-	pc.get(key("a")) // a painted after b
-	put("c")         // 120 pixels: the least recently painted, b, goes
+	pc.get(key("a"))       // a painted after b
+	later(2 * time.Second) // neither on screen now
+	put("c")               // 120 pixels: the least recently painted, b, goes
 	for src, want := range map[string]bool{"a": true, "b": false, "c": true} {
 		if _, ok := pc.get(key(src)); ok != want {
 			t.Errorf("%s kept: %v, want %v", src, ok, want)
@@ -223,6 +241,19 @@ func TestWithNoGPUOrTooLargeAPictureStaysVector(t *testing.T) {
 	}
 	if n := fb.count(); n != 1 {
 		t.Fatalf("with no GPU the baker was asked %d times, want once", n)
+	}
+	fb.mu.Lock() // the window without a GPU closes: the cache forgets it
+	release := append([]func(){}, fb.release...)
+	fb.mu.Unlock()
+	if len(release) != 1 {
+		t.Fatalf("the cache asked to hear of the window's release %d times, want once", len(release))
+	}
+	release[0]()
+	pictures.mu.Lock()
+	dead, watched := pictures.dead[fb], pictures.watched[fb]
+	pictures.mu.Unlock()
+	if dead || watched {
+		t.Fatalf("a closed window without a GPU is still kept: dead %v, watched %v", dead, watched)
 	}
 
 	big := &fakeBaker{}
@@ -373,6 +404,85 @@ func TestScrollingAPageOfDiagramsBakesEachOnce(t *testing.T) {
 	}
 }
 
+// More pictures on screen than the cache holds stay vector past it rather than bake over each
+// other: with room for one of two pictures painted at every frame, both asked for in the first,
+// the first drawn is kept and the second's image refused, not kept over it. The first is drawn
+// from its image, the second from its paths, and nothing is drawn or woken again. When the first
+// leaves the screen, the second is baked in its place.
+func TestPicturesOnScreenPastTheLimitStayVectorRatherThanBakeOverEachOther(t *testing.T) {
+	fb := &fakeBaker{hold: make(chan struct{})} // both asked for before either is drawn
+	pc := withBaker(t, fb, 40*20)               // one 40 × 20 picture
+	later := withClock(t)
+	woke := make(chan string, 64)
+	a := newCachedPicture(vectorPic, gui.Size{W: 40, H: 20}, func() { woke <- "a" })
+	b := newCachedPicture(vectorPic, gui.Size{W: 40, H: 20}, func() { woke <- "b" })
+	settled := func() bool { pc.mu.Lock(); defer pc.mu.Unlock(); return len(pc.pending) == 0 }
+	frame := func() (string, string) {
+		later(16 * time.Millisecond)
+		return paintedFrom(a), paintedFrom(b)
+	}
+	frame()
+	close(fb.hold)
+	if w := <-woke; w != "a" {
+		t.Fatalf("%s woken, want a", w)
+	}
+	waitFor(t, "the second picture's draw", func() bool { return fb.count() == 2 && settled() })
+	for i := range 60 {
+		if fa, fbk := frame(); fa != "image" || fbk != "vector" {
+			t.Fatalf("frame %d: the first drawn from its %s, the second from its %s; want the first's image, the second's paths", i, fa, fbk)
+		}
+	}
+	waitFor(t, "no draw asked", settled)
+	if n := fb.count(); n != 2 {
+		t.Fatalf("%d draws over 60 frames of both pictures, want the two of the first frame", n)
+	}
+	select {
+	case w := <-woke:
+		t.Fatalf("%s woken while both pictures are on screen, want none", w)
+	default:
+	}
+	later(2 * time.Second) // the first scrolled away
+	paintedFrom(b)
+	if w := <-woke; w != "b" {
+		t.Fatalf("%s woken, want b", w)
+	}
+	if got := paintedFrom(b); got != "image" {
+		t.Fatalf("with the first off screen the second is drawn from its %s", got)
+	}
+}
+
+// A slot that drops its picture lets its images go, and a draw of it in flight is not kept.
+func TestADroppedSlotsImagesAreLetGo(t *testing.T) {
+	fb := &fakeBaker{}
+	pc := withBaker(t, fb, 1<<20)
+	woke := make(chan struct{}, 4)
+	p := newCachedPicture(vectorPic, gui.Size{W: 40, H: 20}, func() { woke <- struct{}{} })
+	s := &diagramSlot{cancel: func() {}, cached: p}
+	paintedFrom(p)
+	<-woke
+	s.drop()
+	pc.mu.Lock()
+	n, px := len(pc.baked), pc.pixels
+	pc.mu.Unlock()
+	if n != 0 || px != 0 {
+		t.Fatalf("a dropped slot's picture keeps %d images of %d pixels, want none", n, px)
+	}
+	q := newCachedPicture(vectorPic, gui.Size{W: 40, H: 20}, nil)
+	k := bakeKey{baker: fb, pic: q.id, scale: 1}
+	pc.mu.Lock()
+	pc.pending[k] = time.Now()
+	pc.watched[fb] = true
+	pc.mu.Unlock()
+	(&diagramSlot{cancel: func() {}, cached: q}).drop()
+	pc.enqueue(bakeJob{key: k, rec: new(gui.Recording)})
+	waitFor(t, "the late draw", func() bool { return pc.bakes.Load() >= 2 })
+	pc.mu.Lock()
+	defer pc.mu.Unlock()
+	if pc.baked[k] != nil {
+		t.Fatal("a draw that ended after its slot dropped the picture was kept")
+	}
+}
+
 // The pictures kept as never to be baked are bounded: past skipLimit they are forgotten.
 func TestThePicturesNeverBakedAreBounded(t *testing.T) {
 	pc := withBaker(t, &fakeBaker{}, 100)
@@ -389,9 +499,8 @@ func TestThePicturesNeverBakedAreBounded(t *testing.T) {
 	}
 }
 
-// BenchmarkRecordingAReportChart is what the loop pays once per picture and key: recording a
-// report-sized chart (a 500-point line over 900 dp) for its bake.
-func BenchmarkRecordingAReportChart(b *testing.B) {
+// reportChart is a report-sized chart (a 500-point line over 900 dp), Ready.
+func reportChart(b *testing.B) DiagramAnswer {
 	var vals []string
 	for i := range 500 {
 		vals = append(vals, fmt.Sprintf(`{"d":%d,"v":%d}`, i, (i*37)%101))
@@ -410,6 +519,13 @@ func BenchmarkRecordingAReportChart(b *testing.B) {
 	if a.State != Ready {
 		b.Fatalf("the chart is %v", a.State)
 	}
+	return a
+}
+
+// BenchmarkRecordingAReportChart is what the loop pays once per picture and key: recording a
+// report-sized chart for its bake.
+func BenchmarkRecordingAReportChart(b *testing.B) {
+	a := reportChart(b)
 	pb := gui.NewBackend().NewPictureBaker()
 	defer pb.Release()
 	b.ReportAllocs()
@@ -417,6 +533,40 @@ func BenchmarkRecordingAReportChart(b *testing.B) {
 		if _, err := pb.Record(a.Pic, a.Size, 1); err != nil {
 			b.Fatal(err)
 		}
+	}
+}
+
+// BenchmarkAWindowsFirstRecording is what the loop pays for a window's first picture: its baker's
+// first Record builds the baker's renderer and shaper. The window's fonts are loaded already, as a
+// window that paints has them.
+func BenchmarkAWindowsFirstRecording(b *testing.B) {
+	a := reportChart(b)
+	be := gui.NewBackend()
+	warm := be.NewPictureBaker()
+	if _, err := warm.Record(a.Pic, a.Size, 1); err != nil {
+		b.Fatal(err)
+	}
+	warm.Release()
+	b.ReportAllocs()
+	for b.Loop() {
+		pb := be.NewPictureBaker()
+		if _, err := pb.Record(a.Pic, a.Size, 1); err != nil {
+			b.Fatal(err)
+		}
+		pb.Release()
+	}
+}
+
+// BenchmarkAFirstRecordingOnANewBackend bounds it from above: the backend's fonts loaded too.
+func BenchmarkAFirstRecordingOnANewBackend(b *testing.B) {
+	a := reportChart(b)
+	b.ReportAllocs()
+	for b.Loop() {
+		pb := gui.NewBackend().NewPictureBaker()
+		if _, err := pb.Record(a.Pic, a.Size, 1); err != nil {
+			b.Fatal(err)
+		}
+		pb.Release()
 	}
 }
 
