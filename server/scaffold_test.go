@@ -134,11 +134,13 @@ func TestScaffold_ShutdownCancelsConnCtxAndDrains(t *testing.T) {
 func TestScaffold_HandlerPanicIsIsolated(t *testing.T) {
 	t.Parallel()
 	lg := &countLogger{}
+	panicking := make(chan struct{})
 	s := NewScaffold(func(_ context.Context, conn net.Conn) {
 		defer conn.Close()
 		buf := make([]byte, 1)
 		_, _ = conn.Read(buf)
 		if buf[0] == 'p' {
+			close(panicking)
 			panic("kaboom")
 		}
 		_, _ = conn.Write([]byte("ok"))
@@ -149,6 +151,14 @@ func TestScaffold_HandlerPanicIsIsolated(t *testing.T) {
 	c1, _ := net.Dial("tcp", s.Addr())
 	_, _ = c1.Write([]byte("p"))
 	c1.Close()
+	// ...and has read its byte before anything stops the server. Shutdown closes a live
+	// connection: one whose handler had not read yet reads an error, never panics, and logs
+	// nothing, however sound the drain is.
+	select {
+	case <-panicking:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the first connection's handler never read its byte")
+	}
 
 	// ...the server keeps serving.
 	c2, err := net.Dial("tcp", s.Addr())
@@ -168,7 +178,8 @@ func TestScaffold_HandlerPanicIsIsolated(t *testing.T) {
 	//
 	// It used to rely on accidental synchronization — c2's round-trip is served
 	// by a different goroutine and orders nothing against c1's panic — and it
-	// failed on loaded CI accordingly. It is sound now because the accept loop
+	// failed on loaded CI accordingly. It is sound now because the handler is
+	// known to be panicking before stop() (the wait above), the accept loop
 	// RESERVES each connection before its goroutine exists, Drain waits for
 	// reservations as well as live sessions, and serveConn logs before it
 	// unregisters. So when stop() returns, the log has necessarily happened.
