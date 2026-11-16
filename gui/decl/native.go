@@ -24,7 +24,8 @@
 // Documents specifying `Editor { }` or `HTMLView { }` receive native vector rendering, sub-cell
 // typography, and smooth diagrams while preserving identical declarative contracts; a
 // `TableView { cellCursor: true }` keeps tui's DataTable and its core, laid out and drawn in pixels
-// (widget.BindTable).
+// (widget.BindTable); a `MergeView { }`'s three panes are native Editors in the cells' pitch
+// (widget.MergePane), its connectors and bar cells beside them.
 package decl
 
 import (
@@ -35,6 +36,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui/widget/core"
 	"github.com/yongjohnlee80/golib/tui/widget/editor"
 	"github.com/yongjohnlee80/golib/tui/widget/htmlview"
+	"github.com/yongjohnlee80/golib/tui/widget/mergeview"
 	"maps"
 )
 
@@ -95,8 +97,9 @@ func (n *native) htmlDocument(tuidecl.DocumentSpec) widget.DocumentView {
 }
 
 // Native is gui's style. It replaces Editor, lays HTMLView out in pixels (the same tui widget, so
-// a host reaches it by id either way), and wraps a TableView with a cellCursor so its DataTable is
-// laid out in pixels over the same core; every other type stays tui's.
+// a host reaches it by id either way), wraps a TableView with a cellCursor so its DataTable is
+// laid out in pixels over the same core, and gives a MergeView native panes; every other type
+// stays tui's.
 func Native(opts ...NativeOption) tuidecl.Style {
 	n := &native{renderers: map[string]func(tuidecl.RendererSpec) widget.Renderer{},
 		documents: map[string]func(tuidecl.DocumentSpec) widget.DocumentView{}}
@@ -122,7 +125,10 @@ func Native(opts ...NativeOption) tuidecl.Style {
 		}
 		return c, consumed, err
 	}
-	return tuidecl.Style{Name: "native", Types: []tuidecl.Type{ed, hv}, Wrap: map[string]func(tui.Component){
+	mv, _ := tuidecl.StandardType("MergeView")
+	mv.Build = tuidecl.BuildMergeViewWith(mergeview.Options{NewPane: widget.MergePane}) // its connectors and bar stay cells
+	mv.Restyle = restyleMergeView
+	return tuidecl.Style{Name: "native", Types: []tuidecl.Type{ed, hv, mv}, Wrap: map[string]func(tui.Component){
 		// a cell-cursor TableView's DataTable, laid out in pixels and drawn natively over the same
 		// core; a row-cursor TableView has none, and keeps tui's rendering
 		"TableView": func(c tui.Component) {
@@ -212,6 +218,20 @@ var (
 func restyleEditor(c tui.Component, p tuidecl.Palette) {
 	if e, ok := c.(*widget.Editor); ok {
 		e.SetPageStyle(p.Look(tuidecl.RoleBase, tuidecl.RoleText))
+	}
+}
+
+// restyleMergeView gives a window's MergeView its marks in the palette's diff roles, and its native
+// panes the Editor's page look.
+func restyleMergeView(c tui.Component, p tuidecl.Palette) {
+	v, ok := tuidecl.MergeViewOf(c)
+	if !ok {
+		return
+	}
+	tuidecl.RestyleMergeViewMarks(v, p)
+	l, res, r := v.Panes()
+	for _, pane := range []mergeview.Pane{l, res, r} {
+		restyleEditor(pane, p)
 	}
 }
 
