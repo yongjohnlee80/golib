@@ -45,7 +45,9 @@ import (
 // what the host injects.
 //
 // Without HotReload nothing is polled, and an embedded document is simply the
-// program.
+// program. A source wrapped in [Static] is read but never followed: a program
+// that follows its user's files and also embeds its own marks those Static, so
+// the poll does not read them again.
 
 // HotReload makes a running Program follow its QML files. A LayoutSource may
 // follow Themes, Components or Translations without a layout file; reloads keep
@@ -96,6 +98,29 @@ type hotReload struct {
 	polled chan<- struct{}
 }
 
+// Static marks fsys as one whose files never change while the program runs, an embedded one: its
+// files are read as any other, but HotReload never follows them, so no poll reads them again. It
+// is a promise the caller makes, which nothing checks: a Static source's file that does change is
+// never reloaded, the screen keeping what it first read. Without HotReload, Static changes nothing.
+func Static(fsys fs.FS) fs.FS { return staticFS{fsys: fsys} }
+
+// staticFS is Static's: fsys's files, read through it.
+type staticFS struct{ fsys fs.FS }
+
+var (
+	_ fs.ReadFileFS = staticFS{}
+	_ fs.ReadDirFS  = staticFS{}
+	_ fs.StatFS     = staticFS{}
+)
+
+func (s staticFS) Open(name string) (fs.File, error)          { return s.fsys.Open(name) }
+func (s staticFS) ReadFile(name string) ([]byte, error)       { return fs.ReadFile(s.fsys, name) }
+func (s staticFS) ReadDir(name string) ([]fs.DirEntry, error) { return fs.ReadDir(s.fsys, name) }
+func (s staticFS) Stat(name string) (fs.FileInfo, error)      { return fs.Stat(s.fsys, name) }
+
+// isStatic is whether fsys was marked Static.
+func isStatic(fsys fs.FS) bool { _, ok := fsys.(staticFS); return ok }
+
 // watchedDir is a directory whose `.qml` files a Program read.
 type watchedDir struct {
 	fsys fs.FS
@@ -140,12 +165,14 @@ type fileStamp struct {
 }
 
 // sum is file's hash, read and hashed again only when its size or modification time changed, or
-// on every rehashEvery-th poll. A file system that reports no modification time (embedded or in
-// memory) is read every time. h nil reads every file. The error is ReadFile's.
+// on every rehashEvery-th poll. A file system that reports no modification time (in memory) is
+// judged by its size alone between those polls, so an edit that keeps the size is seen at the next
+// full rehash, as an edit within a disk's time resolution is. h nil reads every file. The error is
+// ReadFile's.
 func (h *fileHashes) sum(fsys fs.FS, file, key string) ([sha256.Size]byte, error) {
 	var st fs.FileInfo
 	if h != nil && h.polls%rehashEvery != 0 {
-		if info, err := fs.Stat(fsys, file); err == nil && !info.ModTime().IsZero() {
+		if info, err := fs.Stat(fsys, file); err == nil {
 			st = info
 			if s, ok := h.seen[key]; ok && s.size == info.Size() && s.mod.Equal(info.ModTime()) {
 				return s.sum, nil
@@ -161,7 +188,7 @@ func (h *fileHashes) sum(fsys fs.FS, file, key string) ([sha256.Size]byte, error
 		if st == nil {
 			st, _ = fs.Stat(fsys, file)
 		}
-		if st != nil && !st.ModTime().IsZero() {
+		if st != nil {
 			if h.seen == nil {
 				h.seen = map[string]fileStamp{}
 			}
@@ -176,13 +203,16 @@ func snapshotOf(c programConfig, h *fileHashes) snapshot {
 		defer func() { h.polls++ }()
 	}
 	out := snapshot{}
-	if c.layoutFS != nil {
+	if c.layoutFS != nil && !isStatic(c.layoutFS) {
 		k := "layout:" + c.layoutFile
 		if sum, err := h.sum(c.layoutFS, c.layoutFile, k); err == nil {
 			out[k] = sum
 		}
 	}
 	for i, w := range c.watched {
+		if isStatic(w.fsys) {
+			continue // it never changes: read once, as the program mounted it
+		}
 		entries, err := fs.ReadDir(w.fsys, w.dir)
 		if err != nil {
 			continue
@@ -202,6 +232,9 @@ func snapshotOf(c programConfig, h *fileHashes) snapshot {
 	// deleting it is a change; an unreadable one is recorded by its error, so the reload that
 	// follows refuses it rather than reading it as absent.
 	for i, f := range c.keymapFiles {
+		if isStatic(f.fsys) {
+			continue
+		}
 		k := fmt.Sprintf("keymap%d:%s", i, f.file)
 		switch sum, err := h.sum(f.fsys, f.file, k); {
 		case err == nil:
@@ -212,6 +245,9 @@ func snapshotOf(c programConfig, h *fileHashes) snapshot {
 	}
 	// Catalogs are followed as the layout's folders are: a saved translation is a change.
 	for i, t := range c.translations {
+		if isStatic(t.fsys) {
+			continue
+		}
 		entries, err := fs.ReadDir(t.fsys, t.dir)
 		if err != nil {
 			continue
