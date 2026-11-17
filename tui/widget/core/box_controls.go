@@ -34,8 +34,9 @@ func (x *Box) SetWindowControls(ops []WindowOperation) {
 // SetOnWindowControl is what a primary press on a window control does (SetWindowControls): fn with
 // the control's WindowOperation, on the press. nil does nothing, but the press is still the
 // control's. Every press is one request: a double press is two, as on a tab strip's controls. The
-// release goes where any release goes, and nothing acts on it: the press took no capture, and
-// nothing under the pointer saw it. A press outside an active focus trap (a dialog open over the
+// release goes where any release goes, routed as usual: the press took no capture, and a control
+// under the pointer that needs the press it never saw (a Button, which arms on its press) does not
+// act. A press outside an active focus trap (a dialog open over the
 // box's window) is dropped before it reaches the box, so it asks nothing.
 //
 // A press on a control is always the control's. The Box claims it as a tui.PointerPressResolver,

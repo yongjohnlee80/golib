@@ -47,8 +47,8 @@ import (
 // icons, _ + and x, at the right end of its content Frame's title row, drawn in that order whatever
 // the order written ("" or unset: none). They request and never act: a press on one emits
 // minimizeRequested, maximizeRequested or closeRequested, and the host decides what each does. A
-// press on an icon never starts the panel's move drag. A Drawer with windowControls whose content
-// is not a Frame is refused at build.
+// press on an icon never starts the panel's move drag. A Drawer whose windowControls name any
+// control and whose content is not a Frame is refused at build; "" builds whatever its content.
 
 // drawerNode is a Drawer: its Float, the overlay it is on (OverlayLayer), and where it opens from.
 type drawerNode struct {
