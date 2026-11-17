@@ -24,7 +24,7 @@ func spliceDoc(before, after string) string {
 	return `import tui 1.0
 import demo 1.0
 Window {
- TileManager {
+ TileManager { id: tm
 ` + before + `
   Drawer { id: ex; modal: false; windowResize: true; minimizable: true; edge: Tui.Right; size: 30; closeOnQ: false
     TileManager.edge: Tui.Left; TileManager.edges: "left right"; TileManager.size: App.exSize; TileManager.minimumSize: 5
@@ -208,8 +208,8 @@ func TestDroppingAMemberMidDragCancelsTheDrag(t *testing.T) {
 	s.Keys(t, tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseRight, Mods: tui.ModAlt, X: 45, Y: 10})
 	titleAt(t, s, "PAGE", 22, 0)
 	for _, c := range rec.all() {
-		if strings.HasPrefix(c, "tile aux") {
-			t.Fatalf("the cancelled drag reported %q", c)
+		if strings.HasPrefix(c, "tile ") {
+			t.Fatalf("the cancelled drag reported %q: a reload must report no tile operation a program would store", c)
 		}
 	}
 	altDrag(t, s, tui.MouseRight, 19, 10, 31, 10)
@@ -234,4 +234,96 @@ func TestAReloadAddingATileStillRebuildsTheManager(t *testing.T) {
 	s.WaitForText(t, "FOOT")
 	call(t, s, "ex", "open")
 	titleAt(t, s, "EXPLORER", 2, 0)
+}
+
+// A reload whose new member the manager refuses (a second member at the centre, as a build refuses
+// it) fails as a structural refusal does: the reload says why, the tree is latched, and the next
+// reload remounts it, the page and ex as the document says. The manager is not left half spliced:
+// it checks every new member before it changes anything.
+func TestAReloadWithAMemberTheManagerRefusesLatchesTheTree(t *testing.T) {
+	s, _ := runSplice(t, spliceDoc("", ""))
+	centre := strings.Replace(auxMember, "TileManager.edge: Tui.Left", "TileManager.edge: Tui.Center", 1)
+	var err error
+	onScreenLoop(t, s, func() { _, err = s.Program.Reload([]byte(spliceDoc("", centre))) })
+	if err == nil || !strings.Contains(err.Error(), "at most one child at Tui.Center") {
+		t.Fatalf("a second centre member: %v, want the manager's refusal", err)
+	}
+	var latched bool
+	onScreenLoop(t, s, func() { latched = s.Program.Tree().Failed() })
+	if !latched {
+		t.Fatal("the refused reload left the tree as if it had applied")
+	}
+	reloadResult(t, s, spliceDoc("", ""))
+	call(t, s, "ex", "open")
+	titleAt(t, s, "PAGE", 22, 0)
+}
+
+// windowDialog puts a Dialog in doc's Window, before its TileManager.
+func windowDialog(doc string) string {
+	return strings.Replace(doc, " TileManager { id: tm", ` Dialog { id: dlg; title: "ASK"; Text { text: "asked" } }
+ TileManager { id: tm`, 1)
+}
+
+// One reload that splices a member and adds a Dialog to the Window, then one that drops both: the
+// Window is arranged again from inside the manager's splice, and each time its children are ones
+// that stand: the dialog opens, the new member opens over its tile, and both go. The mutant, named
+// here: rearrangeHolder not run (the new member never gets the Window's overlay: it cannot open).
+func TestOneReloadSplicingAMemberAndTheWindowsChildren(t *testing.T) {
+	s, _ := runSplice(t, spliceDoc("", ""))
+	call(t, s, "ex", "open")
+	titleAt(t, s, "PAGE", 22, 0)
+	if res := reloadResult(t, s, windowDialog(spliceDoc("", auxMember))); len(res.Rebuilt) != 0 {
+		t.Fatalf("the reload rebuilt %v", res.Rebuilt)
+	}
+	call(t, s, "aux", "open")
+	titleAt(t, s, "AUX", 22, 0)
+	call(t, s, "dlg", "open")
+	s.WaitForText(t, "asked")
+	call(t, s, "dlg", "close")
+	if res := reloadResult(t, s, spliceDoc("", "")); len(res.Rebuilt) != 0 {
+		t.Fatalf("the reload rebuilt %v", res.Rebuilt)
+	}
+	titleAt(t, s, "PAGE", 22, 0)
+	s.WaitFor(t, "AUX gone", func(sc string) bool { return !strings.Contains(sc, "AUX") })
+	if _, ok := s.Program.Find("dlg"); ok {
+		t.Error("the dropped dialog is still found")
+	}
+}
+
+// Kept members whose order the document changes keep the order they have running, as after a
+// swap by the user: aux, declared before ex and tiled outside it, stays outside after a reload that
+// declares it after ex, while a program started on that document tiles it inside.
+func TestAReorderOfKeptMembersKeepsTheRunningOrder(t *testing.T) {
+	s, _ := runSplice(t, spliceDoc(auxMember, ""))
+	call(t, s, "ex", "open")
+	call(t, s, "aux", "open")
+	titleAt(t, s, "AUX", 2, 0)
+	titleAt(t, s, "EXPLORER", 22, 0)
+	if res := reloadResult(t, s, spliceDoc("", auxMember)); len(res.Rebuilt) != 0 {
+		t.Fatalf("a reorder of members rebuilt %v", res.Rebuilt)
+	}
+	titleAt(t, s, "AUX", 2, 0)
+	titleAt(t, s, "EXPLORER", 22, 0)
+
+	fresh, _ := runSplice(t, spliceDoc("", auxMember))
+	call(t, fresh, "ex", "open")
+	call(t, fresh, "aux", "open")
+	titleAt(t, fresh, "EXPLORER", 2, 0)
+	titleAt(t, fresh, "AUX", 22, 0)
+}
+
+// One reload that adds a member and changes a kept member's own TileManager.size: the change reaches
+// the kept member's tile (its receiver is its own, by its window), not the new one's.
+func TestAReloadAddingAMemberAndChangingAKeptOnesTile(t *testing.T) {
+	s, _ := runSplice(t, spliceDoc("", ""))
+	call(t, s, "ex", "open")
+	titleAt(t, s, "PAGE", 22, 0)
+	doc := strings.Replace(spliceDoc("", auxMember), "TileManager.size: App.exSize", "TileManager.size: 40", 1)
+	if res := reloadResult(t, s, doc); len(res.Rebuilt) != 0 {
+		t.Fatalf("the reload rebuilt %v", res.Rebuilt)
+	}
+	titleAt(t, s, "PAGE", 34, 0) // ex 32 across; aux, not open, takes no cells
+	call(t, s, "aux", "open")
+	titleAt(t, s, "AUX", 34, 0) // aux after ex, 20 across
+	titleAt(t, s, "PAGE", 54, 0)
 }

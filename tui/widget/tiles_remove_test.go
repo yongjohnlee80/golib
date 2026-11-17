@@ -249,3 +249,60 @@ func TestAddingAMemberCancelsAGestureInProgress(t *testing.T) {
 		t.Fatalf("member a at %d, %d wide, want 0, 10: the cancelled gesture changed it:\n%s", x, w, r.h.grid())
 	}
 }
+
+// A member removed while another is maximized leaves the manager and is released to its own
+// placement, shown as its own window's state says (open: there, stacked among the overlay's windows
+// as they are, so the maximized one may cover it); the maximize stays on the other. Restored, the
+// page and the other member share the manager, and the removed member is at its own place. The
+// mutant, named here: RemoveMember not releasing the member (its window stays anchored to a tile it
+// no longer has).
+func TestRemovingAMemberWhileAnotherIsMaximizedReleasesIt(t *testing.T) {
+	r, _ := twoMembers(t)
+	var ok bool
+	r.h.onLoop(func() { ok = r.tiles.Maximize("b") })
+	r.h.settle()
+	if !ok {
+		t.Fatal("member b did not maximize")
+	}
+	r.remove(t, "a")
+	var gone bool
+	r.h.onLoop(func() { gone = r.tiles.Tile("a") == nil })
+	if !gone {
+		t.Fatal("the removed member is still the manager's")
+	}
+	var zoomed string
+	r.h.onLoop(func() {
+		if z := r.tiles.Zoomed(); z != nil {
+			zoomed = z.Key()
+		}
+	})
+	if zoomed != "b" {
+		t.Fatalf("the maximize is on %q, want it kept on b", zoomed)
+	}
+	r.h.onLoop(func() { r.tiles.Restore() })
+	r.h.settle()
+	if x, _, w := boxAt(r.h, "PG"); x != 0 || w != 30 {
+		t.Fatalf("restored, the page at %d, %d wide, want 0, 30 beside b:\n%s", x, w, r.h.grid())
+	}
+	if x, y, w := boxAt(r.h, "AA"); x != 2 || y != 6 || w != 10 {
+		t.Fatalf("the removed member at (%d,%d) %d wide, want released to its own (2,6) 10 wide:\n%s", x, y, w, r.h.grid())
+	}
+}
+
+// The centre member removed leaves the manager to its strips: with no centre tiled, the last strip
+// takes what is left. The mutant, named here: RemoveMember leaving the tile in the order (the strip
+// keeps its quarter, the centre's cells empty).
+func TestRemovingTheCentreMemberLeavesTheManagerToTheStrips(t *testing.T) {
+	tiles := core.NewTiles()
+	tiles.Add("side", core.NewBox(core.NewText(""), core.WithTitle("SD")), core.TilePlace{Edge: tui.DockLeft, Size: 25, Min: 5})
+	c := newMember("CC", core.AtRect(tui.Rect{X: 24, Y: 6, W: 12, H: 3}), core.Left)
+	tiles.AddMember("c", c, core.TilePlace{Edge: tui.DockCenter, Min: 5}, true)
+	r := startTiles(t, 40, 10, tiles, tiles, map[string]*member{"c": c})
+	if x, _, w := boxAt(r.h, "CC"); x != 10 || w != 30 {
+		t.Fatalf("the centre member at %d, %d wide, want 10, 30:\n%s", x, w, r.h.grid())
+	}
+	r.remove(t, "c")
+	if x, _, w := boxAt(r.h, "SD"); x != 0 || w != 40 {
+		t.Fatalf("with the centre member gone the strip at %d, %d wide, want the whole manager:\n%s", x, w, r.h.grid())
+	}
+}

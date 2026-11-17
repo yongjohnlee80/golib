@@ -41,9 +41,11 @@ import (
 // returns: a member released for want of room is not, though its TileManager.tiled is true.
 //
 // A reload that adds or drops members splices them (arrange): the members it keeps keep their
-// windows, tiles and state, a new one is placed where the document declares it, and a dropped one
-// leaves the manager with its gesture, if one was in progress, cancelled (Tiles.RemoveMember). A
-// reload that adds, drops, replaces or moves a Tile rebuilds the manager and every member with it.
+// windows, tiles, state and running order (a document reordering them changes nothing, as a swap by
+// the user would not be undone), a new one is placed where the document declares it, and a dropped
+// one leaves the manager with its gesture, if one was in progress, cancelled (Tiles.RemoveMember).
+// A new member the manager refuses fails the reload as a structural refusal does: the tree latches.
+// A reload that adds, drops, replaces or moves a Tile rebuilds the manager and every member with it.
 //
 //	TileManager {
 //	    Drawer { id: explorer; windowResize: true; TileManager.edge: Tui.Left; TileManager.size: 25

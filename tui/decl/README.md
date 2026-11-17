@@ -909,8 +909,12 @@ A reload that adds or drops members splices them: the members it keeps keep thei
 places in the manager's order and state (an editor's text, cursor and focus); a new one is placed
 where the document declares it, as a manager built with it lays it out; a dropped one leaves the
 manager, its cells going to the others, a gesture in progress cancelled and the maximize ended if it
-was the maximized one, and its window unmounts. A reload that adds, drops, replaces or moves a
-`Tile` rebuilds the manager and every member with it: a Tile is fixed once its manager is built.
+was the maximized one, and its window unmounts. Kept members keep the order they have running even
+when the document reorders them, as after a swap by the user; a program started on the document
+lays them out in its order. A new member the manager refuses (a second at the centre, an id twice)
+fails the reload as a structural refusal does: the tree is latched, and the next reload remounts it.
+A reload that adds, drops, replaces or moves a `Tile` rebuilds the manager and every member with it:
+a Tile is fixed once its manager is built.
 
 ```qml
 TileManager {
