@@ -32,7 +32,11 @@ func (x *Box) SetWindowControls(ops []WindowOperation) {
 }
 
 // SetOnWindowControl is what a primary press on a window control does (SetWindowControls): fn with
-// the control's WindowOperation. nil does nothing, but the press is still the control's.
+// the control's WindowOperation, on the press. nil does nothing, but the press is still the
+// control's. Every press is one request: a double press is two, as on a tab strip's controls. The
+// release goes where any release goes, and nothing acts on it: the press took no capture, and
+// nothing under the pointer saw it. A press outside an active focus trap (a dialog open over the
+// box's window) is dropped before it reaches the box, so it asks nothing.
 //
 // A press on a control is always the control's. The Box claims it as a tui.PointerPressResolver,
 // the nearest on the press's path, so neither a window's modified drag (a WindowMod's resolver,
@@ -40,7 +44,9 @@ func (x *Box) SetWindowControls(ops []WindowOperation) {
 func (x *Box) SetOnWindowControl(fn func(WindowOperation)) { x.onControl = fn }
 
 // TitleWindowControls are the window controls as drawn now, for a native painter: each one's
-// columns in the box and its operation, on the title row (TitleRow). None while they are hidden.
+// columns in the box and its operation, on the title row (TitleRow). None while they are hidden,
+// and none before the box's first layout: the columns are the last layout's. Loop goroutine only,
+// as the tab strip's TabWindowControls.
 func (x *Box) TitleWindowControls() []TabControl {
 	if len(x.ctlOps) == 0 || x.ctlX < 0 {
 		return nil
@@ -52,7 +58,8 @@ func (x *Box) TitleWindowControls() []TabControl {
 	return out
 }
 
-// TitleRow is the row of the box its title and window controls are on: its top margin.
+// TitleRow is the row of the box its title and window controls are on: its top margin. Loop
+// goroutine only.
 func (x *Box) TitleRow() int {
 	mt, _, _, _ := x.base.GetMargin()
 	return mt
