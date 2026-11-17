@@ -84,6 +84,17 @@ type Restructurer interface {
 	MoveChild(parent, child NodeID, to int) error
 }
 
+// SpliceVetter is an OPTIONAL refinement of [Restructurer], for a node that
+// can splice some children in place and not others: a tile manager whose
+// governed windows may come and go while the tiles it owns may not. Asked once
+// CanRestructure has said yes, with the type of every child the reload adds,
+// drops, replaces or moves among the children it keeps (a child whose index
+// only shifts because another came or went is not moved), it may still say no,
+// and the node is rebuilt, as one that cannot restructure is.
+type SpliceVetter interface {
+	CanSplice(node NodeID, types []string) bool
+}
+
 // PropertyKind says how a declared property can reach a node.
 //
 // The distinction that matters is between a property the type accepts only at
@@ -707,6 +718,13 @@ func (t *Tree) assess(oldID NodeID, sn *qml.SpecNode) (*step, error) {
 	matched, dropped := t.matchChildren(n, sn)
 	s.dropped = dropped
 	s.restructure = len(dropped) > 0
+	// spliced are the types of the children the restructure touches, for a
+	// SpliceVetter: those added, dropped or replaced, and those kept but moved
+	var spliced []string
+	for _, c := range dropped {
+		spliced = append(spliced, t.nodes[c].typeName)
+	}
+	var kept []NodeID
 	for i, m := range matched {
 		if m == NoNode {
 			f, err := t.fresh(sn.Children[i])
@@ -715,6 +733,7 @@ func (t *Tree) assess(oldID NodeID, sn *qml.SpecNode) (*step, error) {
 			}
 			s.order = append(s.order, f)
 			s.restructure = true
+			spliced = append(spliced, sn.Children[i].Type)
 			continue
 		}
 		cs, err := t.assess(m, sn.Children[i])
@@ -725,14 +744,18 @@ func (t *Tree) assess(oldID NodeID, sn *qml.SpecNode) (*step, error) {
 			// The child is replaced by a different node, which is a change to
 			// this node's child list.
 			s.restructure = true
+			spliced = append(spliced, t.nodes[m].typeName, sn.Children[i].Type)
+		} else {
+			kept = append(kept, m)
 		}
 		if i >= len(n.children) || n.children[i] != m {
 			s.restructure = true
 		}
 		s.order = append(s.order, cs)
 	}
+	spliced = append(spliced, t.movedAmong(n.children, kept)...)
 
-	if s.restructure && !t.canRestructure(oldID) {
+	if s.restructure && !t.canRestructure(oldID, spliced) {
 		return t.rebuildStep(s, "its children changed and this node cannot be restructured after construction")
 	}
 	return s, nil
@@ -917,12 +940,44 @@ func (t *Tree) matchChildren(n *node, sn *qml.SpecNode) (matched []NodeID, dropp
 	return matched, dropped
 }
 
-// canRestructure asks the adapter whether a node's children may change. An
-// adapter with no such capability answers no for everything, which turns every
-// structural edit into a rebuild — lossy, but never wrong.
-func (t *Tree) canRestructure(id NodeID) bool {
+// canRestructure asks the adapter whether a node's children may change, as
+// this reload changes them: spliced are the types of the children it adds,
+// drops, replaces or moves (SpliceVetter). An adapter with no such capability
+// answers no for everything, which turns every structural edit into a rebuild —
+// lossy, but never wrong.
+func (t *Tree) canRestructure(id NodeID, spliced []string) bool {
 	r, ok := t.adapter.(Restructurer)
-	return ok && r.CanRestructure(id)
+	if !ok || !r.CanRestructure(id) {
+		return false
+	}
+	if v, ok := t.adapter.(SpliceVetter); ok {
+		return v.CanSplice(id, spliced)
+	}
+	return true
+}
+
+// movedAmong are the types of the kept children whose order among themselves
+// the reload changes: kept, in the new order, against the same children in the
+// old order (before). A child that only shifts because another came or went
+// keeps its place among them, and is not moved.
+func (t *Tree) movedAmong(before, kept []NodeID) []string {
+	in := make(map[NodeID]bool, len(kept))
+	for _, k := range kept {
+		in[k] = true
+	}
+	var was []NodeID
+	for _, c := range before {
+		if in[c] {
+			was = append(was, c)
+		}
+	}
+	var out []string
+	for i, k := range kept {
+		if i < len(was) && was[i] != k {
+			out = append(out, t.nodes[k].typeName)
+		}
+	}
+	return out
 }
 
 // patch executes the plan for a node that KEEPS its identity.

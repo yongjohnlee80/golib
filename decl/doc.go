@@ -79,6 +79,7 @@
 //	──────────────────  ─────────────────────────────────  ──────────────────────────────────────────
 //	[Classifier]        ClassifyProperty(type, prop)       Distinguishes runtime vs ctor-only props.
 //	[Restructurer]      CanRestructure, Insert, Remove, Move Enables in-place child splicing.
+//	[SpliceVetter]      CanSplice(node, types)             Refuses a splice of some children: a rebuild.
 //	[Resetter]          Resettable, Reset                  Restores removed properties to defaults.
 //	[RootVetter]        VetRoot                            Validates if a node type can be root.
 //	[Vocabulary]        TypeNames                          Prevents component name collisions.
