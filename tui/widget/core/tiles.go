@@ -112,6 +112,7 @@ type Tiles struct {
 	size      tui.Size // as last laid out
 	preview   *tilePreview
 	pending   *tileOp          // the gesture in progress, staged until it completes
+	gesture   *Tile            // the tile a gesture began in, until it commits, is lost or is cancelled
 	origin    func() tui.Point // WithTilesOrigin; nil: the zero point
 	wantSeq   int              // the last member tiled's stamp: members tile, and release, in this order
 }
@@ -181,17 +182,76 @@ func (t *Tiles) admit(op, key string, p TilePlace) {
 
 // AddMember adds a window the manager tiles while it wants to and fits, before or after the mount.
 // p.Edge DockCenter makes it the fill member, whose tile takes the remainder: any number of members,
-// at most one centre among them and the tiles.
+// at most one centre among them and the tiles. A gesture in progress is cancelled first (endGesture).
 func (t *Tiles) AddMember(key string, w GovernedWindow, p TilePlace, wants bool) *Tile {
 	if kit.NilLike(w) {
 		panic(kit.FatalOf("widget: Tiles.AddMember", "nil window", key))
 	}
 	t.admit("widget: Tiles.AddMember", key, p)
+	t.endGesture()
 	tile := &Tile{key: key, owner: t, place: p, gov: w}
 	tile.target = &tileTarget{t: tile}
 	t.tiles = append(t.tiles, tile)
 	t.SetWants(key, wants)
 	return tile
+}
+
+// AddMemberBefore is AddMember, the member placed in the manager's order (the order the strips are
+// taken in) just before the tile keyed before, where a document that declared it there puts it: a
+// program adding a member while it runs lays out as one started with it. A before that is no tile's
+// appends it, as AddMember does.
+func (t *Tiles) AddMemberBefore(before, key string, w GovernedWindow, p TilePlace, wants bool) *Tile {
+	tile := t.AddMember(key, w, p, wants)
+	if b := t.tile(before); b != nil && b != tile {
+		t.tiles = slices.DeleteFunc(t.tiles, func(x *Tile) bool { return x == tile })
+		t.tiles = slices.Insert(t.tiles, slices.Index(t.tiles, b), tile)
+		t.RequestLayout()
+		t.MarkDirty()
+	}
+	return tile
+}
+
+// RemoveMember takes a member out of the manager, before or after the mount: false for a key no
+// member has (a Tile child is never removed). A gesture in progress is cancelled first
+// (endGesture). A governed member is released to its own placement, the maximize ends if it was the
+// maximized tile (the others are shown again), and the manager lays out without it. Nothing is
+// published: the member's window keeps its own state (open, minimized, its float rect, its content
+// and the focus in it), and what a program stored of its tile is the program's.
+func (t *Tiles) RemoveMember(key string) bool {
+	tile := t.tile(key)
+	if tile == nil || tile.gov == nil {
+		return false
+	}
+	t.endGesture()
+	if t.zoomed == tile {
+		t.zoomed = nil
+	}
+	if tile.governed {
+		tile.governed, tile.hidden = false, false // the window's own state is its own again
+		tile.gov.Release()
+	}
+	t.tiles = slices.DeleteFunc(t.tiles, func(x *Tile) bool { return x == tile })
+	t.sync()
+	return true
+}
+
+// endGesture cancels the gesture in progress, staged or only begun, in whichever tile, through the
+// window that holds it: its checkpoint restores every tile's place, the order and the zoom, and the
+// pointer is given back. Adding or removing a member calls it first: the layout the gesture drags is
+// about to change, and a checkpoint taken before the change would undo it when restored.
+func (t *Tiles) endGesture() {
+	g := t.gesture
+	if g == nil && t.pending != nil {
+		g = t.pending.tile
+	}
+	if g == nil {
+		return
+	}
+	if c := g.core(); c != nil {
+		c.HandleAction(tui.ActionInvocation{Action: WindowDragCancelAction{}, Origin: tui.OriginProgrammatic})
+	}
+	t.gesture, t.pending = nil, nil
+	t.sync()
 }
 
 // SetWants is a member's Layout, live: true asks to be tiled, stamping the order it came into play
@@ -289,7 +349,7 @@ func (t *Tiles) centre() *Tile {
 // Init mounts every Tile child and the drop preview over them. A member's node is its own.
 func (t *Tiles) Init(ctx *tui.Context) {
 	t.Base.Init(ctx)
-	t.pending = nil
+	t.pending, t.gesture = nil, nil
 	for _, tile := range t.tiles {
 		if tile.mod != nil {
 			ctx.Mount(tile.mod)
@@ -1136,7 +1196,7 @@ func (g *tileTarget) Checkpoint() func() {
 		for tile, p := range places {
 			tile.place.Edge, tile.place.Size = p.edge, p.size
 		}
-		m.tiles, m.zoomed, m.pending = order, zoomed, nil
+		m.tiles, m.zoomed, m.pending, m.gesture = order, zoomed, nil, nil
 		m.sync()
 	}
 }
@@ -1238,7 +1298,7 @@ func (g *tileTarget) GestureBegan(op WindowOperation, h Handle, at tui.Point, po
 		return false
 	}
 	g.op, g.border, g.pointer, g.at, g.start = op, border, pointer, at, g.t.rect
-	m.pending = nil
+	m.pending, m.gesture = nil, g.t
 	return true
 }
 
@@ -1263,7 +1323,7 @@ func (g *tileTarget) GestureLost(op WindowOperation) {
 		g.commit(op)
 		return
 	}
-	m.pending = nil
+	m.pending, m.gesture = nil, nil
 	m.sync()
 }
 
@@ -1282,7 +1342,7 @@ func (g *tileTarget) WindowChanged(e WindowChangedEvent) {
 func (g *tileTarget) commit(op WindowOperation) {
 	m := g.owner()
 	p := m.pending
-	m.pending = nil
+	m.pending, m.gesture = nil, nil
 	if p == nil || p.tile != g.t {
 		m.sync()
 		return
