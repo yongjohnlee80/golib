@@ -129,6 +129,12 @@ type Box struct {
 	leadW int
 	// head is the control on the first row inside the frame (SetHeaderSlot), nil for none.
 	head tui.Component
+	// ctlOps are the window controls at the title row's right end (SetWindowControls), onControl
+	// what a press on one does; ctlX is the column the first starts at, committed after layout, -1
+	// while they are hidden (box_controls.go).
+	ctlOps    []WindowOperation
+	onControl func(WindowOperation)
+	ctlX      int
 }
 
 // SetMaximumWidth caps the box at w columns, border included, centred in what it is given — CSS's
@@ -244,6 +250,7 @@ func NewBox(child tui.Component, opts ...BoxOption) *Box {
 		focusable:   cfg.focusable,
 		slot:        cfg.slot,
 		foot:        cfg.foot,
+		ctlX:        -1,
 	}
 }
 
@@ -542,23 +549,25 @@ const boxCommitKey tui.CommitKey = "widget.box"
 // border rows.
 func (x *Box) Layout(c tui.Constraints) tui.Size {
 	sz, inL, inR := x.layoutFrame(c)
-	sw := x.placeSlot(sz.W, inL, inR)
+	cr := x.placeControls(sz.W, inL, inR)
+	sw := x.placeSlot(sz.W, inL, inR, cr)
 	x.placeFoot(sz, inL, inR)
-	x.placeLead(sz.W, inL, inR, sw)
+	x.placeLead(sz.W, inL, inR, sw, cr)
 	return sz
 }
 
-// placeSlot lays the title slot out on the top border row of a box w columns wide and places it,
-// or places it nowhere (a zero rect: never hit) while it doesn't fit; the width it took is
-// committed after layout, for Render to truncate the title by.
-func (x *Box) placeSlot(w, inL, inR int) int {
+// placeSlot lays the title slot out on the top border row of a box w columns wide, before the
+// reserve columns the window controls take at its right end, and places it, or places it nowhere
+// (a zero rect: never hit) while it doesn't fit; the width it took is committed after layout, for
+// Render to truncate the title by.
+func (x *Box) placeSlot(w, inL, inR, reserve int) int {
 	if x.slot == nil {
 		return 0
 	}
 	mt, mr, _, ml := x.base.GetMargin()
 	bt, br, _, bl := borderEdgeSizes(x.base)
 	bx, bw := ml+inL, w-ml-mr-inL-inR
-	inner := bw - bl - br
+	inner := bw - bl - br - reserve
 	sw := 0
 	if bt == 1 && inner > 4 {
 		// measured with the whole row, so one that doesn't fit is hidden below, never cut
@@ -579,18 +588,18 @@ func (x *Box) placeSlot(w, inL, inR int) int {
 }
 
 // placeLead lays the title row's lead slot out on the top border row of a box w columns wide, at
-// its left after a border cell, in the room the title slot (sw columns, 0 for none) leaves with a
-// border cell either side, and places it, or places it nowhere while it takes no width or has no
+// its left after a border cell, in the room the title slot (sw columns, 0 for none) and the window
+// controls (reserve columns) leave with a border cell either side, and places it, or places it nowhere while it takes no width or has no
 // room; the width it took is committed after layout, for Render to start the title after. A
 // right-aligned title has its slot at the row's left: the lead follows it.
-func (x *Box) placeLead(w, inL, inR, sw int) {
+func (x *Box) placeLead(w, inL, inR, sw, reserve int) {
 	if x.lead == nil {
 		return
 	}
 	mt, mr, _, ml := x.base.GetMargin()
 	bt, br, _, bl := borderEdgeSizes(x.base)
 	bx, bw := ml+inL, w-ml-mr-inL-inR
-	room := bw - bl - br - 2 // a border cell after the corner, and one before the other
+	room := bw - bl - br - 2 - reserve // a border cell after the corner, and one before the other
 	at := bx + bl + 1
 	if sw > 0 {
 		room -= sw + 1
@@ -780,6 +789,17 @@ func (x *Box) Render(s tui.Surface) {
 	// the title slot's columns, and a border cell beside them, are the slot's: the title truncates
 	// before them (after them, when it is right-aligned)
 	tx, tw := bx+1, availW
+	// the window controls' columns, and the border cell before them, are theirs: the title and its
+	// slot keep to the room before them
+	if x.ctlX >= 0 && len(x.ctlOps) > 0 {
+		tw -= x.controlsWidth() + 1
+		if bt == 1 {
+			for i, op := range x.ctlOps {
+				st := style.New().Foreground(windowControlTokens[op]).Inherit(titleSt.Bold(false).Inherit(fill))
+				x.renderBorderText(s, " "+windowControlLabels[op]+" ", style.AlignLeft, st, x.ctlX+boxControlCells*i, by, boxControlCells)
+			}
+		}
+	}
 	if x.slot != nil && x.slotW > 0 {
 		tw -= x.slotW + 1
 		if x.titleAlign == style.AlignRight {

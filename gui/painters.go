@@ -58,7 +58,25 @@ func NativeStyle() *Style {
 	ForType(s, paintDataTable)
 	ForType(s, paintScrollView)
 	ForType(s, paintTerminal)
+	ForType(s, paintBox)
 	return s
+}
+
+// paintBox draws a Box with window controls (Box.SetWindowControls): its cells as the grid draws
+// them, then the controls as the title bar's dots on its title row. A Box without them, the usual
+// frame, is declined at once and stays cell-drawn.
+func paintBox(b *core.Box) (View, tui.NativeScope, bool) {
+	if len(b.TitleWindowControls()) == 0 {
+		return nil, 0, false
+	}
+	return ViewFunc(func(c Canvas) {
+		cols, rows := CanvasCells(c)
+		if cols <= 0 || rows <= 0 {
+			return
+		}
+		c.PaintCells(CellRect{W: cols, H: rows}, false)
+		paintTabControls(c, b.TitleWindowControls(), cols, b.TitleRow())
+	}), tui.ScopeChrome, true
 }
 
 // paintHTMLView draws an HTMLView whose bound layout is a native view (gui/widget.BindHTML binds
@@ -647,27 +665,28 @@ func paintTabs(comp tui.Component) (View, tui.NativeScope, bool) {
 			c.FillRect(Rect{X: x, Y: cs.H * 0.2, W: 1 / px, H: cs.H * 0.6}, Solid(Mix(bg, fg, 0.55)))
 		}
 		c.PaintCells(CellRect{W: cols, H: 1}, true)
-		paintTabControls(c, controls, cols)
+		paintTabControls(c, controls, cols, 0)
 	}), tui.ScopeChrome, true
 }
 
-// paintTabControls draws a tab strip's window controls (widget.TabWindowController) as the title
-// bar's: a dot in each control's colour (WindowControlColor) over its cells, on the bar's ground.
-// A control a panel covers is left to it.
-func paintTabControls(c Canvas, controls []core.TabControl, cols int) {
+// paintTabControls draws window controls on row of the view (a tab strip's, widget.TabWindowController,
+// on its row 0; a Box's on its title row, paintBox) as the title bar's: a dot in each control's
+// colour (WindowControlColor) over its cells, on the row's ground. A control a panel covers is
+// left to it.
+func paintTabControls(c Canvas, controls []core.TabControl, cols, row int) {
 	cs := c.CellSize()
 	for _, ctl := range controls {
 		if ctl.X >= cols {
 			continue
 		}
-		_, bg, ok := openColors(c, 0, span(ctl.X, min(ctl.X+ctl.W, cols))...)
+		_, bg, ok := openColors(c, row, span(ctl.X, min(ctl.X+ctl.W, cols))...)
 		if !ok {
 			continue
 		}
-		cell := Rect{X: float32(ctl.X) * cs.W, W: float32(ctl.W) * cs.W, H: cs.H}
+		cell := Rect{X: float32(ctl.X) * cs.W, Y: float32(row) * cs.H, W: float32(ctl.W) * cs.W, H: cs.H}
 		c.FillRect(cell, Solid(bg))        // the control's glyph, the terminal's fallback, under the dot
 		radius := min(cs.H*0.32, cs.W*1.2) // the title bar's (gui/widget Panel's): one size of dot
-		cx, cy := cell.X+cell.W/2, cs.H/2
+		cx, cy := cell.X+cell.W/2, cell.Y+cs.H/2
 		c.FillEllipse(Rect{X: cx - radius, Y: cy - radius, W: radius * 2, H: radius * 2}, Solid(WindowControlColor(ctl.Op)))
 	}
 }
