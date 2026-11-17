@@ -561,7 +561,7 @@ split := core.NewSplit(core.Horizontal, leftPane, rightPane,
 
 // Zoom a pane to full screen:
 split.Zoom(core.PaneA)
-split.Unzoom()
+split.Zoom(core.PaneNone) // restore both panes and the ratio
 ```
 
 The divider runs on a **pointer capture** and a named action vocabulary —

@@ -215,6 +215,8 @@ func eventName(ev Event) string {
 		return "FocusEvent"
 	case CloseRequestEvent:
 		return "CloseRequestEvent"
+	case PointerCancelEvent:
+		return "PointerCancelEvent"
 	case TaskResult:
 		return "TaskResult"
 	case TaskProgress:

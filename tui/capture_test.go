@@ -416,6 +416,13 @@ func TestInvoluntaryLossReportsTheRightReason(t *testing.T) {
 				h.onLoop(func() { h.app.byComp[owner].ctx.CancelGesture() })
 			},
 		},
+		{
+			name: "backend cancels the gesture",
+			want: CaptureLostCancelled,
+			trigger: func(t *testing.T, h *harness, owner *dragger, root *counter) {
+				h.inject(PointerCancelEvent{})
+			},
+		},
 	}
 
 	for _, tc := range cases {

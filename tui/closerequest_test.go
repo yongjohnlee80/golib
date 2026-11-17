@@ -62,7 +62,8 @@ func TestTheIntakeNamesACloseRequest(t *testing.T) {
 func TestEventNameNamesEachKind(t *testing.T) {
 	for ev, want := range map[Event]string{
 		KeyEvent{}: "KeyEvent", MouseEvent{}: "MouseEvent", PasteEvent{}: "PasteEvent", ResizeEvent{}: "ResizeEvent",
-		FocusEvent{}: "FocusEvent", CloseRequestEvent{}: "CloseRequestEvent", TaskResult{}: "TaskResult",
+		FocusEvent{}: "FocusEvent", CloseRequestEvent{}: "CloseRequestEvent", PointerCancelEvent{}: "PointerCancelEvent",
+		TaskResult{}:   "TaskResult",
 		TaskProgress{}: "TaskProgress", TickEvent{}: "TickEvent", UserEvent{}: "Event",
 	} {
 		if got := eventName(ev); got != want {

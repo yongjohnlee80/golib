@@ -993,6 +993,44 @@ func TestDisablingMidPressCancelsRatherThanDriftingOut(t *testing.T) {
 	}
 }
 
+// TestAPointerCancelMidPressNeverActivates: a backend's PointerCancelEvent ends a press without a
+// release, so the pressed Button never activates, not even when a release then lands on it, and its
+// capture ends with CaptureLostCancelled. Afterwards its sibling is reachable again.
+func TestAPointerCancelMidPressNeverActivates(t *testing.T) {
+	var fired, sibFired atomic.Int64
+	lb := &lossRecordingButton{Button: core.NewButton("OK", core.WithOnActivate(func() { fired.Add(1) }))}
+	sib := core.NewButton("S", core.WithOnActivate(func() { sibFired.Add(1) }))
+	root := tui.NewFlex(tui.Horizontal)
+	root.Add(lb, sib)
+	h := startApp(t, root, 20, 1)
+	defer h.stop()
+	h.settle()
+
+	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 1, Y: 0})
+	h.waitFor("armed", func() bool { return armedOn(h, lb.Button) })
+
+	h.inject(tui.PointerCancelEvent{})
+	h.waitFor("the owner was told", func() bool { return lb.losses.Load() == 1 })
+	h.inject(tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 1, Y: 0})
+	h.settle()
+
+	if got := fired.Load(); got != 0 {
+		t.Errorf("the Button activated %d time(s) after its press was cancelled, want 0", got)
+	}
+	if armedOn(h, lb.Button) {
+		t.Error("still armed after the cancel")
+	}
+	if got := tui.CaptureLostReason(lb.reason.Load()); got != tui.CaptureLostCancelled {
+		t.Errorf("loss reason = %v, want %v", got, tui.CaptureLostCancelled)
+	}
+	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 6, Y: 0})
+	h.inject(tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 6, Y: 0})
+	h.waitFor("the sibling is reachable again", func() bool { return sibFired.Load() == 1 })
+	if got := fired.Load(); got != 0 {
+		t.Errorf("the Button activated %d time(s), want 0", got)
+	}
+}
+
 // TestACombiningMarkIsPaintedWithItsBaseCharacter.
 //
 // Painting rune by rune puts the zero-width mark in its own cell, where it

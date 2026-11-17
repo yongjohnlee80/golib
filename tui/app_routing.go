@@ -142,6 +142,11 @@ func (a *App) dispatch(ev Event) {
 	case PointerLeaveEvent:
 		a.setHovered(nil)
 
+	case PointerCancelEvent:
+		// The gesture ends and nothing else does: not a focus loss (dispatchFocusEvent), which
+		// would also clear the hover and tell the focused node.
+		a.loseCapture(CaptureLostCancelled)
+
 	case TickEvent:
 		a.deliverAddressed(e.Owner, ev)
 	case TaskResult:
