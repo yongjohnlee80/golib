@@ -50,7 +50,12 @@ func startApp(t *testing.T, root tui.Component, w, h int) *harness {
 // The backend and frame-cap options are always applied first.
 func startAppOpts(t *testing.T, root tui.Component, w, h int, opts ...tui.AppOption) *harness {
 	t.Helper()
-	tb := tui.NewTestBackend(w, h)
+	return startAppOn(t, root, tui.NewTestBackend(w, h), opts...)
+}
+
+// startAppOn is startAppOpts on a backend of the caller's: one reporting other capabilities, say.
+func startAppOn(t *testing.T, root tui.Component, tb *tui.TestBackend, opts ...tui.AppOption) *harness {
+	t.Helper()
 	h2 := &harness{t: t, tb: tb, resc: make(chan error, 1)}
 
 	// The barrier's dispatch acknowledgment. traceRouted fires SYNCHRONOUSLY
