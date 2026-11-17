@@ -336,6 +336,9 @@ func (a *App) focusStepWithin(comp Component, dir int) bool {
 	default:
 		next = len(ring) - 1 // and the previous, its last
 	}
+	if ring[next].id == a.focus.focused {
+		return false // its only stop, focused already: nothing moved
+	}
 	a.setFocus(ring[next].id)
 	return true
 }

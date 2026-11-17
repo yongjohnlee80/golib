@@ -132,9 +132,9 @@ func TestFocusStepWithinFollowsAMovedFocusNext(t *testing.T) {
 // outside it steps nothing, as it may not take the pointer: false, and focus stays in the trap.
 func TestFocusStepWithinRefusesOutsideTheActiveTrap(t *testing.T) {
 	t.Parallel()
-	s := stops("inside", "a", "b")
+	s := stops("inside", "a", "b", "inside2")
 	trap := newScopeProbe(true)
-	trap.Add(s[0])
+	trap.Add(s[0], s[3])
 	pane := newPaneProbe(s[1], s[2])
 	root := NewFlex(Vertical)
 	root.Add(trap, pane)
@@ -153,6 +153,39 @@ func TestFocusStepWithinRefusesOutsideTheActiveTrap(t *testing.T) {
 	// inside the trap, the same step runs
 	if !stepWithin(h, trap, 1) {
 		t.Error("a step inside the active trap reported no move")
+	}
+	if got := focusedID(h); got != s[3].nodeID() {
+		t.Errorf("a step inside the active trap focused %d, want its second stop (%d)", got, s[3].nodeID())
+	}
+}
+
+// TestFocusStepWithinOnItsOnlyStopReportsNoMove: comp whose only stop already has the focus has
+// nowhere to step: false, either way, and the focus stays. From outside, the same step moves to it
+// and reports so.
+func TestFocusStepWithinOnItsOnlyStopReportsNoMove(t *testing.T) {
+	t.Parallel()
+	s := stops("outside", "only")
+	pane := newPaneProbe(s[1])
+	root := NewFlex(Vertical)
+	root.Add(s[0], pane)
+	h := startApp(t, root, 8, 10)
+	defer h.wait()
+	h.sync()
+
+	focusOn(t, h, s[0])
+	if !stepWithin(h, pane, 1) {
+		t.Error("a step from outside onto the only stop reported no move")
+	}
+	if got := focusedID(h); got != s[1].nodeID() {
+		t.Fatalf("a step from outside focused %d, want the only stop (%d)", got, s[1].nodeID())
+	}
+	for _, dir := range []int{1, -1} {
+		if stepWithin(h, pane, dir) {
+			t.Errorf("a step %+d on the only stop, focused already, reported a move", dir)
+		}
+	}
+	if got := focusedID(h); got != s[1].nodeID() {
+		t.Errorf("focus moved to %d, want it left on the only stop (%d)", got, s[1].nodeID())
 	}
 }
 
