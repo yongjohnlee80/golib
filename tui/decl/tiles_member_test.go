@@ -184,9 +184,9 @@ func TestADrawersNewEdgeWhileGovernedStillCommitsThroughItsTile(t *testing.T) {
 	})
 }
 
-// A reload that rebuilds a member (a constructor property of its own changed) rebuilds its
-// TileManager with it, which takes the member's live TileManager.* properties again: a change of
-// TileManager.tiled still tiles and releases it.
+// A reload that rebuilds a member (a constructor property of its own changed) splices the new one
+// into its TileManager in the old one's place (arrange), its live TileManager.* properties taken
+// again: a change of TileManager.tiled still tiles and releases it.
 func TestAMembersLivePropertiesHoldAcrossAReloadThatRebuildsIt(t *testing.T) {
 	s, _ := runMember(t, memberDoc)
 	before, _ := s.Program.Find("ex")
