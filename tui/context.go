@@ -143,6 +143,23 @@ type nodeIdentifier interface{ NodeID() NodeID }
 // within comp. Loop goroutine only.
 func (c *Context) FocusInto(comp Component) bool { return c.app.FocusInto(comp) }
 
+// FocusStepWithin moves focus one step through comp's subtree, as Tab and
+// Shift+Tab move it through the whole scope: dir > 0 to the next stop, dir < 0
+// to the previous, in the same order (FocusNext's: document order), wrapping
+// at the ends. With nothing in comp focused, it lands on comp's first stop
+// (dir > 0) or its last. A pane that keeps Tab within itself asks KeyCommand
+// for FocusNext and FocusPrev and calls it, so a key map that moves those keys
+// moves it too.
+//
+// It keeps traversal's rules: a nested trapping scope's subtree is not stepped
+// into, and comp outside the active trapping scope steps nothing, as it may not
+// take the pointer either (CapturePointer). It reports whether it moved focus:
+// false, moving nothing, when comp is not mounted, holds no stop now, lies
+// outside the active trap, or dir is 0. Loop goroutine only.
+func (c *Context) FocusStepWithin(comp Component, dir int) bool {
+	return c.app.FocusStepWithin(comp, dir)
+}
+
 // HoldsFocusable reports whether comp, or anything under it, takes focus BY
 // DESIGN — implements Focusable — whatever it accepts right now. It is the
 // question to ask before FocusInto when the answer "no" means a mistake: a
