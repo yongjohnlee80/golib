@@ -188,9 +188,11 @@ type AttachedReceiver func(prop string, v qml.SpecValue) error
 
 // OnAttached registers, for the i-th child, where a change of its live attached properties goes.
 // A container that honours a schema with live members registers one for each child that may carry
-// them. Such a container splices no child in place (it is no tui.Container and no rearranger), so a
-// reload that rebuilds a child rebuilds it too, and it registers again. A builder called directly (a
-// test's) registers nowhere.
+// them. One that splices its children in place (a rearranger, as the TileManager) also gives each
+// child's receiver by its component after every arrange (attachedReceivers), so a child a reload
+// splices in, or one whose index a splice shifts, takes its changes as one it was built with; one
+// that splices none is rebuilt with any child a reload rebuilds, and registers again. A builder
+// called directly (a test's) registers nowhere.
 func (b Build) OnAttached(i int, fn AttachedReceiver) {
 	if b.onAttached != nil {
 		b.onAttached(i, fn)

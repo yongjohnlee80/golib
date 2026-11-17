@@ -491,10 +491,12 @@ child, except for a **live** one: `TileManager.tiled`, `.edge`, `.size` and the 
 change while built, so a bound one moves the tile, or tiles and releases the window, and the window
 keeps its state. A consumer's container declares its own: `LiveAttached(r, schema, names…)` after
 `RegisterAttached`, and its builder registers, per child, where a change goes:
-`b.OnAttached(i, func(prop string, v qml.SpecValue) error { … })`. Such a container splices no child
-in place (it is no `tui.Container`), so a reload that rebuilds a child rebuilds the container with
-it, which registers again. A change under a parent that registered nothing is refused, naming the
-property and the parent.
+`b.OnAttached(i, func(prop string, v qml.SpecValue) error { … })`. A container that splices no child
+in place (no `tui.Container` and no rearranger) is rebuilt with any child a reload rebuilds, and
+registers again. The TileManager splices its members (see Tiles), and gives each child's receiver
+by its component after every splice, so a member spliced in, or one whose index a splice shifted,
+takes its changes as one built with it. A change under a parent that registered nothing is
+refused, naming the property and the parent.
 
 ### Enums — the `Tui` singleton
 
@@ -902,6 +904,13 @@ page sits against the far edge; with no strip there, the centre is centred at it
 the cells either side of it are the manager's own background, no tile's. The minimums alone decide
 what fits. With no centre tiled, the last strip takes what is
 left. Nothing floats; a floating panel is a Drawer.
+
+A reload that adds or drops members splices them: the members it keeps keep their windows, tiles,
+places in the manager's order and state (an editor's text, cursor and focus); a new one is placed
+where the document declares it, as a manager built with it lays it out; a dropped one leaves the
+manager, its cells going to the others, a gesture in progress cancelled and the maximize ended if it
+was the maximized one, and its window unmounts. A reload that adds, drops, replaces or moves a
+`Tile` rebuilds the manager and every member with it: a Tile is fixed once its manager is built.
 
 ```qml
 TileManager {

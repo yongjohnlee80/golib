@@ -3,6 +3,7 @@ package decl
 import (
 	"fmt"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -38,6 +39,11 @@ import (
 // completed operation. A closed or minimized member takes no cells, and stays governed. A Go
 // program asks whether a member is over its tile now with Governed(key) on the node Program.Find
 // returns: a member released for want of room is not, though its TileManager.tiled is true.
+//
+// A reload that adds or drops members splices them (arrange): the members it keeps keep their
+// windows, tiles and state, a new one is placed where the document declares it, and a dropped one
+// leaves the manager with its gesture, if one was in progress, cancelled (Tiles.RemoveMember). A
+// reload that adds, drops, replaces or moves a Tile rebuilds the manager and every member with it.
 //
 //	TileManager {
 //	    Drawer { id: explorer; windowResize: true; TileManager.edge: Tui.Left; TileManager.size: 25
@@ -284,8 +290,20 @@ type tileManagerNode struct {
 	core.Base
 	tiles   *core.Tiles
 	members []Overlaid
+	// byWindow is each member by its window: its key and the receiver of its live TileManager.*
+	// properties, which follow the member, never its index, when a reload splices the children
+	byWindow map[tui.Component]memberRec
+	// fixed are the Tiles it was built with: a reload never splices one (canSplice)
+	fixed   map[tui.Component]bool
 	origin  tui.Point
 	changed func(args ...qml.SpecValue)
+}
+
+// memberRec is a member as the manager holds it: its key, and where its live TileManager.*
+// properties go.
+type memberRec struct {
+	key  string
+	recv AttachedReceiver
 }
 
 func (m *tileManagerNode) Init(ctx *tui.Context) {
@@ -333,7 +351,8 @@ func (m *tileManagerNode) allowedIn(self, parent string) error {
 // buildTileManager adds each Tile, and each window (a Drawer, a FloatWindow) as a member, to a new
 // manager, in declaration order: the order strips take their depth in.
 func buildTileManager(b Build) (tui.Component, []string, error) {
-	n := &tileManagerNode{changed: b.EmitterWith("tileChanged")}
+	n := &tileManagerNode{changed: b.EmitterWith("tileChanged"), byWindow: map[tui.Component]memberRec{},
+		fixed: map[tui.Component]bool{}}
 	byKey := map[string]*tileNode{}
 	opts := []core.TilesOption{
 		core.WithTilesChanged(func(e core.TilesChangedEvent) {
@@ -351,7 +370,11 @@ func buildTileManager(b Build) (tui.Component, []string, error) {
 	n.tiles = core.NewTiles(opts...)
 	keys, centre := map[string]bool{}, false
 	for i, c := range b.Children {
-		m, err := n.adopt(b, i, c, byKey)
+		var own map[string]qml.SpecValue
+		if i < len(b.ChildAttached) {
+			own = b.ChildAttached[i]
+		}
+		m, err := n.adopt(i, c, own, byKey)
 		if err != nil {
 			return nil, nil, fmt.Errorf("%w (at %s)", err, b.Pos)
 		}
@@ -362,16 +385,124 @@ func buildTileManager(b Build) (tui.Component, []string, error) {
 			return nil, nil, fmt.Errorf("a TileManager has at most one child at Tui.Center (at %s)", b.Pos)
 		}
 		keys[m.key], centre = true, centre || m.place.Edge == tui.DockCenter
-		n.add(b, i, c, m)
+		if t, ok := c.(*tileNode); ok {
+			t.tiles, t.tile = n.tiles, n.tiles.Add(m.key, t, m.place)
+			n.fixed[c] = true
+			continue
+		}
+		b.OnAttached(i, n.addMember(c, m, ""))
 	}
 	return n, nil, nil
 }
 
-// adopt reads child i: a Tile's key and place, or a member's from its TileManager.* attached
-// properties, its key its id ("tile<i>" for an anonymous child, as a Tile's).
-func (n *tileManagerNode) adopt(b Build, i int, c tui.Component, byKey map[string]*tileNode) (memberSpec, error) {
+// arrange splices the members a reload adds or drops (the adapter restructures the manager through
+// it, as it does a Window): a member still there keeps its window, its tile, its place in the
+// manager's order (a swap may have changed it) and its state; one gone is taken out
+// (Tiles.RemoveMember); one new is read as a build reads it and added where the document declares
+// it, before the next child the manager holds (AddMemberBefore). Every new member is checked
+// before anything changes. Its Tiles are the ones it was built with: a reload that adds, drops,
+// replaces or moves one rebuilds the manager instead (canSplice).
+func (n *tileManagerNode) arrange(children []tui.Component, attached []map[string]qml.SpecValue, _ tui.Component) error {
+	present := make(map[tui.Component]bool, len(children))
+	for _, c := range children {
+		present[c] = true
+	}
+	// what stays: its keys, and whether the centre is taken
+	keys, centre := map[string]bool{}, false
+	for c := range n.fixed {
+		if !present[c] {
+			return fmt.Errorf("a TileManager's Tiles are fixed once it is built; a reload that drops one rebuilds it")
+		}
+		t := c.(*tileNode)
+		keys[t.key], centre = true, centre || t.tile.Place().Edge == tui.DockCenter
+	}
+	for c, r := range n.byWindow {
+		if present[c] {
+			keys[r.key], centre = true, centre || n.tiles.Tile(r.key).Place().Edge == tui.DockCenter
+		}
+	}
+	type adding struct {
+		i int
+		c tui.Component
+		m memberSpec
+	}
+	var adds []adding
+	for i, c := range children {
+		if _, ok := c.(*tileNode); ok {
+			if !n.fixed[c] {
+				return fmt.Errorf("a TileManager's Tiles are fixed once it is built; a reload that adds one rebuilds it (child %d)", i)
+			}
+			continue
+		}
+		if _, kept := n.byWindow[c]; kept {
+			continue
+		}
+		var own map[string]qml.SpecValue
+		if i < len(attached) {
+			own = attached[i]
+		}
+		m, err := n.adopt(i, c, own, nil)
+		if err != nil {
+			return err
+		}
+		if keys[m.key] {
+			return fmt.Errorf("a TileManager's children have distinct ids, %q twice", m.key)
+		}
+		if m.place.Edge == tui.DockCenter && centre {
+			return fmt.Errorf("a TileManager has at most one child at Tui.Center")
+		}
+		keys[m.key], centre = true, centre || m.place.Edge == tui.DockCenter
+		adds = append(adds, adding{i, c, m})
+	}
+	// gone first: a member rebuilt under its key leaves before the one replacing it comes
+	for _, o := range n.members {
+		if r, ok := n.byWindow[o]; ok && !present[o] {
+			n.tiles.RemoveMember(r.key)
+			delete(n.byWindow, o)
+		}
+	}
+	for _, a := range adds {
+		n.addMember(a.c, a.m, n.keyAfter(children, a.i))
+	}
+	n.members = n.members[:0]
+	for _, c := range children {
+		if _, ok := n.byWindow[c]; ok {
+			n.members = append(n.members, c.(Overlaid))
+		}
+	}
+	return nil
+}
+
+// keyAfter is the key of the first child after i that the manager holds now, a Tile or a member:
+// a member added at i goes before it, as a build would have it. "" when none follows.
+func (n *tileManagerNode) keyAfter(children []tui.Component, i int) string {
+	for _, c := range children[i+1:] {
+		if t, ok := c.(*tileNode); ok && n.fixed[c] {
+			return t.key
+		}
+		if r, ok := n.byWindow[c]; ok {
+			return r.key
+		}
+	}
+	return ""
+}
+
+// canSplice is the manager's answer to a reload that changes its children (decl.SpliceVetter): its
+// members are spliced, its Tiles never.
+func (n *tileManagerNode) canSplice(types []string) bool {
+	return !slices.Contains(types, tileType.Name)
+}
+
+// receiverFor is where a member's live TileManager.* properties go, by its window: nil for a Tile.
+func (n *tileManagerNode) receiverFor(c tui.Component) AttachedReceiver {
+	return n.byWindow[c].recv
+}
+
+// adopt reads child i from its attached properties (own): a Tile's key and place, or a member's
+// from its TileManager.* ones, its key its id ("tile<i>" for an anonymous child, as a Tile's).
+func (n *tileManagerNode) adopt(i int, c tui.Component, own map[string]qml.SpecValue, byKey map[string]*tileNode) (memberSpec, error) {
 	if t, ok := c.(*tileNode); ok {
-		for prop := range b.ChildAttached[i] {
+		for prop := range own {
 			if strings.HasPrefix(prop, tileManagerName+".") {
 				return memberSpec{}, fmt.Errorf("a Tile's place is its own edge, edges, size and minimums; %s is a window's (child %d)", prop, i)
 			}
@@ -379,7 +510,9 @@ func (n *tileManagerNode) adopt(b Build, i int, c tui.Component, byKey map[strin
 		if t.key == "" {
 			t.key = "tile" + strconv.Itoa(i)
 		}
-		byKey[t.key] = t
+		if byKey != nil {
+			byKey[t.key] = t
+		}
 		return memberSpec{key: t.key, place: t.place}, nil
 	}
 	w, ok := c.(tileMember)
@@ -399,7 +532,7 @@ func (n *tileManagerNode) adopt(b Build, i int, c tui.Component, byKey map[strin
 	fields := spec.fields()
 	fields["tiled"] = into(&m.tiled, boolOf)
 	for name, f := range fields {
-		if v, ok := b.Attached(i, tileManagerName+"."+name); ok {
+		if v, ok := own[tileManagerName+"."+name]; ok {
 			if err := f(v); err != nil {
 				return memberSpec{}, fmt.Errorf("%s.%s: %w", tileManagerName, name, err)
 			}
@@ -423,18 +556,17 @@ type memberSpec struct {
 	tiled bool
 }
 
-// add puts child i in the manager: a Tile as a Tile, a member as a member that wants to tile as its
-// TileManager.tiled says, with a receiver for its live TileManager.* properties (LiveAttached).
-func (n *tileManagerNode) add(b Build, i int, c tui.Component, m memberSpec) {
-	if t, ok := c.(*tileNode); ok {
-		t.tiles, t.tile = n.tiles, n.tiles.Add(m.key, t, m.place)
-		return
-	}
+// addMember puts a member in the manager, before the tile keyed before ("": last), wanting to tile
+// as its TileManager.tiled says, and returns the receiver of its live TileManager.* properties
+// (LiveAttached).
+func (n *tileManagerNode) addMember(c tui.Component, m memberSpec, before string) AttachedReceiver {
 	w := c.(tileMember)
 	w.setTileEdge(m.place.Edge)
 	n.members = append(n.members, c.(Overlaid))
-	n.tiles.AddMember(m.key, w, m.place, m.tiled)
-	b.OnAttached(i, func(prop string, v qml.SpecValue) error { return n.memberSet(m.key, w, prop, v) })
+	n.tiles.AddMemberBefore(before, m.key, w, m.place, m.tiled)
+	recv := func(prop string, v qml.SpecValue) error { return n.memberSet(m.key, w, prop, v) }
+	n.byWindow[c] = memberRec{key: m.key, recv: recv}
+	return recv
 }
 
 // memberSet is a live change of a member's TileManager.* property, read by the fields its build

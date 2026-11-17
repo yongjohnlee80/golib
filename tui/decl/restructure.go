@@ -3,6 +3,7 @@ package decl
 import (
 	"fmt"
 	"maps"
+	"slices"
 
 	"github.com/yongjohnlee80/golib/parse/qml"
 
@@ -20,6 +21,7 @@ import (
 // and splice a Flex in the same reload.
 var (
 	_ decl.Restructurer = (*Adapter)(nil)
+	_ decl.SpliceVetter = (*Adapter)(nil)
 	_ decl.Classifier   = (*Adapter)(nil)
 	_ decl.Constants    = (*Adapter)(nil)
 )
@@ -39,12 +41,38 @@ func (a *Adapter) CanRestructure(node decl.NodeID) bool {
 	return isContainer || arranges
 }
 
+// CanSplice reports whether the node splices the children of these types in place (decl.SpliceVetter):
+// a node that splices only some (splicer) says; any other that can restructure splices all.
+func (a *Adapter) CanSplice(node decl.NodeID, types []string) bool {
+	b, ok := a.nodes[node]
+	if !ok {
+		return false
+	}
+	if sp, ok := b.comp.(splicer); ok {
+		return sp.canSplice(types)
+	}
+	return true
+}
+
+// splicer is a rearranger that splices some of its children in place and not others: the
+// TileManager's members come and go, its Tiles are fixed at construction.
+type splicer interface {
+	canSplice(types []string) bool
+}
+
 // rearranger is a node whose children are not a Container's but can still
 // change in place: the Window, which sorts them into keys, menus, dialogs and
 // what its dock lays out. It is handed the whole new child list, in order,
 // each time one changes.
 type rearranger interface {
 	arrange(children []tui.Component, attached []map[string]qml.SpecValue, nominee tui.Component) error
+}
+
+// attachedReceivers is a rearranger that takes its children's live attached properties
+// (LiveAttached): after each arrange, each child's receiver is the one it gives for that child's
+// component, so a child spliced in takes its changes as one built with it does, wherever its index.
+type attachedReceivers interface {
+	receiverFor(child tui.Component) AttachedReceiver
 }
 
 // rearrange hands a rearranger its children as the adapter now records them.
@@ -61,7 +89,36 @@ func (a *Adapter) rearrange(parent decl.NodeID, r rearranger) error {
 			nominee = b.nominee
 		}
 	}
-	return r.arrange(comps, attached, nominee)
+	if err := r.arrange(comps, attached, nominee); err != nil {
+		return err
+	}
+	if ra, ok := r.(attachedReceivers); ok {
+		for _, k := range kids {
+			b := a.nodes[k]
+			b.receiver = ra.receiverFor(b.comp)
+			a.nodes[k] = b
+		}
+	}
+	return a.rearrangeHolder(parent)
+}
+
+// rearrangeHolder arranges again the parent of an OverlayContainer whose children changed: the
+// Window collects a container's overlaid children each time it arranges (classifyWindowChildren), so
+// a window spliced into a TileManager gets the Window's overlay, and one spliced out leaves its list.
+func (a *Adapter) rearrangeHolder(node decl.NodeID) error {
+	if _, ok := a.nodes[node].comp.(OverlayContainer); !ok {
+		return nil
+	}
+	for p, kids := range a.kids {
+		if !slices.Contains(kids, node) {
+			continue
+		}
+		if r, ok := a.nodes[p].comp.(rearranger); ok {
+			return a.rearrange(p, r)
+		}
+		return nil
+	}
+	return nil
 }
 
 // arrangerAndChild resolves a structural operation on a rearranger.
