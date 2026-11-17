@@ -45,6 +45,7 @@ go get github.com/yongjohnlee80/golib
 | [`covercheck`](covercheck/README.md) | CI-neutral Go coverage profile comparison, changed-block measurement, and policy enforcement | [README](covercheck/README.md) |
 | [`threadsafe`](threadsafe/README.md) | Generic thread-safe value containers (mutex, RWMutex, lock-free) behind one `Value[T]` interface | [README](threadsafe/README.md) |
 | [`graph`](graph/README.md) | A directed multigraph whose edges carry a kind: add nodes and edges, filter by kind, walk a neighbourhood in either direction, in insertion order | [README](graph/README.md) |
+| [`qr`](qr/README.md) | A QR code encoder: versions 1 to 40, levels L to H, numeric, alphanumeric and byte modes; a grid of modules for any renderer | [README](qr/README.md) |
 | [`collections`](collections/README.md) | Generic `Set[T]` and stdlib-shaped `Map`/`Filter`/`Reduce` slice ops | [README](collections/README.md) |
 | [`diag`](diag/README.md) | An attachable memory monitor, off by default: runtime memory samples, heap snapshots ranking the allocation sites, and profiles on a private socket | [README](diag/README.md) |
 | [`logger`](logger/README.md) | Small level-based logging seam; `Fields`/`Entry`, `Adapt`, and both `slog` bridges | [README](logger/README.md) |
