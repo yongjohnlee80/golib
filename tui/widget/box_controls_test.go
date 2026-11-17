@@ -3,6 +3,7 @@ package widget_test
 import (
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
@@ -78,11 +79,19 @@ func TestANarrowBoxHidesItsWindowControls(t *testing.T) {
 // recorded.
 func controlWindow(t *testing.T, r tui.Rect) (*harness, *core.WindowMod, *[]core.WindowOperation) {
 	t.Helper()
-	box := core.NewBox(core.NewText("body"), core.WithTitle("win"), core.WithBorder(style.BorderNormal))
+	h, w, asked, _ := controlWindowOf(t, r, core.NewText("body"))
+	return h, w, asked
+}
+
+// controlWindowOf is controlWindow with content of the caller's and more window options, returning
+// its overlay host too.
+func controlWindowOf(t *testing.T, r tui.Rect, content tui.Component, opts ...core.WindowModOption) (*harness, *core.WindowMod, *[]core.WindowOperation, *core.OverlayHost) {
+	t.Helper()
+	box := core.NewBox(content, core.WithTitle("win"), core.WithBorder(style.BorderNormal))
 	box.SetWindowControls([]core.WindowOperation{core.WindowMinimize, core.WindowMaximize, core.WindowClose})
 	var asked []core.WindowOperation
 	box.SetOnWindowControl(func(op core.WindowOperation) { asked = append(asked, op) })
-	w := core.NewWindowMod(box, core.WithWindowMove(), core.WithWindowResize())
+	w := core.NewWindowMod(box, append([]core.WindowModOption{core.WithWindowMove(), core.WithWindowResize()}, opts...)...)
 	f := core.NewFloat(w, core.WithAnchor(core.AtRect(r)))
 	host := core.NewOverlayHost(core.NewText("base"))
 	host.Attach(f)
@@ -90,7 +99,108 @@ func controlWindow(t *testing.T, r tui.Rect) (*harness, *core.WindowMod, *[]core
 	h := startAppOn(t, host, tb)
 	h.onLoop(func() { f.Show() })
 	h.waitFor("the window", func() bool { return strings.Contains(h.row(r.Y), " x ") })
-	return h, w, &asked
+	return h, w, &asked, host
+}
+
+// askedOn is what the controls asked so far, read on the loop.
+func askedOn(h *harness, asked *[]core.WindowOperation) []core.WindowOperation {
+	var got []core.WindowOperation
+	h.onLoop(func() { got = slices.Clone(*asked) })
+	return got
+}
+
+// leftPress is a left press at (x, y); its release is select_test.go's release.
+func leftPress(x, y int) tui.MouseEvent {
+	return tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: x, Y: y}
+}
+
+// The release after a press a control claimed goes where any release goes, under the pointer, and
+// nothing acts on it: the claim takes no capture, the window began no drag to end, and a Button
+// under the pointer, whose press it never saw, does not activate. Released on the control itself,
+// it asks nothing more either: a control acts on its press.
+func TestTheReleaseAfterAClaimedPressActsOnNothing(t *testing.T) {
+	at := tui.Rect{X: 5, Y: 2, W: 24, H: 6}
+	var fired atomic.Int64
+	button := core.NewButton("OK", core.WithOnActivate(func() { fired.Add(1) }))
+	h, w, asked, _ := controlWindowOf(t, at, button)
+	defer h.stop()
+	bx, by := at.X+2, at.Y+1 // the Button, on the box's first content row
+	h.waitFor("the Button", func() bool { return strings.Contains(h.row(by), "OK") })
+
+	// the Button is where the cell thinks: a press and release on it activate it
+	h.inject(leftPress(bx, by), release(bx, by))
+	h.waitFor("the Button activated", func() bool { return fired.Load() == 1 })
+
+	h.inject(leftPress(at.X+20, at.Y), release(bx, by)) // pressed on x, released over the Button
+	h.settle()
+	h.inject(leftPress(at.X+20, at.Y), release(at.X+20, at.Y)) // pressed and released on x
+	h.settle()
+	if got := askedOn(h, asked); !slices.Equal(got, []core.WindowOperation{core.WindowClose, core.WindowClose}) {
+		t.Errorf("the controls asked %v; want one close per press", got)
+	}
+	if n := fired.Load(); n != 1 {
+		t.Errorf("the Button activated %d times; want only its own press's once: a release after a claimed press activated it", n)
+	}
+	var capture bool
+	h.onLoop(func() { capture = w.Context().HasPointerCapture() })
+	if capture {
+		t.Error("a capture is held after the claimed presses and their releases")
+	}
+	if got := windowBounds(h, w); got != at {
+		t.Errorf("the window moved to %+v", got)
+	}
+}
+
+// Two presses on a control in a double press are two requests, as a tab strip's controls make, and
+// never the title's own double press: a window that maximizes on its title's double press does not
+// on a control's. The title's text, double pressed, maximizes it, so that path is live here.
+func TestADoublePressOnAControlIsTwoRequestsAndNeverTheTitlesMaximize(t *testing.T) {
+	at := tui.Rect{X: 5, Y: 2, W: 24, H: 6}
+	h, w, asked, _ := controlWindowOf(t, at, core.NewText("body"), core.WithWindowMaximize())
+	defer h.stop()
+	maximized := func() bool {
+		var m bool
+		h.onLoop(func() { m = w.Core().State().Maximized })
+		return m
+	}
+	plus := at.X + 17
+	h.inject(leftPress(plus, at.Y), release(plus, at.Y), leftPress(plus, at.Y), release(plus, at.Y))
+	h.settle()
+	if got := askedOn(h, asked); !slices.Equal(got, []core.WindowOperation{core.WindowMaximize, core.WindowMaximize}) {
+		t.Errorf("a double press on + asked %v; want two maximize requests", got)
+	}
+	if maximized() {
+		t.Fatal("a double press on + maximized the window: the title's double press reached a control")
+	}
+	title := at.X + 3
+	h.inject(leftPress(title, at.Y), release(title, at.Y), leftPress(title, at.Y), release(title, at.Y))
+	h.waitFor("the title's double press maximizes", maximized)
+}
+
+// A Box behind a dialog is as inert as its window's content: while the dialog traps focus, a press
+// on its control is dropped before any resolver is asked, so nothing is requested. Once the dialog
+// is gone, the same press asks again.
+func TestABoxControlBehindADialogDoesNothing(t *testing.T) {
+	at := tui.Rect{X: 5, Y: 2, W: 24, H: 6}
+	h, _, asked, host := controlWindowOf(t, at, core.NewText("body"))
+	defer h.stop()
+	m := core.NewModal(core.NewText("ask"))
+	var err error
+	h.onLoop(func() { err = m.Open(host) })
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	h.waitFor("the dialog", func() bool { return strings.Contains(h.screen(), "ask") })
+	x := at.X + 20
+	h.inject(leftPress(x, at.Y), release(x, at.Y))
+	h.settle()
+	if got := askedOn(h, asked); len(got) != 0 {
+		t.Errorf("a control behind an open dialog asked %v; want nothing", got)
+	}
+	h.onLoop(func() { m.Dismiss(core.DismissProgrammatic) })
+	h.settle()
+	h.inject(leftPress(x, at.Y), release(x, at.Y))
+	h.waitFor("the control asks once the dialog is gone", func() bool { return slices.Equal(askedOn(h, asked), []core.WindowOperation{core.WindowClose}) })
 }
 
 // A press on a Box's window control is the control's, whichever way the window would take it: its
