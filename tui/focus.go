@@ -295,6 +295,51 @@ func (a *App) focusStep(delta int) {
 	a.setFocus(ring[next].id)
 }
 
+// focusStepWithin is Context.FocusStepWithin: focusStep's ring and wrap, over comp's subtree.
+func (a *App) focusStepWithin(comp Component, dir int) bool {
+	if comp == nil || dir == 0 {
+		return false
+	}
+	n := a.byComp[comp]
+	if n == nil || !n.mounted {
+		return false
+	}
+	// A trap confines traversal: comp outside the active trapping scope steps nothing there, as
+	// it may not take the pointer there (CapturePointer).
+	if scope := a.confinement(); scope != nil && !a.inInputScope(n, scope) {
+		a.trace(TraceEvent{Kind: TraceFocus, Node: n.id, Prev: scope.id,
+			Detail: "focus step refused: the subtree is outside the active focus scope"})
+		return false
+	}
+	// focusRing(n) leaves out a nested trap's subtree, as the scope's own ring does
+	ring := a.focusRing(n)
+	if len(ring) == 0 {
+		return false
+	}
+	step := 1
+	if dir < 0 {
+		step = -1
+	}
+	cur := -1
+	for i, r := range ring {
+		if r.id == a.focus.focused {
+			cur = i
+			break
+		}
+	}
+	var next int
+	switch {
+	case cur >= 0:
+		next = (cur + step + len(ring)) % len(ring)
+	case step > 0:
+		next = 0 // nothing in comp focused: the next stop is its first
+	default:
+		next = len(ring) - 1 // and the previous, its last
+	}
+	a.setFocus(ring[next].id)
+	return true
+}
+
 // acceptsFocus reports whether n is a live focus candidate right now.
 //
 // A node under a HIDDEN ANCESTOR is not one, whatever its own placement says.

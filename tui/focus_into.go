@@ -7,6 +7,10 @@ package tui
 // goroutine only.
 func (a *App) FocusInto(comp Component) bool { return a.focusInto(comp, true) }
 
+// FocusStepWithin is Context.FocusStepWithin for a caller holding the App
+// rather than a mounted component's Context. Loop goroutine only.
+func (a *App) FocusStepWithin(comp Component, dir int) bool { return a.focusStepWithin(comp, dir) }
+
 // focusInto is FocusInto; mayDefer is false for the post-layout attempt, which
 // is the one attempt a deferral buys and never schedules another.
 func (a *App) focusInto(comp Component, mayDefer bool) bool {
