@@ -2,6 +2,7 @@ package decl
 
 import (
 	"errors"
+	"fmt"
 	"math"
 
 	"github.com/yongjohnlee80/golib/parse/qml"
@@ -41,6 +42,13 @@ import (
 // the keyboard go back to the page while it stays open. edge, size and length are settable while a
 // preference can move it. open(), close() and toggle() (golib's: open when closed, else close),
 // and opened() and closed().
+//
+// WINDOW CONTROLS (golib's): windowControls: "minimize maximize close", any of them, puts those
+// icons, _ + and x, at the right end of its content Frame's title row, drawn in that order whatever
+// the order written ("" or unset: none). They request and never act: a press on one emits
+// minimizeRequested, maximizeRequested or closeRequested, and the host decides what each does. A
+// press on an icon never starts the panel's move drag. A Drawer with windowControls whose content
+// is not a Frame is refused at build.
 
 // drawerNode is a Drawer: its Float, the overlay it is on (OverlayLayer), and where it opens from.
 type drawerNode struct {
@@ -111,9 +119,22 @@ func buildDrawer(b Build) (tui.Component, []string, error) {
 	fields["windowResize"] = into(&wc.resize, boolOf)
 	fields["modal"], fields["closeOnQ"], fields["resizable"] = into(&modal, boolOf), into(&closeOnQ, boolOf), into(&resizable, boolOf)
 	fields["keyScope"], fields["reserve"] = into(&keyScope, scopeOf), into(&reserve, boolOf)
+	// windowControls are icons on its content Frame's title row that only request: the host decides
+	// what each does (minimizeRequested, maximizeRequested, closeRequested). They are not the
+	// WindowMod's own operations above (maximizable, minimizable, closable), which act.
+	var controlOps []core.WindowOperation
+	fields["windowControls"] = into(&controlOps, windowOpsOf)
 	consumed, err := b.ReadProps(fields)
 	if err != nil {
 		return nil, nil, err
+	}
+	if len(controlOps) > 0 {
+		box, ok := content.(*core.Box)
+		if !ok {
+			return nil, nil, fmt.Errorf("a Drawer's windowControls need a Frame child (at %s)", b.Pos)
+		}
+		box.SetWindowControls(controlOps)
+		box.SetOnWindowControl(windowButtonSignals(b))
 	}
 	windowResize, movable := wc.resize, wc.move
 	if wc.minimize && (modal || b.WindowCollector == nil) {
@@ -484,9 +505,11 @@ var drawerType = Type{
 	Name:  "Drawer",
 	Build: buildDrawer,
 	Ctor: []string{"modal", "closeOnQ", "resizable", "windowResize", "movable", "maximizable", "minimizable", "closable", "label", "key",
-		"dragModifier", "moveButton", "resizeButton", "keyScope", "reserve"},
+		"dragModifier", "moveButton", "resizeButton", "keyScope", "reserve", "windowControls"},
 	Signals: map[string][]string{"resized": {"size", "length"}, "placed": {"x", "y", "width", "height"},
-		"changed": {"operation", "key", "x", "y", "width", "height", "maximized", "minimized"}},
+		"changed": {"operation", "key", "x", "y", "width", "height", "maximized", "minimized"},
+		// windowControls' icons: _, + and x on the content Frame's title row
+		"minimizeRequested": {}, "maximizeRequested": {}, "closeRequested": {}},
 	Setters: map[string]Setter{
 		"edge":          setter("a Drawer", drawerEdges.read, (*drawerNode).setEdge),
 		"size":          setter("a Drawer", truncOf, (*drawerNode).setSize),
