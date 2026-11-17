@@ -68,7 +68,7 @@ const (
 //
 // Split supports maximizing a single pane to occupy 100% of the container:
 //   - [Split.Zoom](PaneA) or [Split.Zoom](PaneB) hides the other pane and the divider.
-//   - [Split.Unzoom]() restores the dual-pane view and previous ratio.
+//   - [Split.Zoom](PaneNone) restores the dual-pane view and previous ratio.
 //   - Transitions publish [SplitZoomEvent].
 //
 // # Focus Model
@@ -92,7 +92,7 @@ const (
 //
 // # Concurrency & Goroutine Ownership
 //
-// Split and its state methods ([Split.SetRatio], [Split.Zoom], [Split.Unzoom]) are
+// Split and its state methods ([Split.SetRatio], [Split.Zoom]) are
 // loop-goroutine-owned and must be driven from the application loop goroutine.
 //
 // # Usage Examples
@@ -115,7 +115,7 @@ const (
 //	split.Zoom(widget.PaneB)
 //
 //	// Restore dual-pane view:
-//	split.Unzoom()
+//	split.Zoom(widget.PaneNone)
 type Split struct {
 	Base
 	o    Orientation

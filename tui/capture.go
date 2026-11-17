@@ -73,7 +73,8 @@ const (
 	// CaptureLostFocusScope: a trapping focus scope became active that does
 	// not contain the owner.
 	CaptureLostFocusScope
-	// CaptureLostCancelled: the owner called Context.CancelGesture.
+	// CaptureLostCancelled: the owner called Context.CancelGesture, or a backend
+	// sent PointerCancelEvent.
 	CaptureLostCancelled
 	// CaptureLostBackend: the terminal window itself lost focus, so no further
 	// pointer input is coming.
@@ -121,6 +122,20 @@ type PointerCaptureLostEvent struct {
 }
 
 func (PointerCaptureLostEvent) isEvent() {}
+
+// PointerCancelEvent is a backend's word that the pointer gesture in progress
+// ends without a release: the press it sent will see none (say, a host's view
+// of a remote program went away mid-drag). The App ends any capture with
+// CaptureLostCancelled, so the owner drops its gesture and a pressed control
+// never activates, and does nothing else.
+//
+// That is what sets it apart from a terminal focus loss (FocusEvent with
+// Terminal set): no focus moves, the hover stays, and nothing is delivered to
+// the focused node or published, so a menu stays open and an editor's undo
+// group goes on. Without a capture it does nothing.
+type PointerCancelEvent struct{}
+
+func (PointerCancelEvent) isEvent() {}
 
 // CapturePointer routes subsequent pointer press, motion and release to this
 // node until it is released or lost, and reports whether it was granted.
