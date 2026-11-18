@@ -3,10 +3,11 @@ package kit
 import "github.com/yongjohnlee80/golib/tui"
 
 // StripTab is one tab as the strip draws it: its id, and its label as drawn (CellLabel's padding
-// and any status mark included).
+// and any status mark included). NoClose leaves its × off while the strip's tabs close.
 type StripTab struct {
-	ID    string
-	Label string
+	ID      string
+	Label   string
+	NoClose bool
 }
 
 const (

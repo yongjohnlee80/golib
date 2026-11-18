@@ -20,7 +20,7 @@ import (
 // stays across SetTabs while it is still there, and goes when it is not.
 func TestATabStripShowsTheHostsTabsAndChoosesByAPress(t *testing.T) {
 	strip := NewTabStrip()
-	strip.SetTabs([]StripTab{{"a", "alpha"}, {"b", "beta"}})
+	strip.SetTabs([]StripTab{{ID: "a", Label: "alpha"}, {ID: "b", Label: "beta"}})
 	strip.SetActive("a")
 	var chosen []string
 	strip.SetOnSelect(func(id string) { chosen = append(chosen, id) })
@@ -45,14 +45,14 @@ func TestATabStripShowsTheHostsTabsAndChoosesByAPress(t *testing.T) {
 	}
 
 	h.OnLoop(func() {
-		strip.SetTabs([]StripTab{{"c", "gamma"}, {"b", "beta"}})
+		strip.SetTabs([]StripTab{{ID: "c", Label: "gamma"}, {ID: "b", Label: "beta"}})
 		active = strip.ActiveTabIndex()
 	})
 	if active != 1 {
 		t.Fatalf("beta still there: active at %d, want 1", active)
 	}
 	h.OnLoop(func() {
-		strip.SetTabs([]StripTab{{"c", "gamma"}})
+		strip.SetTabs([]StripTab{{ID: "c", Label: "gamma"}})
 		active = strip.ActiveTabIndex()
 	})
 	if active != -1 || strip.Active() != "" {
@@ -69,7 +69,7 @@ func TestATabStripShowsTheHostsTabsAndChoosesByAPress(t *testing.T) {
 // callbacks instead (SetActions), a right press and + call them.
 func TestATabStripOpensItsMenusAsTerminalTabsDoes(t *testing.T) {
 	strip := NewTabStrip()
-	strip.SetTabs([]StripTab{{"a", "alpha"}, {"b", "beta"}})
+	strip.SetTabs([]StripTab{{ID: "a", Label: "alpha"}, {ID: "b", Label: "beta"}})
 	strip.SetActive("a")
 	var ran []string
 	strip.SetMenu(func(id string) []MenuItemModel {
@@ -139,7 +139,7 @@ func TestATabStripIsAsWideAsItsTabs(t *testing.T) {
 	if sz := strip.Layout(tui.Constraints{MaxW: 80, MaxH: 1}); sz.W != 0 || sz.H != 1 {
 		t.Fatalf("an empty strip: %v", sz)
 	}
-	strip.SetTabs([]StripTab{{"a", "alpha"}, {"b", "beta"}})
+	strip.SetTabs([]StripTab{{ID: "a", Label: "alpha"}, {ID: "b", Label: "beta"}})
 	want := len(" alpha ") + 1 + len(" beta ")
 	if sz := strip.Layout(tui.Constraints{MaxW: 80, MaxH: 1}); sz.W != want {
 		t.Fatalf("two tabs: %v, want %d wide", sz, want)
@@ -326,7 +326,7 @@ func TestATabStripFitsItsLabelsToItsRoom(t *testing.T) {
 // short one is as it was.
 func TestATabStripCapsATabsWidth(t *testing.T) {
 	strip := NewTabStrip()
-	strip.SetTabs([]StripTab{{"a", "a-very-long-file-name.md"}, {"b", "b.md"}})
+	strip.SetTabs([]StripTab{{ID: "a", Label: "a-very-long-file-name.md"}, {ID: "b", Label: "b.md"}})
 	strip.SetMaxTabWidth(10)
 	h := widgettest.StartApp(t, strip, 60, 1)
 	defer h.Stop()
@@ -346,7 +346,7 @@ func TestATabStripCapsATabsWidth(t *testing.T) {
 // outside the width cap. Without SetOnClose, no ×.
 func TestATabStripsCloseMark(t *testing.T) {
 	strip := NewTabStrip()
-	strip.SetTabs([]StripTab{{"a", "alpha"}, {"b", "a-name-longer-than-the-cap"}})
+	strip.SetTabs([]StripTab{{ID: "a", Label: "alpha"}, {ID: "b", Label: "a-name-longer-than-the-cap"}})
 	strip.SetActive("a")
 	strip.SetMaxTabWidth(10)
 	var closed, chosen []string
@@ -388,7 +388,7 @@ func TestATabStripsCloseMark(t *testing.T) {
 // not close on a press where the × would be; one whose × shows does.
 func TestACutTabsHiddenCloseMarkDoesNotClose(t *testing.T) {
 	strip := NewTabStrip()
-	strip.SetTabs([]StripTab{{"a", "alpha"}, {"b", "beta"}, {"c", "gamma"}})
+	strip.SetTabs([]StripTab{{ID: "a", Label: "alpha"}, {ID: "b", Label: "beta"}, {ID: "c", Label: "gamma"}})
 	strip.SetActive("a")
 	var closed []string
 	strip.SetOnClose(func(id string) { closed = append(closed, id) })
@@ -477,4 +477,51 @@ func TestAnActiveTabWhoseLabelGrowsIsShownWhole(t *testing.T) {
 			t.Fatalf("span %+v passes the row's 40 cells:\n%s", sp, h.TB.String())
 		}
 	}
+}
+
+// TestATabMarkedNoCloseHasNoCloseMark: with SetOnClose, a tab whose StripTab says NoClose starts
+// with no ×: a press at its start chooses it and closes nothing, and the fit rule (SetLabelFit)
+// counts no × for it: in the room the tabs need whole with one × between them, they fit whole
+// while one says NoClose, and are cut when both close. The mutants, named here: the label's ×
+// drawn whatever NoClose says, and the fit counting a × for every tab.
+func TestATabMarkedNoCloseHasNoCloseMark(t *testing.T) {
+	strip := NewTabStrip()
+	strip.SetTabs([]StripTab{{ID: "a", Label: "alpha", NoClose: true}, {ID: "b", Label: "beta"}})
+	strip.SetActive("b")
+	var closed, chosen []string
+	strip.SetOnClose(func(id string) { closed = append(closed, id) })
+	strip.SetOnSelect(func(id string) { chosen = append(chosen, id) })
+	strip.SetLabelFit(2, func(_ string, w int) string { return strings.Repeat("x", max(w, 0)) })
+	h := widgettest.StartApp(t, strip, 60, 1)
+	defer h.Stop()
+	h.Sync()
+	if got := h.TB.String(); strings.Contains(got, "× alpha") || !strings.Contains(got, " alpha ") || !strings.Contains(got, " × beta ") {
+		t.Fatalf("a NoClose and a closable tab: %q; want alpha with no ×, beta with one", got)
+	}
+	var spans []TabSpan
+	h.OnLoop(func() { spans = strip.TabSpans() })
+	if err := h.TB.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: spans[0].X, Y: 0}); err != nil {
+		t.Fatal(err)
+	}
+	if !widgettest.Wait(h, func() bool { return len(chosen) == 1 }) || chosen[0] != "a" || len(closed) != 0 {
+		t.Fatalf("a press at the start of a NoClose tab: chosen %v, closed %v; want a chosen, nothing closed", chosen, closed)
+	}
+	h.OnLoop(func() {
+		c := &strip.core
+		mark := c.OwnerBase.Measure(closeMark)
+		tabs := c.Owner.stripTabs()
+		need := c.tail() - 1
+		for _, tb := range tabs {
+			need += c.OwnerBase.Measure(tb.Label) + 1
+		}
+		c.avail = need + mark // whole, with one ×
+		if got := c.fitTabs(tabs); got != 0 {
+			t.Errorf("one tab NoClose, room for both whole with one ×: cap %d, want 0 (whole)", got)
+		}
+		both := slices.Clone(tabs)
+		both[0].NoClose = false
+		if got := c.fitTabs(both); got == 0 {
+			t.Error("both closable in the same room: cap 0 (whole); want them cut, two × not fitting")
+		}
+	})
 }

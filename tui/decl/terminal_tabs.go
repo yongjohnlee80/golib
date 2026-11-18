@@ -26,6 +26,8 @@ func buildTerminalTabs(b Build) (tui.Component, []string, error) {
 	tabs.SetActions(func() { add() }, func(id terminal.TerminalTabID) { menu(strValue(string(id))) })
 	tabs.SetOnChanged(func() { changed() })
 	tabs.SetOnWindowButton(windowButtonSignals(b))
+	closeTab := b.EmitterWith("tabCloseRequested")
+	tabs.SetOnTabClose(func(id terminal.TerminalTabID) { closeTab(strValue(string(id))) })
 	return tabs, consumed, nil
 }
 
@@ -78,8 +80,11 @@ var terminalTabsType = Type{
 		// golib's: _, + and x at the strip's right end, emitting minimizeRequested, maximizeRequested
 		// and closeRequested
 		"windowButtons": setter("a TerminalTabs", boolOf, (*terminal.TerminalTabs).SetWindowButtons),
+		// golib's: a × at the start of every tab, left of its name, as the editor's tabs have; a
+		// press on it emits tabCloseRequested with the tab's id, and the host closes the tab
+		"tabCloseButtons": setter("a TerminalTabs", boolOf, (*terminal.TerminalTabs).SetTabCloseButtons),
 	},
 	Signals: map[string][]string{"addRequested": {}, "menuRequested": {"id"}, "changed": {},
-		"minimizeRequested": {}, "maximizeRequested": {}, "closeRequested": {}},
+		"minimizeRequested": {}, "maximizeRequested": {}, "closeRequested": {}, "tabCloseRequested": {"id"}},
 	Destroyed: destroyer(func(t *terminal.TerminalTabs) { t.ShutdownWithResult() }),
 }
