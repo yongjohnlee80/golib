@@ -18,7 +18,7 @@ type Ranker interface {
 
 // Model names a ranker's model, and the largest batch its server takes in one request.
 type Model struct {
-	Provider string // "tei" | "rerank-api"
+	Provider string // "tei" | "rerank-api" | "vertex"
 	Name     string
 	MaxBatch int
 }

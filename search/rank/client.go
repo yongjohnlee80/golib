@@ -37,7 +37,29 @@ func bearer(key string) http.Header {
 // call sends one JSON request, within timeout, and decodes the JSON answer. A failure is one of the
 // package's sentinels with the method and URL, never the server's own text.
 func call(ctx context.Context, client *http.Client, timeout time.Duration, method, url string, header http.Header, in, out any) error {
-	var body io.Reader
+	return exchange(ctx, client, timeout, method, url, staticAuth(header), nil, in, out)
+}
+
+// auth is the headers of a request: refresh is true for the retry after a 401, when retries is
+// true. A key's never changes, so it is never retried.
+type auth struct {
+	header  func(ctx context.Context, refresh bool) (http.Header, error)
+	retries bool
+}
+
+func staticAuth(h http.Header) auth {
+	return auth{header: func(context.Context, bool) (http.Header, error) { return h, nil }}
+}
+
+// maxStatusBody is how much of a failed answer's body is read for typed to read: a structured
+// error's details, never the provider's text in an error.
+const maxStatusBody = 64 << 10
+
+// exchange is call's request: with a's headers, retried once with refreshed ones after a 401 when a
+// retries, all within timeout. typed, when not nil, may type a failed status from its body first;
+// nil from it leaves the shared mapping.
+func exchange(ctx context.Context, client *http.Client, timeout time.Duration, method, url string, a auth, typed func(code int, body []byte) error, in, out any) error {
+	var body []byte
 	if in != nil {
 		b, err := json.Marshal(in)
 		if err != nil {
@@ -46,31 +68,56 @@ func call(ctx context.Context, client *http.Client, timeout time.Duration, metho
 		if len(b) > maxRequest {
 			return fmt.Errorf("%w: %s %s: %d bytes", ErrTooLarge, method, url, len(b))
 		}
-		body = bytes.NewReader(b)
+		body = b
 	}
 	parent := ctx
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, method, url, body)
-	if err != nil {
-		return err
-	}
-	for k, v := range header {
-		req.Header[k] = v
-	}
-	if in != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		if parent.Err() != nil {
-			return fmt.Errorf("rank: %s %s: %w", method, url, parent.Err()) // the caller gave up: not the ranker
+	var resp *http.Response
+	for _, refresh := range [...]bool{false, true} {
+		header, err := a.header(ctx, refresh)
+		if err != nil {
+			return fmt.Errorf("rank: %s %s: %w", method, url, err)
 		}
-		return fmt.Errorf("%w: %s %s", ErrUnreachable, method, url) // its own timeout included
+		var r io.Reader
+		if body != nil {
+			r = bytes.NewReader(body)
+		}
+		req, err := http.NewRequestWithContext(ctx, method, url, r)
+		if err != nil {
+			return err
+		}
+		for k, v := range header {
+			req.Header[k] = v
+		}
+		if body != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		resp, err = client.Do(req)
+		if err != nil {
+			if parent.Err() != nil {
+				return fmt.Errorf("rank: %s %s: %w", method, url, parent.Err()) // the caller gave up: not the ranker
+			}
+			return fmt.Errorf("%w: %s %s", ErrUnreachable, method, url) // its own timeout included
+		}
+		if resp.StatusCode != http.StatusUnauthorized || !a.retries || refresh {
+			break
+		}
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxAnswer))
+		resp.Body.Close()
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
+		var b []byte
+		if typed != nil {
+			b, _ = io.ReadAll(io.LimitReader(resp.Body, maxStatusBody))
+		}
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxAnswer))
+		if typed != nil {
+			if err := typed(resp.StatusCode, b); err != nil {
+				return fmt.Errorf("%w: %s %s: %s", err, method, url, resp.Status)
+			}
+		}
 		var sentinel error
 		switch resp.StatusCode {
 		case http.StatusUnauthorized, http.StatusForbidden:

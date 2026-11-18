@@ -8,8 +8,9 @@ A `Ranker` scores texts against a query: `Rank(ctx, query, texts)` answers one s
 text, in the texts' order, or an error. `Model` names it. It only sorts: the caller prepares the
 texts it reads, in any format. `NewTEI` speaks Hugging Face Text Embeddings Inference's `/rerank`,
 and refuses a server whose model is not a re-ranker. `NewRerankAPI` speaks the Cohere-style
-`/rerank`, which Cohere, Jina, Voyage, vLLM, Infinity and llama.cpp's server serve. Both use
-`net/http`, with no SDK, and both meter their calls as `search/embed`'s providers do. Each request
+`/rerank`, which Cohere, Jina, Voyage, vLLM, Infinity and llama.cpp's server serve. `NewVertex`
+speaks the Vertex AI Ranking API (`rankingConfigs.rank`). All use `net/http`, with no SDK, and all
+meter their calls as `search/embed`'s providers do. Each request
 is bounded: in time (`DefaultTimeout`, 30 s, or `WithTimeout` / `WithTEITimeout`), in what it
 sends (8 MiB, else `ErrTooLarge` before anything is sent) and in what it reads. An answer must give
 every text a finite score at a distinct index, or it is `ErrBadAnswer`.
@@ -34,6 +35,26 @@ texts := func(ctx context.Context, hits []search.Hit) ([]string, error) {
 s := rank.NewSearcher(engine, texts, &h)
 res, err := s.Search(ctx, search.Query{Text: "where do we retry a failed embed", Limit: 10})
 // res.Rank.State is ready (the ranker's order), off (nothing ranked) or error (recall order)
+```
+
+## Vertex AI
+
+`NewVertex` takes a `TokenFunc`, as `search/embed`'s does, so golib takes no Google dependency.
+After a 401 it asks again with `refresh` true and sends the call once more; a second refusal is
+`ErrUnauthorized`. Every call carries `X-Goog-User-Project`.
+
+- **Where.** The API is served at the global location only:
+  `projects/{project}/locations/global/rankingConfigs/default_ranking_config:rank`.
+- **The model is required.** Pin one (`semantic-ranker-default-005`, say). The API's own default
+  is an `@latest` alias, which would move under a running server.
+- **Records.** Each text is a record's `content`, its id its place in the request. An empty text is
+  not sent, since the API refuses a record with neither title nor content, and it scores 0, the
+  bottom of the API's 0 to 1.
+- **Billing.** One request of up to 100 records (`DefaultVertexBatch`) is one billed count, and
+  `NewVertex` sends nothing.
+
+```go
+r, err := rank.NewVertex(rank.VertexConfig{Project: "my-project", Model: "semantic-ranker-default-005"}, tokens, nil)
 ```
 
 ## The stage
@@ -61,6 +82,7 @@ res, err := s.Search(ctx, search.Query{Text: "where do we retry a failed embed",
 | --- | --- |
 | `ErrUnreachable` | the ranker did not answer |
 | `ErrUnauthorized` | the ranker refused the key (HTTP 401, 403) |
+| `ErrAPIDisabled` | Vertex AI: the API is not enabled in the project (a 403 saying so; an `ErrUnauthorized` too) |
 | `ErrNoModel` | the ranker has no such model (HTTP 404) |
 | `ErrNotARanker` | a TEI server whose model is not a re-ranker |
 | `ErrRateLimited` | the ranker's usage limit is reached (HTTP 429) |
@@ -70,7 +92,8 @@ res, err := s.Search(ctx, search.Query{Text: "where do we retry a failed embed",
 | `ErrStale` | a text source's hit that is no longer in the index |
 | `ErrUnavailable` | a `Required` Searcher that could not rank |
 
-A provider's own error text is never in an error: these say what happened.
+A provider's own error text is never in an error: these say what happened. `ErrAPIDisabled` names
+the API and the project from the 403's structured details, which are Google's identifiers.
 
 ## License
 
