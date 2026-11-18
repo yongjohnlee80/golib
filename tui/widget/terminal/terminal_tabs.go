@@ -48,6 +48,7 @@ type terminalTab struct {
 	terminal *Terminal
 	closing  *TerminalTabRemovalResult
 	err      error
+	noClose  bool // SetTabClosable(id, false): its × is left off
 }
 
 // TerminalTabRemovalResult observes cleanup of every generation of the removed
@@ -88,6 +89,8 @@ type TerminalTabs struct {
 	onMode     func(TerminalTabID, TerminalMode) // SetOnMode: every tab's mode changes, by its identity
 	normalHint string                            // SetNormalHint: at the strip's end while the active tab is in normal mode
 	hasMenu    bool                              // SetMenu's: a right press on a body no terminal fills opens it
+	closeOn    bool                              // SetTabCloseButtons: a × at the start of every tab
+	onTabClose func(TerminalTabID)               // SetOnTabClose: what a press on a tab's × asks for
 	onChanged  func()
 	mu         sync.Mutex // lifetime registry and shutdown only; never loop-owned entries
 	owned      []*Terminal
@@ -112,7 +115,8 @@ func NewTerminalTabs() *TerminalTabs {
 func (t *TerminalTabs) syncStrip() {
 	tabs := make([]core.StripTab, len(t.entries))
 	for i, e := range t.entries {
-		tabs[i] = core.StripTab{ID: string(e.id), Label: terminalTabLabel(e)}
+		// a tab closing already, or one the host says a close can't reach, shows no ×
+		tabs[i] = core.StripTab{ID: string(e.id), Label: terminalTabLabel(e), NoClose: e.noClose || e.closing != nil}
 	}
 	if !slices.Equal(tabs, t.strip.Tabs()) {
 		t.strip.SetTabs(tabs)
@@ -785,6 +789,54 @@ func (t *TerminalTabs) HandleEvent(ev tui.Event) bool {
 		}
 	}
 	return false
+}
+
+// SetTabCloseButtons puts a × at the start of every tab, left of its name, as the editor's tabs have
+// it (TabStrip.SetOnClose), or takes them off (the default, none). A press on a tab's × runs
+// SetOnTabClose's function with the tab's id, and neither chooses the tab nor starts a drag; a
+// press on the rest of the tab chooses it, as before. A tab cut too short to show its × whole has
+// none to press.
+func (t *TerminalTabs) SetTabCloseButtons(on bool) {
+	t.closeOn = on
+	t.syncClose()
+}
+
+// SetTabClosable says whether tab id shows its × while SetTabCloseButtons has them on: false for a
+// tab a close can't reach now (the host's own close is disabled for it, say), so it shows none
+// rather than a × that does nothing. Tabs are closable when added; a tab already closing (Remove)
+// shows none either way.
+func (t *TerminalTabs) SetTabClosable(id TerminalTabID, closable bool) error {
+	e, err := t.find(id)
+	if err != nil {
+		return err
+	}
+	if e.noClose != !closable {
+		e.noClose = !closable
+		t.changed()
+	}
+	return nil
+}
+
+// SetOnTabClose is what a press on a tab's × does (SetTabCloseButtons): fn with the tab's id. It
+// only asks: the tabs never close a tab by themselves, so the host closes it (Remove), asking
+// first if it must, as its own close does. nil does nothing.
+func (t *TerminalTabs) SetOnTabClose(fn func(TerminalTabID)) {
+	t.onTabClose = fn
+	t.syncClose()
+}
+
+// syncClose gives the strip its × while SetTabCloseButtons has them on: its press asks
+// SetOnTabClose's function, read as it is pressed.
+func (t *TerminalTabs) syncClose() {
+	if !t.closeOn {
+		t.strip.SetOnClose(nil)
+		return
+	}
+	t.strip.SetOnClose(func(id string) {
+		if t.onTabClose != nil {
+			t.onTabClose(TerminalTabID(id))
+		}
+	})
 }
 
 // SetWindowButtons shows _, + and x at the strip's right end, side by side as the title bar's, or

@@ -25,7 +25,7 @@ func TestEveryStripsMenuOpensRightUnderTheStrip(t *testing.T) {
 	kinds := map[string]func() strip{
 		"TabStrip": func() strip {
 			s := NewTabStrip()
-			s.SetTabs([]StripTab{{"a", "alpha"}, {"b", "beta"}})
+			s.SetTabs([]StripTab{{ID: "a", Label: "alpha"}, {ID: "b", Label: "beta"}})
 			s.SetActive("a")
 			s.SetMenu(func(string) []MenuItemModel { return rows("Menu") })
 			s.SetAddMenu(func() []MenuItemModel { return rows("Add") })

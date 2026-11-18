@@ -13,10 +13,13 @@ import (
 // TabStrip, the public strip: a row of tabs over nothing of its own, drawn by the engine in
 // tab_strip_core.go.
 
-// StripTab is one of a TabStrip's tabs: the host's id for it, and its label.
+// StripTab is one of a TabStrip's tabs: the host's id for it, and its label. NoClose leaves its ×
+// off while the strip's tabs close (SetOnClose): a tab with nothing a close could do (one already
+// closing, say) shows none, rather than a × that does nothing.
 type StripTab struct {
-	ID    string
-	Label string
+	ID      string
+	Label   string
+	NoClose bool
 }
 
 // TabStrip is a row of tabs over nothing of its own: the host keeps what the tabs stand for (an
@@ -69,7 +72,7 @@ func NewTabStrip() *TabStrip {
 func (t *TabStrip) stripTabs() []kit.StripTab {
 	out := make([]kit.StripTab, len(t.tabs))
 	for i, tb := range t.tabs {
-		out[i] = kit.StripTab{ID: tb.ID, Label: kit.CellLabel(tb.Label)}
+		out[i] = kit.StripTab{ID: tb.ID, Label: kit.CellLabel(tb.Label), NoClose: tb.NoClose}
 	}
 	return out
 }
@@ -134,9 +137,9 @@ func (t *TabStrip) SetActions(add func(), menu func(id string)) {
 	t.changed()
 }
 
-// SetOnClose puts a × at the start of every tab: a press on it calls fn with the tab's id (the host
-// closes what the tab stands for, asking first if it must, and sets the tabs again); a press on the
-// rest of the tab still chooses it. nil takes the × away.
+// SetOnClose puts a × at the start of every tab but one whose StripTab says NoClose: a press on it
+// calls fn with the tab's id (the host closes what the tab stands for, asking first if it must, and
+// sets the tabs again); a press on the rest of the tab still chooses it. nil takes the × away.
 func (t *TabStrip) SetOnClose(fn func(id string)) {
 	t.core.onClose = fn
 	t.changed()

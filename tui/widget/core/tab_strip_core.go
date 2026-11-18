@@ -189,7 +189,7 @@ func (s *stripCore) capNow() int {
 }
 
 // labelAt is tb's label cut to limit cells: by the host's fit (SetLabelFit), else its end cut to an
-// ellipsis; then after a × when the tabs close (onClose), outside the limit.
+// ellipsis; then after a × when the tabs close (onClose) and tb may (not NoClose), outside the limit.
 func (s *stripCore) labelAt(tb kit.StripTab, limit int) string {
 	l := tb.Label
 	if limit > 0 && s.OwnerBase.Measure(l) > limit {
@@ -200,7 +200,7 @@ func (s *stripCore) labelAt(tb kit.StripTab, limit int) string {
 			l = kit.Truncate(strings.TrimRight(l, " "), limit-1, s.OwnerBase.Measure) + " "
 		}
 	}
-	if s.onClose != nil {
+	if s.onClose != nil && !tb.NoClose {
 		l = closeMark + l
 	}
 	return l
@@ -212,22 +212,22 @@ func (s *stripCore) fitTabs(tabs []kit.StripTab) int {
 	if s.avail <= 0 || len(tabs) == 0 {
 		return 0
 	}
-	mark := 0
-	if s.onClose != nil {
-		mark = s.OwnerBase.Measure(closeMark)
-	}
+	marks := make([]int, len(tabs)) // each tab's ×, outside its label's limit
 	full, widest := make([]int, len(tabs)), 0
 	for i, tb := range tabs {
 		full[i] = s.OwnerBase.Measure(tb.Label)
 		widest = max(widest, full[i])
+		if s.onClose != nil && !tb.NoClose {
+			marks[i] = s.OwnerBase.Measure(closeMark)
+		}
 	}
 	fits := func(limit int) bool {
 		w := s.tail() - 1
-		for _, f := range full {
+		for i, f := range full {
 			if limit > 0 {
 				f = min(f, limit)
 			}
-			w += f + mark + 1
+			w += f + marks[i] + 1
 		}
 		return w <= s.avail
 	}
