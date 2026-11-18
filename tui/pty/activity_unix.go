@@ -9,7 +9,7 @@ import (
 
 // Activity is what the program is doing (see Activity), asked of the system on the caller's
 // goroutine: one ioctl on the master and one look at the program's children (children), with no
-// blocking read. It may run on a UI loop.
+// blocking read. It may run on a UI loop: the look at the children stops at the first one.
 //
 //   - The program has exited: idle. A job it left running lost its terminal with it.
 //   - The terminal's foreground group is not the program's own: a program it started holds the
@@ -37,11 +37,11 @@ func (p *PTY) Activity() Activity {
 	if fg > 0 && fg != p.pid {
 		return ActivityRunning
 	}
-	n, err := children(p.pid)
+	found, err := hasChildren(p.pid)
 	switch {
 	case err != nil:
 		return ActivityUnknown
-	case n > 0:
+	case found:
 		return ActivityRunning
 	}
 	return ActivityIdle

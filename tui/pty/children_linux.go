@@ -9,29 +9,31 @@ import (
 	"strings"
 )
 
-// children counts pid's live child processes, from each of its threads' children file
-// (/proc/<pid>/task/<tid>/children). A pid with no /proc entry has exited: none.
-func children(pid int) (int, error) {
+// hasChildren reports whether pid has a live child process, from its threads' children files
+// (/proc/<pid>/task/<tid>/children), stopping at the first child found: the answer needs any, not
+// a count. A pid with no /proc entry has exited: none.
+func hasChildren(pid int) (bool, error) {
 	tasks, err := filepath.Glob(filepath.Join("/proc", strconv.Itoa(pid), "task", "*", "children"))
 	if err != nil {
-		return 0, err
+		return false, err
 	}
 	if len(tasks) == 0 {
 		if _, err := os.Stat(filepath.Join("/proc", strconv.Itoa(pid))); errors.Is(err, fs.ErrNotExist) {
-			return 0, nil // exited
+			return false, nil // exited
 		}
-		return 0, errors.New("pty: no children file to read")
+		return false, errors.New("pty: no children file to read")
 	}
-	n := 0
 	for _, f := range tasks {
 		b, err := os.ReadFile(f)
 		if errors.Is(err, fs.ErrNotExist) {
 			continue // the thread or the process ended under the read
 		}
 		if err != nil {
-			return 0, err
+			return false, err
 		}
-		n += len(strings.Fields(string(b)))
+		if strings.TrimSpace(string(b)) != "" {
+			return true, nil
+		}
 	}
-	return n, nil
+	return false, nil
 }
