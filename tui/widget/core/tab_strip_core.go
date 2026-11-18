@@ -248,10 +248,13 @@ func (s *stripCore) fitTabs(tabs []kit.StripTab) int {
 	return lo
 }
 
-// closeShown is whether label, as drawn (cut at the window's edge or not), shows its × whole: a
-// tab cut to " …" has no × to press.
-func (s *stripCore) closeShown(label string) bool {
-	return s.onClose != nil && strings.HasPrefix(label, closeMark) && s.OwnerBase.Measure(label) > s.OwnerBase.Measure(closeMark)
+// closeShown is whether tab tb, drawn as label (cut at the window's edge or not), has a × to press:
+// a fact about the tab first (the tabs close, and tb may: not NoClose), then about the drawing
+// (the mark whole at its start: a tab cut to " …" has none). The text alone never decides it: a
+// tab's own label may begin with "×" (a title a program set), and a tab that may not close shows
+// no mark, whatever its label says.
+func (s *stripCore) closeShown(tb kit.StripTab, label string) bool {
+	return s.onClose != nil && !tb.NoClose && strings.HasPrefix(label, closeMark) && s.OwnerBase.Measure(label) > s.OwnerBase.Measure(closeMark)
 }
 
 // the strip's own glyphs: a tab's close mark, before its padded label (" × name "), the cells a
@@ -352,7 +355,7 @@ func (s *stripCore) Row() []stripCell {
 	x := 0
 	if !v.overflow {
 		for i, tb := range tabs {
-			out = append(out, stripCell{Kind: kit.CellTab, id: tb.ID, Label: labels[i], X: x, w: widths[i], close: s.closeShown(labels[i])})
+			out = append(out, stripCell{Kind: kit.CellTab, id: tb.ID, Label: labels[i], X: x, w: widths[i], close: s.closeShown(tb, labels[i])})
 			x += widths[i] + 1
 		}
 	} else {
@@ -367,7 +370,7 @@ func (s *stripCore) Row() []stripCell {
 			}
 			if w := room - used - 1; w >= 2 { // the tab before, cut from its start, then a cell
 				label := ElideText(labels[fit-1], w, ElideLeft, s.OwnerBase.Measure)
-				out = append(out, stripCell{Kind: kit.CellTab, id: tabs[fit-1].ID, Label: label, X: x, w: w, close: s.closeShown(label)})
+				out = append(out, stripCell{Kind: kit.CellTab, id: tabs[fit-1].ID, Label: label, X: x, w: w, close: s.closeShown(tabs[fit-1], label)})
 				x += w + 1
 			}
 		}
@@ -377,7 +380,7 @@ func (s *stripCore) Row() []stripCell {
 				w = end - x
 				label = kit.Truncate(label, w, s.OwnerBase.Measure)
 			}
-			out = append(out, stripCell{Kind: kit.CellTab, id: tabs[i].ID, Label: label, X: x, w: w, close: s.closeShown(label)})
+			out = append(out, stripCell{Kind: kit.CellTab, id: tabs[i].ID, Label: label, X: x, w: w, close: s.closeShown(tabs[i], label)})
 			x += w + 1
 		}
 		x = end + 1 // > keeps its place, however full the window
