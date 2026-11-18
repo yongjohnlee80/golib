@@ -1,6 +1,6 @@
 # ADR-0014 — `golib/dao`: routine introspection (functions & procedures)
 
-- **Status:** **Accepted** (2026-08-16 — lector implementation r4 approved at cd3f4ab; originally proposed 2026-08-16; authored by ultron-prime for autodb M6.
+- **Status:** **Accepted** (2026-08-16 — implementation review r4 approved at cd3f4ab; originally proposed 2026-08-16; authored for autodb M6.
   The DB explorer lists "tables, views, functions and so on" — ADR-0013's
   `Introspector` covers tables/views/columns only. Lands on `tui-m6`.)
 - **Date:** 2026-08-16

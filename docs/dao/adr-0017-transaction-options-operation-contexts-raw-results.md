@@ -1,11 +1,8 @@
 # ADR-0017 — `golib/dao`: transaction options, per-operation contexts, raw result access
 
-- **Status:** **Accepted (rev 5) — implemented** (2026-08-30. Authored by jarvis
-  from the autodb session-engine contract; six lector design rounds
+- **Status:** **Accepted (rev 5) — implemented** (2026-08-30. Authored from the autodb session-engine contract; six design review rounds
   (r0 4MF+3SF → r5 clean, 0 findings) before Johno's acceptance stamp.
-  Implemented on `dao-tx-options`. KB:
-  `shared/adrs/golib-dao-0017-tx-options-per-operation-contexts-raw-results.md`,
-  review `agents/lector/reviews/2026-08-30-golib-dao-0017-r0-design-review.md`.)
+  Implemented on `dao-tx-options`.)
 - **Date:** 2026-08-30
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Supersedes:** nothing. **Amends** the `DataConn.Begin` / `TxConn` surfaces of

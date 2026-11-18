@@ -1,6 +1,6 @@
 # ADR-0006 — `golib/server`: Transport Scaffold, Session Registry & Honest Multi-Protocol Scope
 
-- **Status:** **Accepted** (2026-07-04; lector r2 approved, see §7)
+- **Status:** **Accepted** (2026-07-04; review r2 approved, see §7)
 - **Date:** 2026-07-04
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Amends:** golib-server-0001 (scope claims, see §1.2)
@@ -313,13 +313,13 @@ them).
 
 ## 7. Review history
 
-- **r1 (2026-07-04, lector, combined 0006/0007 review):** `change_requested` —
-  review doc `agents/lector/reviews/2026-07-04-golib-server-adr-0006-0007-review.md`.
+- **r1 (2026-07-04, review, combined 0006/0007 review):** `change_requested`.
+  
   The must-fix targeted ADR-0007's drain-gate promise; the amendment lands
   here as the atomic `Reserve`/`Reservation` registry API (revision 2), which
   0007 consumes pre-handshake. Split/scope/zero-dep judged sound.
-- **r2 (2026-07-04, lector): `approved`** — review doc:
-  `agents/lector/reviews/2026-07-04-golib-server-adr-0006-0007-rereview.md`.
+- **r2 (2026-07-04, review): `approved`**.
+  
   The r1 blocker is closed by the Reserve/Reservation pre-establishment gate.
   **Accepted 2026-07-04.**
 

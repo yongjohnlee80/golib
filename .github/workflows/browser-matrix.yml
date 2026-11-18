@@ -6,7 +6,7 @@
 # cannot satisfy an acceptance criterion.
 name: browser matrix
 
-# Pull requests merge into canary and run no CI (each has its VM43 gate and review); CI runs on
+# Pull requests merge into canary and run no CI (each has its own gate and review); CI runs on
 # each merge into canary, and on the release pull request into main: a release/YYYY-MM-DD branch,
 # canary rebased onto main, merged by rebase, after which canary is reset to main.
 on:

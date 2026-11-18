@@ -5,17 +5,17 @@
 
 **Abstract:** Umbrella ADR for `golib/tui`, a minimal-dependency, retained-mode terminal UI component framework: layering, package layout, dependency policy, core vocabulary, and the map of detail ADRs 0002–0007. Start here.
 
-> **Authored natively in the KB** (jarvis, 2026-07-08) as part of the golib/tui design
+> **Authored natively in the KB** (2026-07-08) as part of the golib/tui design
 > dossier, from the task
 > `2026-07-08-create-standard-tui-components-in-golib` and an external research pass over
 > the Go TUI ecosystem (dossier citations inline). golib/tui keeps its own 0001–0007 ADR
 > numbering; the `golib-tui-` filename prefix namespaces it against this KB's auto-agents
 > ADR sequence. Navigation hub: golib-tui.
 
-- **Status:** **Accepted** (Johno, 2026-07-08) — revision 1 (Lector r1 `change_requested`
+- **Status:** **Accepted** (Johno, 2026-07-08) — revision 1 (review r1 `change_requested`
   → r2 `approved_with_amendments`, all amendments folded).
 - **Date:** 2026-07-08
-- **Reviewed by:** lector, 2026-07-08 — agents/lector/reviews/2026-07-08-golib-tui-adrs-review.md (r1); agents/lector/reviews/2026-07-08-golib-tui-adrs-rereview.md (r2, `approved_with_amendments`)
+- **Reviewed by:** an independent reviewer, 2026-07-08 (r1; r2, `approved_with_amendments`)
 - **Module:** github.com/yongjohnlee80/golib
 - **Supersedes:** none (greenfield)
 - **Related:** ADR-0002 (terminal backend & capability model), ADR-0003 (cell buffer &
@@ -27,13 +27,13 @@
 > **Self-containment contract.** This ADR is implementable with no prior context beyond the
 > golib conventions (golang, golib) and the sibling ADRs listed under Related.
 
-> **Revision history.** **Rev 1 (2026-07-08)** — folded from Lector's r1 review
+> **Revision history.** **Rev 1 (2026-07-08)** — folded from the r1 review
 > (`change_requested` on the series; this umbrella ADR had no must-fix of its own): §2.3
 > Backend vocabulary gains `Err() error` and the `Capabilities` profile fields
 > (`ColorProfile`, `DarkBackground`, tri-state `Mouse`) per must-fix #1/#2 (canonical
 > definitions in ADR-0002 rev 1); §2.3 Component contract gains the comparability
 > requirement per must-fix #4 (canonical in ADR-0004 rev 1); §6 questions annotated with
-> Lector's answers — Q1–Q4 confirmed as decided; Q5 conditionally accepted, satisfied by
+> The reviewer's answers — Q1–Q4 confirmed as decided; Q5 conditionally accepted, satisfied by
 > the `ListSource[T]` seam added in ADR-0007 rev 1.
 
 ## 1. Context
@@ -156,7 +156,7 @@ laborious hand-roll item and is scoped in ADR-0003.
 
 ```go
 // The component contract (full semantics in ADR-0004).
-// Rev 1 (Lector must-fix #4): a Component's dynamic type MUST be comparable —
+// Rev 1 (review must-fix #4): a Component's dynamic type MUST be comparable —
 // normatively, components are pointers to their state structs. Mount verifies and
 // panics loudly on violation (ADR-0004 rev 1 §2).
 type Component interface {
@@ -320,27 +320,27 @@ Naming: the task's "master component" is `tui.App`. Component identity is `tui.N
   shape, or should the cell/render layer be its own `tui/cell` package to keep the core
   package small? (Current call: one package — the types are mutually entangled and the
   public surface stays modest.)
-  — **Lector r1:** keep one core `tui` package; a separate `tui/cell` would prematurely
+  — **Review r1:** keep one core `tui` package; a separate `tui/cell` would prematurely
   split mutually entangled types.
 - **Q2.** Is promoting `x/term`+`x/sys` to direct deps acceptable under the zero-dep-core
   policy given they're confined to `tui/term`, or must even the leaf hand-roll termios
   ioctls over std `syscall` on unix (leaving x/sys for Windows only)?
-  — **Lector r1:** acceptable; hand-rolling termios/Win32 for a symbolic zero-dep leaf
+  — **Review r1:** acceptable; hand-rolling termios/Win32 for a symbolic zero-dep leaf
   would be worse engineering and does not violate zero-dep core.
 - **Q3.** The task asked for desktop/mobile portability (objective 8); §1.3 N1/§4.6 scope
   it to seams-only. Does the reviewer accept this scope reduction, or should ADR-0002's
   Backend interface be widened now (e.g. pixel-aware measurement hooks) at the cost of
   cell-layer simplicity?
-  — **Lector r1:** scope reduction accepted; do NOT add pixel-aware measurement hooks now —
+  — **Review r1:** scope reduction accepted; do NOT add pixel-aware measurement hooks now —
   they would distort the cell-first API before any real pixel backend exists.
 - **Q4.** Unicode tables: generate-in-repo (go:generate + committed tables, UCD refresh
   cadence on us) vs vendoring uniseg wholesale under `internal/` with attribution. We
   chose generation for provenance and size control — agree?
-  — **Lector r1:** agreed; generated committed tables over vendoring uniseg.
+  — **Review r1:** agreed; generated committed tables over vendoring uniseg.
 - **Q5.** Is starting the widget inventory at ADR-0007's v1 set (no table widget, no
   virtualized list in v1 — deferred to 0007's follow-ups) acceptable for the sqlit/lazygit
   target, or is a virtualized list load-bearing enough to be v1?
-  — **Lector r1:** acceptable ONLY IF the list data-source/virtualization seam is designed
+  — **Review r1:** acceptable ONLY IF the list data-source/virtualization seam is designed
   now; a non-virtualized-only `List[T]` is not enough for sqlit-class results. Satisfied in
   rev 1 by ADR-0007's `ListSource[T]` seam (windowed fetching may ship post-v1; the API
   shape is fixed in v1).

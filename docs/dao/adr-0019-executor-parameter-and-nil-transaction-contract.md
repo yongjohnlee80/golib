@@ -6,19 +6,18 @@
   and ship in golib PR #24. **§2.3, §2.4 and §2.5 — the three declines — were
   ratified by Johno on 2026-09-05**, so the keyset sweep pager and the
   join-or-begin helper stay in autodb and dao gains no runtime Pattern-4 guard.
-  Authored by kimmy-vision from the autodb `golib/dao` upstream check-back task
+  Authored from the autodb `golib/dao` upstream check-back task
   (`2026-08-31-golibdao-analyze-whether-the-keyset-sweep-pager-should-move-upstream-check-back-task`).
-  **Revision 1 (2026-09-05)** folds gold-man's r0 review
-  (`agents/gold-man/reviews/2026-09-05-golib-dao-on-nil-contract-pr24-r0-review.md`,
-  `changes_requested`, 1 MF / 1 SF / 2 nits): §2.1 was wrong about the shape of
+  **Revision 1 (2026-09-05)** folds the r0 review
+  (`changes_requested`, 1 MF / 1 SF / 2 nits): §2.1 was wrong about the shape of
   the surface it documents — the contract has **three** doors, not two, and
   `Use(nil)` is an exception. Reviewer confirmed §2.5 independently and could
   not break it; all three declines survived review unchanged.
 
   *Process note, recorded because the sequence is unusual rather than to
-  reopen it:* golib's established order is lector review rounds, then Johno's
+  reopen it:* golib's established order is review rounds, then Johno's
   acceptance stamp (ADR-0017's header is the model). Here the stamp came while
-  lector's r0 was still in flight — a review this ADR's author explicitly asked
+  the reviewer's r0 was still in flight — a review this ADR's author explicitly asked
   to challenge §2.5. That review still stands for the **implementation** (the
   doc comments and the locking tests, which is the part that ships code). If it
   lands a valid finding against a now-ratified decline, the remedy is an
@@ -80,7 +79,7 @@ Normative:
   own test cell).
 
 **THREE exported doors take a `*Transaction`, and nil does not mean the same
-thing at all three.** Revision 1 of this ADR, after gold-man's r0: the first
+thing at all three.** Revision 1 of this ADR, after the r0 review: the first
 draft enumerated the two *fallthrough sites* and presented that as the contract,
 which is a completeness claim about the whole surface and was wrong. The surface
 is `Schema.On`, `Schema.DAO` (no argument) and `DAO.Use` — and `Use(nil)`
@@ -244,7 +243,7 @@ cannot silently draw from the pool) plus code-review §13 at review time. A
 static analyser over consumer code is a legitimate future option; a dao runtime
 guard is not, and this ADR closes the question rather than leaving it open.
 
-**A PARTIAL guard would be worse than none** (gold-man, r0). The tempting
+**A PARTIAL guard would be worse than none** (r0 review). The tempting
 half-measure — fire only when the ctx *does* carry the transaction — reports
 **PASS for the bare-ctx case that is the actual defect**. That is the
 `validate-the-verifier` rule pointed at a proposed instrument: an absent guard
@@ -354,7 +353,7 @@ panicking mutant could not mask its siblings.
 3a. All **three** doors are documented, with `Use(nil)`'s exception stated on
    the exported interface and locked by a cell that reads the inherited
    **deadline**; equivalence is asserted behaviourally as well as
-   field-by-field. ✅ (r1, gold-man MF1 + SF1)
+   field-by-field. ✅ (r1, review MF1 + SF1)
 4. No exported API added, no signature changed, no behaviour changed. ✅
 5. §2.2's rejection is recorded with its reasons. ✅
 6. §2.3–§2.5 record explicit decisions with re-open triggers, not deferrals. ✅

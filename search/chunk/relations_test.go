@@ -96,7 +96,7 @@ func TestParseRef(t *testing.T) {
 		{"[[0075-front-door]]", Ref{Form: RefWikilink, Target: "0075-front-door"}},
 		{"[[notes/a#Heading|shown]]", Ref{Form: RefWikilink, Target: "notes/a", Anchor: "Heading"}},
 		{"golib-vfs-0001", Ref{Form: RefSlug, Target: "golib-vfs-0001"}},
-		{"2026-09-02-autodb-pr44-review", Ref{Form: RefSlug, Target: "2026-09-02-autodb-pr44-review"}},
+		{"2026-09-02-example-pr44-review", Ref{Form: RefSlug, Target: "2026-09-02-example-pr44-review"}},
 		{"0209", Ref{Form: RefNumber, Target: "0209"}},
 		{"21", Ref{Form: RefNumber, Target: "21"}},
 		{"https://doc.qt.io/qt-6/qtqml.html", Ref{Form: RefURL, Target: "https://doc.qt.io/qt-6/qtqml.html"}},

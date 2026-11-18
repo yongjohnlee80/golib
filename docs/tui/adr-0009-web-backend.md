@@ -1,10 +1,10 @@
 # ADR-0009 — `golib/tui`: the web Backend (remote TUI over HTTP)
 
 - **Status:** **Accepted (rev 30)** — design accepted by Johno 2026-08-21;
-  **the rev 21-30 implementation is lector-APPROVED (r9, 2026-08-23,
+  **the rev 21-30 implementation is review-APPROVED (r9, 2026-08-23,
   `approved_with_notes`, zero blocking findings) with CI green on every check.**
   Lands on `tui-web`.
-  - **Design rounds (r1-r8, 2026-08-21):** approved by lector, accepted by Johno.
+  - **Design rounds (r1-r8, 2026-08-21):** approved by the reviewer, accepted by Johno.
     r8's three amendments applied — a correctness defect in rev 0's frame
     coalescing, a wrong security claim about mTLS, and r2's internal
     contradictions — plus the capture buffer DRAINS, so no typed history lingers in
@@ -13,7 +13,7 @@
     throttle and allowlist stated as requirements".
   - **Rev 21 (2026-08-22):** `web.SSO` extended to every `golib/auth` mechanism
     (§2.12.7), on Johno's instruction.
-  - **Revs 22-29 (2026-08-22):** eight rounds of lector review on PR #14, each
+  - **Revs 22-29 (2026-08-22):** eight rounds of review on PR #14, each
     finding a defect in the *interval* around a step the previous round had made
     correct. §2.12.8 the lifecycle leaks (r1); §2.12.9 the two false concurrency
     boundaries (r2); §2.12.10 the ghost slot, established too late (r3); §2.12.11
@@ -271,7 +271,7 @@ p, err = auth.NewPolicy(auth.All(
     at most one attach inside half a minute; mTLS and the SSHSIG challenge are
     bound to a key the page cannot exfiltrate at all.
 
-    > **Correction (lector r5).** Earlier revisions called the ticket
+    > **Correction (review r5).** Earlier revisions called the ticket
     > "origin-bound". It is not. `auth/token`'s `Record` holds only
     > Subject/IssuedAt/ExpiresAt/SingleUse, `Issue` takes subject/TTL/singleUse,
     > and `Verify` consumes by token hash without consulting
@@ -320,7 +320,7 @@ p, err = auth.NewPolicy(auth.All(
   it does not belong: password on the attach path is unrepresentable, not merely
   discouraged.
 
-  > **Normative correction (lector r4).** Rev 11's change was recorded only in the
+  > **Normative correction (review r4).** Rev 11's change was recorded only in the
   > review history, leaving this section still saying password may appear in the
   > attach policy and recommending
   > `Any(ticket, mtls, sshChallenge, throttledPassword)` on `Config.Policy`. A
@@ -558,7 +558,7 @@ upstream state that no factory ever claims, and there is no path on which to
 release it.
 
 Found by autodb ADR-0061, the first consumer with more than one user
-(lector, 2026-08-22). It is the **third** entry in §2.10's seam report and the
+(the reviewer, 2026-08-22). It is the **third** entry in §2.10's seam report and the
 first that could not have been found from inside this package: a factory blind to
 identity is fine for a single-user demo and impossible for a multi-user gateway.
 
@@ -630,7 +630,7 @@ appear to have succeeded.
 
 A caller's `Verify` allocates upstream state but does not yet know the handoff —
 the ticket is minted afterwards. Parking by **subject** in the meantime is wrong:
-two concurrent logins by one user cannot be told apart, and lector's r2 review
+two concurrent logins by one user cannot be told apart, and the r2 review
 names that exact failure.
 
 So the login request carries a scoped slot:
@@ -650,7 +650,7 @@ through the auth path works.
 #### 2.12.4 Two budgets, because they bound different resources
 
 A parked handoff and a live session are not the same cost, and counting them
-against one number produces the deadlock lector identified: at a full session cap,
+against one number produces the deadlock the reviewer identified: at a full session cap,
 a reconnect must log in first, so its park needs a slot that by definition is not
 available — yet reattaching consumes no new session.
 
@@ -773,7 +773,7 @@ not whether it is described.
 
 #### 2.12.8 The lifecycle repairs (rev 22)
 
-Rev 21 got the SHAPE right and the LIFECYCLE wrong. Lector's r1 review of PR #14
+Rev 21 got the SHAPE right and the LIFECYCLE wrong. The reviewer's r1 review of PR #14
 reproduced six defects, five of them leaks of one kind or another. They are
 recorded here because each one is a rule about who owns what, and the rules are
 the part worth keeping.
@@ -842,7 +842,7 @@ caller can discard a return value.
 
 #### 2.12.9 Two boundaries that were claimed and not true (rev 23)
 
-Rev 22 fixed the leaks. Lector's r2 review found that two of the boundaries rev 22
+Rev 22 fixed the leaks. The reviewer's r2 review found that two of the boundaries rev 22
 *asserted* were still reproducibly false — both cases of a check being in the right
 place and the surrounding concurrency making it meaningless.
 
@@ -877,7 +877,7 @@ bracket exists instead of a mutex around the call.
 The bracket's retirement is a `defer`, and that detail is the whole fix rather
 than a nicety: without it a `Provision` that PANICS would leave the bracket
 permanently non-empty and `Close` would wait forever, trading a leak for a hang.
-I found that one by writing the question down for lector and then answering it
+I found that one by writing the question down for the reviewer and then answering it
 myself; it has its own test and its own control.
 
 One smaller thing, and it is the same species of error: rev 22 documented a
@@ -897,7 +897,7 @@ that — which is now how they are tested.
 
 #### 2.12.10 The ghost slot: order of establishment (rev 24)
 
-Lector's r3 found the third window of this family — not the last, as this section
+The reviewer's r3 found the third window of this family — not the last, as this section
 originally claimed; r4 found a fourth (§2.12.11), and the claim was exactly the
 kind of prediction this ADR has no business making.
 
@@ -906,7 +906,7 @@ But a parked entry can be settled the instant it exists — by its own expiry ti
 by a `Sweep`, by a concurrent `Close`. A settle landing in that gap found no key
 and did nothing, and the lease installed a moment later belonged to a handoff that
 no longer existed. Nothing would ever return it, so it sat on the pending-login
-budget until the backstop expiry tens of seconds later. Lector's probe reported
+budget until the backstop expiry tens of seconds later. The reviewer's probe reported
 `parked=0, held=1`.
 
 The fix is one line moved: **the lease goes in first.** That inverts the race
@@ -946,7 +946,7 @@ hook slow enough to outlive its reservation — a dial to an upstream that hangs
 exactly that shape — came back to find its slot lazily reclaimed at the door by
 another login, and parked anyway. The entry then existed with nothing accounting
 for it, so the budget under-counted and more logins could park than the cap allows.
-Lector's probe: `parked=1, held=0`. And `OnLogin` had no lease token or context by
+The reviewer's probe: `parked=1, held=0`. And `OnLogin` had no lease token or context by
 which a late callback could discover that it had been cancelled.
 
 The repair is a **commit boundary at the point of insert**. `gate.commit` re-stamps
@@ -1096,7 +1096,7 @@ a case where the obviously-correct repair was impossible.
 **`defer` is function-scoped.** `defer stash.disarm()` sat inside the
 `if h.onLogin != nil` block, so it retired the publishing capability when
 `ServeLogin` returned — not when the hook did. Everything below stayed inside the
-window, including the slow paths: lector blocked the error path inside
+window, including the slow paths: the reviewer blocked the error path inside
 `Issuer.Revoke` and a retained Stash published successfully in that interval, after
 which the cleanup released the slot and left an entry with nothing accounting for
 it. The fix is to call `disarm` on the line after the hook. Six rounds of reasoning
@@ -1106,7 +1106,7 @@ about locks and intervals, and the seventh defect was a Go scoping rule.
 commitment back when a publish panicked, on the reasoning that nothing had been
 written. That holds only for a callback that panics *before* it mutates. A
 consumer's callback can insert into its own park and then panic, and this package
-cannot undo a write to a data structure it does not own — lector reproduced
+cannot undo a write to a data structure it does not own — the reviewer reproduced
 `parked=1, committed=0` exactly that way.
 
 There is no version of the rollback that works, so the decision is which error to
@@ -1399,7 +1399,7 @@ Acceptance criteria:
 
 ## 7. Resolved review questions (r1)
 
-All five open questions were answered in lector's design r1; recorded as
+All five open questions were answered in the reviewer's design r1; recorded as
 decisions:
 
 1. **Transport: WebSocket** via the existing `server/ws` — no new module, and
@@ -1461,7 +1461,7 @@ decisions:
   hands over. A runnable `Example_singleSignOn` carries the wiring, since a godoc
   example is where a consumer actually looks.
 
-- **rev 30 (2026-08-23, jarvis — r9's wording correction; APPROVED).** Lector
+- **rev 30 (2026-08-23 — r9's wording correction; APPROVED).** The reviewer
   approved the mechanism (`approved_with_notes`, zero blocking findings, safe to
   merge) and corrected three of my test comments, all making the same wrong claim:
   that a late publish leaves an entry with no admission slot accounting for it. It
@@ -1476,7 +1476,7 @@ decisions:
   wrong failure teaches the wrong lesson to whoever reads it next, and this file's
   comments are the only place several of these intervals are explained at all.
 
-- **rev 29 (2026-08-22, jarvis — the same lifetime, third attempt, from lector r8).**
+- **rev 29 (2026-08-22 — the same lifetime, third attempt, from review r8).**
   One must-fix: rev 28's `disarm()` on the line after the hook is skipped when the
   hook panics, so the capability outlives the request's unwind. The scope that
   matches the hook's call is an immediately-invoked function with a defer inside it.
@@ -1488,10 +1488,10 @@ decisions:
   WAS the answer. A defence that prevents an interleaving something else already
   prevents, at the cost of consumer-controlled request blocking, is not diligence.
 
-- **rev 28 (2026-08-22, jarvis — the capability's lifetime and the limits of
-  rollback, from lector r7 on PR #14).** Two must-fixes. `defer stash.disarm()` was
+- **rev 28 (2026-08-22 — the capability's lifetime and the limits of
+  rollback, from review r7 on PR #14).** Two must-fixes. `defer stash.disarm()` was
   function-scoped, so the publishing capability outlived the hook and stayed live
-  through the request's slow paths — lector published from a retained Stash while
+  through the request's slow paths — the reviewer published from a retained Stash while
   the error path was blocked inside `Issuer.Revoke`. And rev 27's panic rollback
   assumed nothing had been published, which is false for a callback that mutates its
   own park and then panics; that rollback cannot exist, because the mutation is in
@@ -1509,7 +1509,7 @@ decisions:
   this contract needed narrowing — which I had asked about directly, because "the
   shape is right" is a judgement that quietly expires after four more repairs.
 
-- **rev 27 (2026-08-22, jarvis — the reusable capability from lector r6 on PR #14).**
+- **rev 27 (2026-08-22 — the reusable capability from review r6 on PR #14).**
   The internal transaction was approved; the public capability I had added to
   support it was not. `Stash.CommitPark` was reusable, accepted a nil publisher, and
   outlived its hook, so one reservation could publish two entries or commit a slot
@@ -1528,7 +1528,7 @@ decisions:
   the slot committed for an entry never written; and the post-check control slept
   rather than asking `TryLock`, so it proved nothing on a fast pass. Both fixed.
 
-- **rev 26 (2026-08-22, jarvis — the check-then-publish gap from lector r5 on PR #14).**
+- **rev 26 (2026-08-22 — the check-then-publish gap from review r5 on PR #14).**
   Rev 25 checked the reservation and then inserted; `gate.commit` released the
   gate's lock as it answered, so the key could be swept in between and the entry
   landed unaccounted — the same `parked=1, held=0` one instruction to the left.
@@ -1540,7 +1540,7 @@ decisions:
   touch the stash — and the repo's own raw-hook fixture is what failed when I fixed
   it. `Stash.CommitPark` gives raw-hook consumers the capability they were being
   told to use while it was unexported; presenting hand-rolled parking as guaranteed
-  without it was the worse of the three options lector offered. And two doc claims
+  without it was the worse of the three options the reviewer offered. And two doc claims
   were false: `ErrAdmissionLapsed`'s description of when the reservation is taken,
   and a revocation assertion that verified the literal string "x" and therefore
   proved nothing about the minted ticket.
@@ -1549,7 +1549,7 @@ decisions:
   about the step it named and silent about the interval after it, and each round's
   test passed because it paused where the PREVIOUS bug had been.
 
-- **rev 25 (2026-08-22, jarvis — establishment atomicity from lector r4 on PR #14).**
+- **rev 25 (2026-08-22 — establishment atomicity from review r4 on PR #14).**
   One must-fix, and the answer to the shape question I had asked in r3: the design
   is right — the park owns settlement, one-way `leased` is correct — but two
   independently timed maps joined by callbacks give no atomic establishment. A
@@ -1568,9 +1568,9 @@ decisions:
   injects only the timing.
 
   Also revised §2.12.10's claim that r3's window was "the third and last" of the
-  family, at lector's request. It was the third.
+  family, at the reviewer's request. It was the third.
 
-- **rev 24 (2026-08-22, jarvis — the ordering hole from lector r3 on PR #14).**
+- **rev 24 (2026-08-22 — the ordering hole from review r3 on PR #14).**
   One must-fix: the admission lease was established after the park entry it
   accounts for, so anything settling that entry in between produced a ghost slot
   that survived to the backstop. Probe: `parked=0, held=1`. §2.12.10 records it and
@@ -1583,11 +1583,11 @@ decisions:
   right and its position in the schedule was wrong, and each time I had written a
   guarantee describing the operation. The control for this one puts the settle
   inside the window deterministically — the hook parks and then sweeps its own park
-  — rather than trying to hit it with timing, and it reproduces lector's numbers
+  — rather than trying to hit it with timing, and it reproduces the reviewer's numbers
   exactly when the fix is reverted.
 
-- **rev 23 (2026-08-22, jarvis — the concurrency boundaries from lector r2 on PR #14).**
-  Two must-fixes, both reproduced deterministically by lector with probes that
+- **rev 23 (2026-08-22 — the concurrency boundaries from review r2 on PR #14).**
+  Two must-fixes, both reproduced deterministically by the reviewer with probes that
   paused the other side: the admission slot was returned by the `Manager` before
   the park's entry was claimed, and `Close` could return while a `Provision` was
   still in flight. §2.12.9 records both, plus the contained `Release` panic that
@@ -1596,7 +1596,7 @@ decisions:
   What I want to remember from this round is that rev 22's tests were not weak by
   accident — the admission test *synchronised past its own bug* by waiting for the
   build before the next cycle. A test that waits for the thing to finish cannot see
-  a window that exists only before it finishes. Lector's probes held the claim and
+  a window that exists only before it finishes. The reviewer's probes held the claim and
   held the `Provision`; both new tests do the same, and the paused-claim one drives
   a hand-written `Runner` calling `SSO.Session` directly rather than gating the gate
   stub, so it exercises the code instead of the mock.
@@ -1606,7 +1606,7 @@ decisions:
   emitted, and the in-flight bracket retired without a `defer` (which hangs `Close`
   when `Provision` panics). Each turns its test red.
 
-- **rev 22 (2026-08-22, jarvis — the lifecycle repairs from lector r1 on PR #14).**
+- **rev 22 (2026-08-22 — the lifecycle repairs from review r1 on PR #14).**
   Six must-fix findings, five of them leaks: a pending-login slot never returned
   (the ninth login 503'd forever), state allocated in `Verify` dropped when the
   login failed later, a promised expiry sweep that did not exist plus a `Claim`
@@ -1638,7 +1638,7 @@ decisions:
   accessor only where it did not, leaving Chromium and WebKit on the path they were
   already green on.
 
-- **rev 21 (2026-08-22, jarvis — `web.SSO` covers every `auth` mechanism).**
+- **rev 21 (2026-08-22 — `web.SSO` covers every `auth` mechanism).**
   Johno: "the `golib/tui/web/sso` should accommodate all common auth types
   implemented in `golib/auth`." Rev 20's helper covered one — a password login —
   because parking presupposes a login route. Ticket, mTLS and SSHSIG attaches
@@ -1651,7 +1651,7 @@ decisions:
   the release to a consumer's discipline; putting it in a `defer` inside a wrapping
   `Runner` is what makes it unforgettable, and it is why acquisition moved into
   `Run` (a context to cancel, and the release on the same stack as the work).
-  **Ten negative controls** (rev 21 first said twelve and listed ten; lector
+  **Ten negative controls** (rev 21 first said twelve and listed ten; the reviewer
   counted). Every new assertion was verified by mutating the code under it — provision-never-called, provision-preferred-over-claim, nil
   provision returning a zero value, a swallowed provision error, a
   non-idempotent release, an undeferred release, an SSHSIG signed under the wrong
@@ -1665,7 +1665,7 @@ decisions:
   frame is written — so the test failed roughly one run in three once new parallel
   tests changed the timing. It now waits for the frame that carries the id.
 
-- **rev 19 (2026-08-22, jarvis — the login handoff seam and peer binding, from
+- **rev 19 (2026-08-22 — the login handoff seam and peer binding, from
   autodb ADR-0061).** autodb's web gateway needed single sign-on and could not have
   it. §2.12 records the finding; the README's seam report carries it as finding 0.
   Two things about how it was found are worth keeping.
@@ -1676,7 +1676,7 @@ decisions:
   adequate for `webdemo` and impossible for a multi-user gateway.
 
   **My first fix was wrong in a specific way.** I proposed adding `*auth.Identity`
-  to `AppFactory` and called autodb unblocked. Lector showed that is necessary and
+  to `AppFactory` and called autodb unblocked. The reviewer showed that is necessary and
   not sufficient — the login route allocates upstream state before the hello
   reveals Create-versus-Reattach, the factory runs only on Create, so a login used
   to reattach allocates state nothing claims, and at a full cap the reservation
@@ -1717,7 +1717,7 @@ decisions:
   Merged to `main` by rebase and tagged **v0.3.8**, covering `golib/auth`
   (ADR-0001) and `golib/tui/web` (ADR-0009) together.
 
-- **implementation r7 full-PR (2026-08-22, lector — `change_requested`; three
+- **implementation r7 full-PR (2026-08-22, review — `change_requested`; three
   must-fixes).** The production implementation was approved in substance. The
   blockers were about the release gate and about claims that had drifted.
 
@@ -1756,7 +1756,7 @@ decisions:
      already done.
 
 - **implementation r6 amendments + criterion 1 and 12 completed (2026-08-22).**
-  Lector approved the r6 delta with amendments: four stale duplicate claims, all
+  The reviewer approved the r6 delta with amendments: four stale duplicate claims, all
   cases of a retraction I had made in one file and left standing in another. A
   claim retracted in one place is not retracted. Fixed in `serve.go`,
   `login_test.go`, and two places in this history.
@@ -1794,12 +1794,12 @@ decisions:
   synthetic dispatch is precisely what would hide a divergence, so no claim about
   the capture-element machine is currently backed by a browser.
 
-- **implementation r5 (2026-08-22, lector — `change_requested`, 1 blocker; folded).**
+- **implementation r5 (2026-08-22, review — `change_requested`, 1 blocker; folded).**
   Both r4 blockers and the should-fix were accepted. The remaining finding was a
   security overclaim I had repeated since rev 9: calling the login ticket
   **origin-bound**.
 
-  It is not, and lector cited the code: `auth/token`'s `Record` carries only
+  It is not, and the reviewer cited the code: `auth/token`'s `Record` carries only
   Subject/IssuedAt/ExpiresAt/SingleUse; `Issue` takes subject, TTL and a
   single-use flag; `Verify` consumes by token hash and never reads
   `Request.Metadata`. So a ticket minted under one allowed origin is redeemable
@@ -1827,7 +1827,7 @@ decisions:
   unauthenticated endpoint when the page is also unauthenticated (now the only
   unauthenticated **credential-processing** endpoint).
 
-- **implementation r4 (2026-08-22, lector — `change_requested`, 2 blockers; both
+- **implementation r4 (2026-08-22, review — `change_requested`, 2 blockers; both
   folded).** All seven r3 production repairs accepted. The two that remained were
   both about a claim outliving the thing it described.
 
@@ -1863,7 +1863,7 @@ decisions:
   App goroutine for the rest of the run. Both new controls fail without their
   fixes.
 
-- **implementation r3 (2026-08-22, lector — `change_requested`, 7 blockers; all
+- **implementation r3 (2026-08-22, review — `change_requested`, 7 blockers; all
   folded).** The r2 repairs were accepted. The seven that remained split into two
   kinds, and both are worth naming.
 
@@ -1913,10 +1913,10 @@ decisions:
   resize gap for the concurrent `Flush` to finish — which deadlocks, because
   `Flush` wants the lock the gap is holding. The hang was itself evidence the
   serialization works, but the test had to be restructured to observe it rather
-  than participate in it. All three of lector's controls now fail without their
+  than participate in it. All three of the reviewer's controls now fail without their
   fixes.
 
-- **implementation r2 (2026-08-22, lector — `change_requested`, 8 must-fixes; all
+- **implementation r2 (2026-08-22, review — `change_requested`, 8 must-fixes; all
   folded).** Most r1 repairs were confirmed sound. The remaining eight were
   mostly repairs that had not gone far enough, which is its own lesson.
 
@@ -1994,7 +1994,7 @@ decisions:
   - **A captured hello cannot contain a password.** The worst a replayed hello
     yields is a spent ticket.
 
-  This also closes the gap lector r1 named: the shipped client now has a login
+  This also closes the gap review r1 named: the shipped client now has a login
   form, so password auth is reachable end to end rather than requiring a custom
   client.
 
@@ -2025,7 +2025,7 @@ decisions:
     by `fetch` with `credentials: 'omit'` and `redirect: 'error'`, so it cannot
     carry ambient credentials and cannot be redirected elsewhere.
 
-- **implementation r1 (2026-08-22, lector — `change_requested`, 9 blockers; all
+- **implementation r1 (2026-08-22, review — `change_requested`, 9 blockers; all
   folded).** The cumulative framer was **approved**: current/acked/in-flight
   grids preserve the exact acknowledged baseline, stale acks cannot move it, and
   reset/resize force the right full snapshots. Every blocker was outside it, and
@@ -2079,7 +2079,7 @@ decisions:
   **A correction to me, and it matters:** my claim that the CSP nonce bug would
   have blocked script "on roughly half of all responses" was **wrong**. Browsers
   decode HTML entities before comparing the nonce, so `script-src 'nonce-a+b'`
-  matches a source nonce written `a&#43;b` — lector verified that in headless
+  matches a source nonce written `a&#43;b` — the reviewer verified that in headless
   Chromium. The `html/template` escaping is real; the browser consequence was
   invented from reading Go output rather than testing a browser. `RawURLEncoding`
   stays because source-level identity is genuinely simpler to reason about, but it
@@ -2107,7 +2107,7 @@ decisions:
   the caller's to compose, and a package that silently second-guesses it would be
   lying about where the decision lives.
 
-- **r8 (2026-08-21, lector — `approved_with_amendments`; all three applied in
+- **r8 (2026-08-21, review — `approved_with_amendments`; all three applied in
   rev 8).** The host-state boundary was accepted as closing the
   ordering/content/task problem. **Amendment 1 was a security finding I had
   missed:** as written, the capture `textarea` grew without bound, so **the entire
@@ -2128,7 +2128,7 @@ decisions:
   under a long stream, absence of password-like text after emission, and
   disabled-or-normalized replacement behavior.
 
-- **r7 (2026-08-21, lector — `change_requested`, folded in rev 7).** Lector
+- **r7 (2026-08-21, review — `change_requested`, folded in rev 7).** The reviewer
   answered the question rev 6 had flagged, and the answer removed rev 6's
   foundation: **"composition-associated events are dispatched within one task" is
   not a standards guarantee.** UI Events specifies synchronous dispatch and
@@ -2153,7 +2153,7 @@ decisions:
   to `7c`; and a new case (viii) covers a composition-associated `input`
   delivered in a *later* task.
 
-- **r6 (2026-08-21, lector — `change_requested`, folded in rev 6).**
+- **r6 (2026-08-21, review — `change_requested`, folded in rev 6).**
   **Must-fix 1 invalidated the whole emit-then-dedup shape**, not just my
   predicate: content + `inputType` is *not* a unique event identity, so if a
   browser emits no duplicate and the user's next action inserts the same text —
@@ -2175,7 +2175,7 @@ decisions:
   Unicode scalar (`Dead`, `Unidentified`, multi-scalar, expanding lower-case) by
   dropping them, since `KeyEvent.Code` holds exactly one rune.
 
-- **r5 (2026-08-21, lector — `change_requested`, folded in rev 5).** The r4
+- **r5 (2026-08-21, review — `change_requested`, folded in rev 5).** The r4
   corrections (per-rune parity, zero `Base`/`Shifted`, `ModSuper`, `Policy`,
   AltGraph) were accepted, but the state machine I had *just added* could lose
   input in two ways. **Must-fix 1:** the table `preventDefault`s `paste`, and a
@@ -2198,11 +2198,11 @@ decisions:
   `Shifted: 0`, `ModSuper`, and `Code` derived from `KeyboardEvent.key` instead
   of a base-layout codepoint the DOM does not expose; acceptance 10a states
   policy success for every branch and consume for the ticket branch only.
-  **AltGraph:** lector agreed the conservative default is right — swallowing
+  **AltGraph:** the reviewer agreed the conservative default is right — swallowing
   legitimate Ctrl+Alt chords is the worse failure, so `getModifierState` stays
   the only automatic signal with the opt-in for layouts that misreport.
 
-- **r4 (2026-08-21, lector — `change_requested`, folded in rev 4).**
+- **r4 (2026-08-21, review — `change_requested`, folded in rev 4).**
   **Must-fix 1:** committed text had **two** emitters — an ordinary IME
   completion fires `input` *and* `compositionend`, so rev 3 would have inserted
   the text twice, and paste has the same shape (`paste` then a paired `input`).
@@ -2225,7 +2225,7 @@ decisions:
   is in kitty order, where super is Cmd/Win and meta is the historical Meta, so
   the obvious mapping would have broken macOS Cmd chords.
 
-- **r3 (2026-08-21, lector — `change_requested`, folded in rev 3).**
+- **r3 (2026-08-21, review — `change_requested`, folded in rev 3).**
   **Must-fix 1 was self-inflicted:** rev 2's input table invented event shapes
   (`KeyEvent{Key,Mods}`, `MouseEvent.Delta`, `FocusEvent{Focused}`,
   `ResizeEvent{Cols,Rows}`) instead of using `tui/events.go`'s real ones —
@@ -2247,7 +2247,7 @@ decisions:
   stale Q2 references removed; the 2 000-event burst clarified as a token-bucket
   allowance rather than absorption the 1 024-slot queue cannot provide.
 
-- **r2 (2026-08-21, lector — `change_requested`, folded in rev 2).** The r1
+- **r2 (2026-08-21, review — `change_requested`, folded in rev 2).** The r1
   substance was accepted; these were internal contradictions. **Must-fix 1:**
   §2.9 still *described* an input-mapping table instead of *being* one while
   acceptance 7 asserted it existed — §2.9 is now the table itself, with concrete
@@ -2265,7 +2265,7 @@ decisions:
   unacknowledged row stays in it; and the stale §2.9/§2.10 and Q3 references I
   introduced while renumbering are repaired.
 
-- **r1 (2026-08-21, lector — `change_requested`, folded in this revision).**
+- **r1 (2026-08-21, review — `change_requested`, folded in this revision).**
   **Must-fix 1 was a correctness defect, not a nit:** rev 0's latest-wins frame
   coalescing is wrong precisely because frames carry only dirty rows — drop the
   frame containing row A, then change only row B, and row A never reaches the
@@ -2299,4 +2299,3 @@ decisions:
   `auth/token` owns credential validity and consumption while this package owns
   session lifecycle (§2.8). Approach (A) approved in principle, on the explicit
   basis that the seam experiment is the deliverable.
-  Review doc: `$KB_ROOT/agents/lector/reviews/2026-08-21-golib-tui-web-auth-coupled-design-review.md`

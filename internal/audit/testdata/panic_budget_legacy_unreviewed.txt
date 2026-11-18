@@ -1,6 +1,6 @@
 # FROZEN: the panic-site identities that were already unreviewed when the
 # panic budget was adopted. Pinning only the COUNT let a new unread panic be
-# admitted by spending one legacy classification (lector, PR #28 r0 MF3), and
+# admitted by spending one legacy classification (PR #28 review r0 MF3), and
 # checking only that unreviewed rows were a SUBSET left a classified row in
 # here as a spare grandfather slot (r1 MF3). This set and the unreviewed rows
 # must be EXACTLY equal.

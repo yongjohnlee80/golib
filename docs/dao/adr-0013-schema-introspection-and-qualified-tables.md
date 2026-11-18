@@ -1,7 +1,7 @@
 # ADR-0013 — `golib/dao`: Schema introspection & qualified table quoting
 
-- **Status:** **Accepted** (2026-08-16, rev 1 — lector r1 `change_requested` → r2 `approved_with_amendments`, amendment folded; authored by
-  ultron-prime for autodb M1, implemented on `dao-m1`. Release target
+- **Status:** **Accepted** (2026-08-16, rev 1 — review r1 `change_requested` → r2 `approved_with_amendments`, amendment folded; authored
+  for autodb M1, implemented on `dao-m1`. Release target
   **v0.3.0** approved by Johno; released as v0.3.0)
 - **Date:** 2026-08-16
 - **Module:** `github.com/yongjohnlee80/golib`
@@ -13,7 +13,7 @@
 > **Self-containment contract.** Concrete signatures, per-driver catalog
 > queries, files to create/modify, and acceptance criteria below.
 
-> **Revision history. Rev 1 (2026-08-16)** — folded from lector's r1 review
+> **Revision history. Rev 1 (2026-08-16)** — folded from the r1 review
 > (`change_requested`). Must-fix #1: rev 0 grew the `Dialect` interface with
 > `GenericDialect` defaults and §5 claimed lagging embedders (dao/bigquery)
 > would fail to compile in mixed builds. That analysis was WRONG: Go method
@@ -22,7 +22,7 @@
 > `"dataset"."table"` (double quotes are string literals in BigQuery SQL)
 > instead of its backtick dot-path. Rev 1 replaces interface growth with the
 > **optional capability interfaces** `TableQuoter` and `Introspector`
-> (lector's preferred remedy), which leaves every non-implementing dialect
+> (the reviewer's preferred remedy), which leaves every non-implementing dialect
 > byte-identical. Must-fix #2: `ColumnInfo.Nullable` is now a normalized
 > contract — primary-key columns report non-nullable; the sqlite driver
 > reconciles `pragma_table_info`'s `notnull=0` rowid-alias quirk, pinned by
@@ -204,7 +204,7 @@ work, on the module's own cadence: implement `Introspector` over BigQuery's
 - `GenericDialect` implements NEITHER `TableQuoter` NOR `Introspector`
   (asserted in tests — the promotion-hazard pin).
 - A BigQuery-shaped embedder (custom `QuoteIdent`, no `TableQuoter`) keeps
-  its own quoting in table position (regression test for lector r1
+  its own quoting in table position (regression test for review r1
   must-fix #1).
 - Fallback golden: non-implementing dialects render table SQL byte-identical
   to pre-ADR output; opt-in dialects render qualified tables correctly in

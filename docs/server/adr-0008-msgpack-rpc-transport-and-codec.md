@@ -1,7 +1,7 @@
 # ADR-0008 — `golib/server/rpc`: msgpack-RPC transport & zero-dep msgpack codec
 
-- **Status:** **Accepted** (2026-08-16 — lector r3 `approved` at da8a367
-  after two change_requested rounds; see §6. Authored by ultron-prime for
+- **Status:** **Accepted** (2026-08-16 — review r3 `approved` at da8a367
+  after two change_requested rounds; see §6. Authored for
   autodb M5. Directive basis: Johno 2026-08-16 — golib is the server/comms
   base library; the RPC foundation lands here first and autodb consumes the
   release. The codec is hand-rolled zero-dep by explicit decision, option B
@@ -50,7 +50,7 @@ Security framing: an RPC socket decodes attacker-adjacent bytes. The KB
 convention `security-core-hardening` applies — R4 (every input length/count
 is hostile until validated), R7 (parse properly, reject what you cannot
 classify), R12-style bounded resource use. The codec ships with fuzz
-coverage and is flagged for lector's adversarial review.
+coverage and is flagged for the reviewer's adversarial review.
 
 ## 2. Decision
 
@@ -321,8 +321,8 @@ additive).
 
 ## 6. Review history
 
-- **r1 (2026-08-16, lector): `change_requested`** — review doc
-  `agents/lector/reviews/2026-08-16-golib-rpc-m5-review.md` (KB). Six
+- **r1 (2026-08-16, review): `change_requested`**.
+   Six
   must-fixes, all verified CONFIRMED by the author: (1) per-container
   limits permitted ~16× decoded amplification → aggregate
   `MaxTotalElements`/`MaxTotalBytes` budgets + slot-before-read; (2) drain
@@ -338,7 +338,7 @@ additive).
   validation; clean-EOF classification (io.EOF vs ErrMalformed). The r2
   markers in §2.2/§2.3 are this fold.
 
-- **r2 (2026-08-16, lector): `change_requested`** — five of six r1
+- **r2 (2026-08-16, review): `change_requested`** — five of six r1
   must-fixes confirmed closed, all r1 should-fixes folded; the substitute-
   reply refinement to finding 4 accepted. One residual blocker: the
   outbound bound was checked only AFTER the full reply had accumulated in
@@ -349,7 +349,7 @@ additive).
   counterexample) → reworded as a linear, shape-dependent estimate here,
   in the package docs, and in the README. The r3 markers are this fold.
 
-- **r3 (2026-08-16, lector): `approved` at da8a367.** The r2 residual is
+- **r3 (2026-08-16, review): `approved` at da8a367.** The r2 residual is
   confirmed resolved (cappedWriter bounds staging while the reply streams;
   Reset clears the sticky encode error for the fallback; dual %w preserves
   error classification) and the substitute-reply refinement stands. The

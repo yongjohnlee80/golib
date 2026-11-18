@@ -5,7 +5,7 @@ updated: 2026-09-12
 revision: 0
 status: proposed
 project: golib
-author: lector
+author: golib
 requested-by: johno
 sources:
   - "Johno 2026-09-12: create a reusable golib package for GitHub and other CI/CD coverage checks, compare coverage changes for files in a PR, and enforce configurable Go coverage thresholds [DECISION — this ADR]"

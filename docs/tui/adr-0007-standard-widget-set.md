@@ -5,14 +5,14 @@
 
 **Abstract:** Defines the `tui/widget` package: the `widget.Base` embedding contract, the `widget.Box` container (border + in-border title and status line, per the task's "the basic window should already accommodate title and status if configured"), the v1 inventory — TextInput, TextArea, Select, List, BufferView, Tabs, Split, Float, StatusBar, ProgressBar, Text — with per-widget contracts (state, keys consumed, bus events emitted, style hooks, layout behavior), the explicit out-of-v1 list, and a composition check assembling sqlit- and lazygit-shaped UIs from the inventory.
 
-> **Authored natively in the KB** (jarvis, 2026-07-08) as part of the golib/tui design
+> **Authored natively in the KB** (2026-07-08) as part of the golib/tui design
 > dossier. golib/tui keeps its own 0001–0007 ADR numbering; the `golib-tui-` filename
 > prefix namespaces it against this KB's auto-agents ADR sequence. Navigation hub:
 > golib-tui. Umbrella ADR: golib-tui-0001-overview-and-architecture.
 
-- **Status:** **Accepted** (Johno, 2026-07-08) — revision 1 (Lector r1 `change_requested` → r2 `approved_with_amendments`, all amendments folded).
+- **Status:** **Accepted** (Johno, 2026-07-08) — revision 1 (review r1 `change_requested` → r2 `approved_with_amendments`, all amendments folded).
 - **Date:** 2026-07-08
-- **Reviewed by:** lector, 2026-07-08 — agents/lector/reviews/2026-07-08-golib-tui-adrs-review.md (r1); agents/lector/reviews/2026-07-08-golib-tui-adrs-rereview.md (r2, `approved_with_amendments`)
+- **Reviewed by:** an independent reviewer, 2026-07-08 (r1; r2, `approved_with_amendments`)
 - **Module:** github.com/yongjohnlee80/golib
 - **Supersedes:** none (greenfield)
 - **Related:** ADR-0001 (umbrella; G8 mandates this inventory), ADR-0003 (Surface/cells —
@@ -23,7 +23,7 @@
   math). golib server ADR-0006 (transport scaffold — the functional-options constructor
   convention these widgets follow).
 
-> **Revision history.** rev 1 (2026-07-08): folded Lector r1 `change_requested` —
+> **Revision history.** rev 1 (2026-07-08): folded review r1 `change_requested` —
 > (1) **should-fix / Q2**: `BufferView` no longer implements `io.Writer` itself;
 > `BufferView.Writer() io.Writer` returns a separate concurrent handle (any-goroutine
 > safe, bounded pending bytes, ordered delivery, `ErrClosed` after unmount) so the
@@ -88,7 +88,7 @@ composition check (§2.8) requires, and §1.2/§2.7 record what is consciously d
   monospace-formatted row string; a real Table is the first follow-up.
 - **N2 — Tree** (expandable hierarchy).
 - **N3 — Virtualized List *fetching*.** The `ListSource[T]` data-source seam IS v1 API
-  (§2.4 — rev 1, per Lector should-fix/Q3), so `List`'s API shape never needs a v2; what
+  (§2.4 — rev 1, per review should-fix/Q3), so `List`'s API shape never needs a v2; what
   is deferred is windowed/lazy *retrieval* behind that seam. The provided v1 source is
   the in-memory slice adapter, and §2.4 states the resulting memory limit in the List
   contract itself.
@@ -125,7 +125,7 @@ func (b *Base) HandleEvent(ev tui.Event) bool { return false }
 // Layout and Render have no sensible default; every widget implements both.
 ```
 
-> **Rev 1 (Lector should-fix, naming).** The draft used `ctx.NodeID()` and
+> **Rev 1 (review should-fix, naming).** The draft used `ctx.NodeID()` and
 > `MarkLayoutDirty()`; ADR-0004's canonical names are `Context.ID()` and
 > `RequestLayout()`. `Base.NodeID()` remains as the widget-level convenience helper
 > (returning `tui.NodeID` via `ctx.ID()`); the layout-dirty helper is renamed
@@ -187,7 +187,7 @@ Contract:
   ADR-0006 rev 1 — Box no longer hardcodes `TokenAccent`). This gives every panel the
   lazygit "active panel highlight" for free, re-themable via the Theme alone.
 
-  > **Rev 1 (Lector should-fix / ADR-0006 Q2).** Draft hardcoded `TokenAccent` for the
+  > **Rev 1 (review should-fix / ADR-0006 Q2).** Draft hardcoded `TokenAccent` for the
   > focused border; now `TokenBorder`/`TokenBorderFocused` per ADR-0006 §2.5.
 - **Events:** consumes nothing; `HandleEvent` returns false (bubbling continues).
   Mouse clicks inside are routed to the child by hit-testing (ADR-0004).
@@ -340,8 +340,8 @@ func (l *List[T]) SelectedAll() []int // multi-select mode
   a new `ListSource` implementation — **no `List` API change**. Recording the limit in
   the contract keeps it from becoming a silent performance trap.
 
-  > **Rev 1 (Lector should-fix / Q3 / ADR-0001 Q5).** The draft had `List` bound
-  > directly to `[]T` with virtualization deferred wholesale; Lector required the
+  > **Rev 1 (review should-fix / Q3 / ADR-0001 Q5).** The draft had `List` bound
+  > directly to `[]T` with virtualization deferred wholesale; the reviewer required the
   > data-source abstraction be designed now so sqlit doesn't bake in an O(n) workaround
   > and `List` never needs a v2. `ListSource[T]` + `SliceSource` are now v1 API;
   > windowed *fetching* remains deferred (§1.2 N3, §2.7).
@@ -385,8 +385,8 @@ type FollowTailChangedEvent struct{ Owner tui.NodeID; Following bool }
   attributes. `WithANSIPassthrough(false)` strips escapes instead, for untrusted or
   plain streams.
 
-  > **Rev 1 (Lector should-fix / Q2).** The draft made `*BufferView` itself implement
-  > `io.Writer` — the one widget with a documented any-goroutine method. Lector:
+  > **Rev 1 (review should-fix / Q2).** The draft made `*BufferView` itself implement
+  > `io.Writer` — the one widget with a documented any-goroutine method. The reviewer:
   > preserve the ergonomics but keep component methods loop-owned; `view.Writer()` is
   > one extra call and does not weaken the global invariant. Folded: the widget no
   > longer implements `io.Writer`; the handle carries the full concurrency contract
@@ -660,9 +660,9 @@ walkthrough surfaces no missing widget for either target app.
    a separate `Writer()` handle, not a method set on the widget — the draft's
    widget-implements-io.Writer variant is now itself a rejected alternative (it made
    the component type the concurrency boundary, weakening the loop-ownership
-   invariant; Lector should-fix/Q2).
+   invariant; review should-fix/Q2).
 3. **Fully virtualized List (windowed fetching) in v1.** Still deferred, but narrowed
-   by rev 1: the *seam* (`ListSource[T]`, §2.4) is v1 API per Lector should-fix/Q3 and
+   by rev 1: the *seam* (`ListSource[T]`, §2.4) is v1 API per review should-fix/Q3 and
    ADR-0001 Q5, so only the windowed-source implementation (prefetch, invalidation,
    placeholder protocol — worth its own design pass) is deferred (§2.7#2). The
    explicit in-contract limit prevents silent misuse meanwhile, and no `List` API
@@ -729,14 +729,14 @@ walkthrough surfaces no missing widget for either target app.
   single-child-wrapper model right, or should `Box` accept an optional layout +
   children to reduce nesting depth in app code (§2.8's lazygit tree is 4 levels of
   Split inside Boxes)?
-  — **Lector r1:** keep Box a single-child wrapper; nested layout is explicit and
+  — **Review r1:** keep Box a single-child wrapper; nested layout is explicit and
   avoids turning Box into another container framework. Confirmed, no change.
 - **Q2.** `BufferView.Write` accepting calls from any goroutine (draft §2.4) was the
   one deliberate breach of "all cross-goroutine entry is Post/Update" — justified by
   the `cmd.Stdout = view` ergonomics it buys. Accept the exception, or require
   `view.Writer()` returning a separate handle so the widget type itself stays
   loop-only?
-  — **Lector r1:** use `view.Writer()`; preserve the ergonomics while keeping component
+  — **Review r1:** use `view.Writer()`; preserve the ergonomics while keeping component
   methods loop-owned. Folded in §2.4/§2.6 (handle contract: any-goroutine, bounded
   pending bytes, ordered delivery, `ErrClosed` after unmount).
 - **Q3.** v1 List non-virtualized (draft N3): given sqlit result sets are the known
@@ -744,20 +744,20 @@ walkthrough surfaces no missing widget for either target app.
   want the data-source abstraction (`Len/Item`) designed *now* — even if windowed
   fetching ships later — so `List`'s API doesn't need a v2? (Interacts with ADR-0001
   Q5.)
-  — **Lector r1:** design the data-source abstraction now; windowed fetching may ship
+  — **Review r1:** design the data-source abstraction now; windowed fetching may ship
   later, but the API shape must not force a `List` v2. Folded: `ListSource[T]` +
   `SliceSource` are v1 API (§2.4); windowed source is follow-up §2.7#2.
 - **Q4.** Select/List are generic (`Select[T]`, `List[T]`), which infects containers
   holding heterogeneous widget slices with `any`-boxing at collection sites. Keep
   generics for value-typed ergonomics, or de-generify to `string`-labeled + `any` value
   (bubbles' shape) for a flatter API?
-  — **Lector r1:** keep generic `Select[T]`/`List[T]`; heterogeneous containers already
+  — **Review r1:** keep generic `Select[T]`/`List[T]`; heterogeneous containers already
   traffic in `tui.Component`, and value ergonomics for app code are worth it.
   Confirmed, no change.
 - **Q5.** TextArea deliberately has no `SubmitEvent` (Enter = newline; submission is an
   app keybinding, §2.4). Should the widget instead offer an opt-in
   `WithSubmitKey(key)` so common "Ctrl+Enter submits" dialogs need no app-level
   wiring?
-  — **Lector r1:** no TextArea submit behavior in v1; the app-level keybinding is the
+  — **Review r1:** no TextArea submit behavior in v1; the app-level keybinding is the
   cleaner contract for multi-line editors. Closed as answered-no; `WithSubmitKey` is
   not added.

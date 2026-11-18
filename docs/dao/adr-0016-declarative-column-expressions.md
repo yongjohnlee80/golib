@@ -1,9 +1,9 @@
 # ADR-0016 — `golib/dao`: declarative column expressions
 
-- **Status:** **Proposed (rev 3)** (2026-08-21 — authored by jarvis from Johno's
+- **Status:** **Proposed (rev 3)** (2026-08-21 — authored from Johno's
   request for a SQL helper surface so declarations can be built from the table
   and field constants that already exist, instead of restating them as string
-  literals. Lector design r1 `change_requested` folded — including a fatal
+  literals. Design review r1 `change_requested` folded — including a fatal
   write-path defect in rev 0 — then rev 2 restored the literal sugar at Johno's
   direction, and rev 3 moved its "string or int only" rule from a declaration
   panic to a compile-time constraint. See Review history. Lands on `dao-expr`.)
@@ -495,11 +495,11 @@ fixture with `//go:build ignore` that a test compiles via `go build`, catching
 regressions at the cost of invoking the toolchain inside `go test`; (b) leave
 `Alt`'s shape asserted only by a comment plus the positive per-term test, so a
 widened constraint would not be caught; or (c) a tiny `go/types`-based check.
-Recommendation: (a), scoped to one fixture file. Lector's call.
+Recommendation: (a), scoped to one fixture file. The reviewer's call.
 
 ## 8. Resolved review questions
 
-Lector's design r1 answered every open question; they are recorded here as
+The reviewer's design r1 answered every open question; they are recorded here as
 decisions:
 
 1. **`dao.T` / `dao.C` stay** — the brevity is the point at a declaration site,
@@ -525,7 +525,7 @@ decisions:
 
 ## Review history
 
-- **r1 (2026-08-21, lector — `change_requested`, folded in this revision).**
+- **r1 (2026-08-21, review — `change_requested`, folded in this revision).**
   **Must-fix 1 was a fatal defect, not a nit:** rev 0's `Expr` was
   `func(Dialect) string`, so the rendered *quoted* projection reached
   `writeCol()` and `INSERT`/`UPDATE` quoted it a second time — every writable
@@ -550,7 +550,6 @@ decisions:
   **Should-fix 2:** `T` accepts schema-qualified table constants and renders the
   table part through `quoteTable`, inheriting ADR-0013's fallback (§2.4,
   criterion 1).
-  Review doc: `$KB_ROOT/agents/lector/reviews/2026-08-21-golib-dao-0016-declarative-column-expressions-review.md`
 - **rev 2 (2026-08-21, Johno).** Literal sugar restored: `Coalesce(e, alt any)`
   instead of `Coalesce(e, alt Expr)`, on his direction — *"yeah, let's keep it
   simple, but do keep dao.Str, might have use for that"*. This is a deliberate

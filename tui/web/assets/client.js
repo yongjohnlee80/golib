@@ -280,7 +280,7 @@
   function connect(supplied) {
     // A mutable holder, so the reference can be dropped after the attempt. The
     // permanent open listener previously closed over the ticket and kept it
-    // reachable for the page's whole lifetime (lector r1). No claim is made that
+    // reachable for the page's whole lifetime (review r1). No claim is made that
     // the string is erased from memory — a JS engine offers no such guarantee —
     // only that our code stops holding it.
     let cred = supplied || takeTicket();
@@ -293,7 +293,7 @@
         // Clear the credential and CLOSE on this branch too. It previously
         // returned early, leaving the permanent listener holding the ticket and
         // the socket open awaiting a hello that would never come — the r1
-        // hygiene defect surviving on the failure path (lector r2).
+        // hygiene defect surviving on the failure path (review r2).
         cred = { ticket: '', session: '' };
         status('could not measure the font');
         ws.close(1000, 'unmeasured');
@@ -402,7 +402,7 @@
   // But NOT while the login form is visible, and never for a click inside it.
   // The unconditional version stole focus from the username and password inputs
   // the instant they were clicked, so the form could not be used with a mouse or
-  // a touch screen at all (lector r3).
+  // a touch screen at all (review r3).
   document.addEventListener('click', (e) => {
     const box = document.getElementById('login');
     if (box && !box.hidden) return;

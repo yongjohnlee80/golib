@@ -10,14 +10,14 @@ assignment), target-then-bubble event routing with framework-owned mouse hit-tes
 framework-owned focus traversal with focus scopes, and the single-pass
 constraints-down/sizes-up layout protocol with `Flex`, `Dock`, and `Stack` containers.
 
-> **Authored natively in the KB** (jarvis, 2026-07-08) as part of the golib/tui design
+> **Authored natively in the KB** (2026-07-08) as part of the golib/tui design
 > dossier. golib/tui keeps its own 0001–0007 ADR numbering; the `golib-tui-` filename
 > prefix namespaces it against this KB's auto-agents ADR sequence. Navigation hub:
 > golib-tui. Umbrella ADR: golib-tui-0001-overview-and-architecture.
 
-- **Status:** **Accepted** (Johno, 2026-07-08) — revision 1 (Lector r1 `change_requested` → r2 `approved_with_amendments`, all amendments folded).
+- **Status:** **Accepted** (Johno, 2026-07-08) — revision 1 (review r1 `change_requested` → r2 `approved_with_amendments`, all amendments folded).
 - **Date:** 2026-07-08
-- **Reviewed by:** lector, 2026-07-08 — agents/lector/reviews/2026-07-08-golib-tui-adrs-review.md (r1); agents/lector/reviews/2026-07-08-golib-tui-adrs-rereview.md (r2, `approved_with_amendments`)
+- **Reviewed by:** an independent reviewer, 2026-07-08 (r1; r2, `approved_with_amendments`)
 - **Module:** github.com/yongjohnlee80/golib
 - **Supersedes:** none (greenfield)
 - **Related:** ADR-0001 (fixes the `Component` signature and the two-layer retained-tree
@@ -27,7 +27,7 @@ constraints-down/sizes-up layout protocol with `Flex`, `Dock`, and `Stack` conta
   `style.Theme` resolved through `Surface`), ADR-0007 (the widget set implementing these
   contracts).
 
-> **Revision history.** rev 1 (2026-07-08): folded Lector r1 `change_requested` —
+> **Revision history.** rev 1 (2026-07-08): folded review r1 `change_requested` —
 > (1) **must-fix #4**: component identity contract — a `Component`'s dynamic type MUST be
 > comparable (normatively: components are pointers to their state structs); mount
 > verifies via `reflect.TypeOf(c).Comparable()` and panics with a targeted message
@@ -35,7 +35,7 @@ constraints-down/sizes-up layout protocol with `Flex`, `Dock`, and `Stack` conta
 > diagnostic is now failable in tests — `TestBackend.ConstraintViolations()` +
 > `tui.FailOnViolations` (§2.7.1, §5.6); (3) **should-fix (naming)**: `Context.ID()`,
 > `RequestLayout()`, and `Ctx()` declared the canonical cross-ADR names (§2.2);
-> (4) Lector's Q1–Q5 answers appended in §6 — all five positions confirmed, with Q3's
+> (4) the reviewer's Q1–Q5 answers appended in §6 — all five positions confirmed, with Q3's
 > test-hook amendment the only body change.
 
 > **Self-containment contract.** This ADR is implementable with no prior context beyond
@@ -194,7 +194,7 @@ unmount kills in-flight work without any bookkeeping in the component. `OnUnmoun
 generic cleanup seam — `SubscribeScoped` (ADR-0005 §2.7) and `After`/`Every` register
 their cancels through it.
 
-> **Rev 1 (Lector should-fix, naming).** The names above are the **canonical cross-ADR
+> **Rev 1 (review should-fix, naming).** The names above are the **canonical cross-ADR
 > names**, binding on ADRs 0005–0007: `ID()` (not `NodeID()`), `RequestLayout()` (not
 > `MarkLayoutDirty()`), and `Ctx()` for the unmount-cancelled context (there is no
 > `UnmountCtx()` — ADR-0007's snippet using it was wrong and is being normalized to
@@ -278,7 +278,7 @@ simultaneously panics for the same reason. Each `node` holds: component, parent,
 children, `*Context`, parent-relative `Rect`, absolute `Rect` (derived), dirty flags,
 and the unmount-cancel func.
 
-> **Rev 1 (Lector must-fix #4).** The draft keyed `map[Component]*node` with no
+> **Rev 1 (review must-fix #4).** The draft keyed `map[Component]*node` with no
 > comparability contract: a user-defined value component embedding a slice/map/func
 > would panic deep inside runtime map code at first insert or lookup — including from
 > the public `Context.Unmount(child Component)` path — with no actionable message. The
@@ -452,8 +452,8 @@ func (b *TestBackend) ConstraintViolations() []ConstraintViolation
 func FailOnViolations(t *testing.T, b *TestBackend)
 ```
 
-> **Rev 1 (Lector should-fix / Q3 answer).** The draft's "test-visible diagnostic" was
-> unspecified. Lector confirmed clamp-and-report for production (no panic-in-dev mode
+> **Rev 1 (review should-fix / Q3 answer).** The draft's "test-visible diagnostic" was
+> unspecified. The reviewer confirmed clamp-and-report for production (no panic-in-dev mode
 > required) but required the diagnostic to be failable in tests; the
 > `ConstraintViolations()`/`FailOnViolations` hook above is that mechanism.
 
@@ -630,27 +630,27 @@ synchronously inside a handler, so N marks per event coalesce into one frame for
   `Focus()/Blur()` methods (§2.3, §4.7). tview readers will expect methods. Is
   event-only the right call, or should `Focusable` carry optional `Focused(bool)`
   convenience despite the dual-path cost?
-  — **Lector r1:** event-only is right; do not add `Focus()/Blur()` methods.
+  — **Review r1:** event-only is right; do not add `Focus()/Blur()` methods.
 - **Q2.** v1 relayouts the whole visible tree on any layout dirt (§2.7.5, N2). Given the
   lazygit/sqlit target (~10²–10³ nodes) this is well inside budget, but it makes
   `RequestLayout()` in a per-keystroke path O(tree). Accept for v1, or require Flutter's
   relayout-boundary skip (tight-constraints subtrees) from the start?
-  — **Lector r1:** whole-tree relayout accepted for v1; add boundaries after profiling,
+  — **Review r1:** whole-tree relayout accepted for v1; add boundaries after profiling,
   not before.
 - **Q3.** Out-of-constraints `Size` is clamped with a `TestBackend`-visible diagnostic
   rather than panicking (§2.7.1). golib's fail-loud posture could argue for a panic in a
   debug/dev mode instead. Clamp-and-report, or panic-in-dev?
-  — **Lector r1:** clamp-and-report acceptable in production; no panic-in-dev required —
+  — **Review r1:** clamp-and-report acceptable in production; no panic-in-dev required —
   but the test diagnostic must be *failable* so widget authors notice (folded: §2.7.1's
   `ConstraintViolations()`/`FailOnViolations`).
 - **Q4.** Focus traversal order = mount/document order (§2.6.2). Should v1 instead sort
   tab stops by laid-out position (row-major visual order), which survives out-of-order
   mounting but makes traversal order resize-dependent?
-  — **Lector r1:** keep mount/document order; visual-order sorting makes tab order
+  — **Review r1:** keep mount/document order; visual-order sorting makes tab order
   resize-dependent and harder to reason about.
 - **Q5.** `Container` is a core capability interface with `Add/Remove/Children`
   (§2.3). The alternative is keeping child mutation entirely in ADR-0007's widgets
   (core exposes only `Context.Mount/Unmount`), shrinking core's surface but losing a
   uniform enumeration seam for devtools/traversal tests. Keep `Container` in core?
-  — **Lector r1:** keep `Container` in core; uniform child enumeration is worth the
+  — **Review r1:** keep `Container` in core; uniform child enumeration is worth the
   small interface surface.

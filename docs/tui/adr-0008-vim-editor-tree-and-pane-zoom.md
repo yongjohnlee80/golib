@@ -1,6 +1,6 @@
 # ADR-0008 — `golib/tui`: vim-modal Editor, Tree, and pane zoom
 
-- **Status:** **Accepted** (2026-08-16 — lector implementation r4 approved at cd3f4ab; originally proposed 2026-08-16; authored by ultron-prime for autodb M6 —
+- **Status:** **Accepted** (2026-08-16 — implementation review r4 approved at cd3f4ab; originally proposed 2026-08-16; authored for autodb M6 —
   implementation on the `tui-m6` branch. Requirement basis: Johno's M6 TUI
   directive, 2026-08-16 — a sqlit-style DB IDE whose query pane "behaves
   like a vim editor", with widget maximize and a leader-key command menu.
@@ -187,8 +187,8 @@ func (e *Editor) Register() (text string, linewise bool)
 Undo is a bounded snapshot stack (64 entries) of whole-buffer states
 pushed per atomic edit group, with a redo stack cleared on new edits.
 
-> **Amended 2026-10-30 (golib scalability audit GP-2; design approved by
-> Jarvis):** the stack no longer copies the buffer. Each group keeps the
+> **Amended 2026-10-30 (golib scalability audit GP-2; design approved in
+> review):** the stack no longer copies the buffer. Each group keeps the
 > cursor, marks and revision before it, and the changes that take its text
 > back, which the line primitives hand it as they change the lines. A group
 > costs the lines its edits replaced, not the document: at 1M lines a
@@ -402,16 +402,14 @@ textBuffer primitives.
 
 ## Review history
 
-- **Design r1–r3 (2026-08-16, lector):** r1 `change_requested` (16 blockers
+- **Design r1–r3 (2026-08-16, review):** r1 `change_requested` (16 blockers
   across the M6 ADR set — grammar, chord ordering, Tree lifecycle, zoom
   focus, client lifecycle, seams); r2 `change_requested` (4 residuals);
   r3 **approved_with_amendments** — implementation gate cleared.
-- **Implementation r1–r4 (2026-08-16, lector):** r1 `change_requested`
+- **Implementation r1–r4 (2026-08-16, review):** r1 `change_requested`
   (11 must + 6 should — ownership corruption, focus routing, Editor
   contract violations, client lifecycle, MySQL conflation); r2
   `change_requested` (3 residuals); r3 `change_requested` (1 RPC
   residual); r4 **approved at cd3f4ab**. All findings independently
   verified and folded; the leave-focus-in-place zoom refinement was
-  accepted. **Accepted 2026-08-16.** Review docs:
-  `agents/lector/reviews/2026-08-16-autodb-m6-design-review.md`,
-  `…/2026-08-16-golib-tui-m6-implementation-review.md`.
+  accepted. **Accepted 2026-08-16.**

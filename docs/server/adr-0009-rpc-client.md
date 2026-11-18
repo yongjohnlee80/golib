@@ -1,6 +1,6 @@
 # ADR-0009 — `golib/server/rpc`: the Go client
 
-- **Status:** **Accepted** (2026-08-16 — lector implementation r4 approved at cd3f4ab; originally proposed 2026-08-16; authored by ultron-prime for autodb M6.
+- **Status:** **Accepted** (2026-08-16 — implementation review r4 approved at cd3f4ab; originally proposed 2026-08-16; authored for autodb M6.
   ADR-0008 §2.6 deferred the client "until the TUI needs it — likely
   alongside M6"; M6 is here. Lands on the `tui-m6` branch with the widget
   work; same release.)

@@ -1,6 +1,6 @@
 # ADR-0007 — `golib/server/ws`: WebSocket Transport on the HTTP Core
 
-- **Status:** **Accepted** (2026-07-04; lector r2 approved, see §7)
+- **Status:** **Accepted** (2026-07-04; review r2 approved, see §7)
 - **Date:** 2026-07-04
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Depends on:** golib-server-0006 (session registry — REQUIRED for honest
@@ -241,14 +241,14 @@ the stdlib).
 
 ## 7. Review history
 
-- **r1 (2026-07-04, lector, combined 0006/0007 review):** `change_requested` —
+- **r1 (2026-07-04, review, combined 0006/0007 review):** `change_requested` —
   must-fix: criterion 6's 503-during-drain promise had no pre-handshake API
   (post-`Accept` there is no HTTP response left to send). Revision 2 adopts
   ADR-0006 r2's atomic `Reserve`/`Complete`/`Cancel` registry API: Handler
   reserves before the handshake, 503s on refusal, and completed reservations
   are awaited + drained politely. Dependency isolation, secure defaults, and
   `InsecureAllowOrigins` naming judged sound.
-- **r2 (2026-07-04, lector): `approved`** — review doc:
-  `agents/lector/reviews/2026-07-04-golib-server-adr-0006-0007-rereview.md`.
+- **r2 (2026-07-04, review): `approved`**.
+  
   The r1 blocker is closed by the Reserve/Reservation pre-establishment gate.
   **Accepted 2026-07-04.**

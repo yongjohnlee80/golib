@@ -1,10 +1,10 @@
 # ADR-0001 — `golib/parse`: a streaming lexer foundation
 
-- **Status:** **Proposed (rev 25)** (2026-09-07, jarvis). Rev 25 records the rule
+- **Status:** **Proposed (rev 25)** (2026-09-07). Rev 25 records the rule
   the `parse/sql` review surfaced: a leaf may not classify EXECUTABLE bytes as
   trivia, because `Comment` is precisely what a consumer is invited to discard
   (§5).
-- **Rev 24 (superseded header, kept for the trail):** **Proposed (rev 24)** (2026-09-07, jarvis). Rev 24 lands `Validate`
+- **Rev 24 (superseded header, kept for the trail):** **Proposed (rev 24)** (2026-09-07). Rev 24 lands `Validate`
   and `WriteTokens` — the validity and stream-out seams, both building no `Source`
   — and records criterion 4 as MEASURED: 456 kB peak live heap for a 1 MiB source
   and 459 kB for a 4 MiB one (§4).
@@ -36,7 +36,7 @@
 - **Rev 18 (superseded header, kept for the trail):** Rev 17 made every
   `Location` coordinate `int64`, gave `reclaim` a line-safe effective watermark
   shared with the cache (memory term in §3.4), and corrected the `SetForm`/fallback
-  direction (§6); lector r17 approved all of that and asked for one error-domain
+  direction (§6); review r17 approved all of that and asked for one error-domain
   fix. Rev 18: an early accessor `io.EOF` is an under-delivered range
   (`io.ErrUnexpectedEOF`), not an interior-rune offset; plus the precise §6 opener
   wording and the bounded-decode-buffering correction to the no-whole-range-copy
@@ -44,7 +44,7 @@
 - **Scope:** the foundation only — retention, the token model, the lexical-form
   mechanism, and the streaming contract. The AST, the grammar tree and the risk
   analyzer layer above and are **not** decided here.
-- **Review:** lector r1 (5 must-fix), r2 (5), r3 (6), r4 (6 — *architecture
+- **Review:** review r1 (5 must-fix), r2 (5), r3 (6), r4 (6 — *architecture
   approved in substance*, one consolidation pass required). **This revision is
   that pass.** Rev 4 carried patched-in text from three earlier designs
   alongside the current one; every superseded seam is deleted here rather than
@@ -76,7 +76,7 @@ golib/parse/sql     Form values, presets      — knows nothing of a caller
 The core **names no dialect**. `PostgreSQL()` and `MySQL()` are `Form` values in
 `parse/sql`, built from core constructors. A core that cannot name a dialect
 cannot be closed to new ones — which is a stronger guarantee than a table of
-options (lector r3 B5, sharpened by Johno).
+options (review r3 B5, sharpened by Johno).
 
 | principle | obligation here |
 |---|---|
@@ -97,7 +97,7 @@ limit that leaks outward.
 
 **Every access to retained bytes returns an owning, closable view.** There is no
 accessor that hands out bytes without also handing out the lifetime that keeps
-them valid (lector r4 B3: a plain `io.Reader` over a span can be recycled
+them valid (review r4 B3: a plain `io.Reader` over a span can be recycled
 before or during `Read`).
 
 ```go
@@ -106,7 +106,7 @@ func New(r io.Reader, opts ...Option) *Cache
 
 // Acquire is the ONLY way to reach retained bytes. It atomically resolves the
 // span and takes a reference on every segment covering it, so no window exists
-// between finding a segment and owning it (lector r4 B5: lookup-then-increment
+// between finding a segment and owning it (review r4 B5: lookup-then-increment
 // is an ABA race).
 func (c *Cache) Acquire(from, to int64) (*View, error)
 
@@ -120,7 +120,7 @@ func (v *View) Close() error               // releases; idempotent
 `Acquire` and `Close` are the linearization points. Between them the bytes
 cannot be dropped or written to; outside them no reference to them is reachable.
 
-**On `threadsafe.Value`** (lector r5 F5, and the correction is mine): rev 5
+**On `threadsafe.Value`** (review r5 F5, and the correction is mine): rev 5
 claimed the directory would be a `threadsafe.Value`/`MultiReadSyncValue`, and
 the implementation uses a plain `sync.Mutex`. The claim was aspirational and the
 code was right, so the ADR moves to the code rather than the reverse.
@@ -134,7 +134,7 @@ lookup or breaking its contract, and rev 5 was on course to do the second.
 ### 3.2 Retention never blocks the writer
 
 **A pinned segment is never reused, and reuse never waits.** When the writer
-needs space and every segment is held, it **allocates** (lector r4 B4).
+needs space and every segment is held, it **allocates** (review r4 B4).
 
 This is not an optimisation, it is a correctness requirement. "Reuse waits"
 deadlocks the ordinary case: a caller holds a view on the first token of a
@@ -149,7 +149,7 @@ retain*, not by a segment count.
 
 **What is still acquirable is defined by the release offset alone**, and is
 deliberately independent of which buffers have actually been freed. The two must
-not be conflated, and rev 7 conflated them (lector r7): reclaiming only the
+not be conflated, and rev 7 conflated them (review r7): reclaiming only the
 directory's *leading run* stopped at the first segment a view held, so
 everything behind it was neither freed nor refused — a span the caller had
 released stayed acquirable, and one view of the first byte pinned the whole
@@ -193,7 +193,7 @@ have been read when it is set. It only ever rises, so a later, smaller `off`
 changes nothing.
 
 **"As they arrive" is a claim about the PEAK, and the peak is where it was
-wrong** (lector r9). Reclaiming once the requested range is complete gives the
+wrong** (review r9). Reclaiming once the requested range is complete gives the
 correct *final* state and a peak of the entire range — measured at 1 MiB, every
 byte resident at once. The cursor therefore runs **inside** the fill loop, and
 a probe for this must record the maximum retained size *while reading*: a probe
@@ -210,7 +210,7 @@ that reads the final state cannot see the difference at all.
 exactly why the final state proves nothing.)*
 
 Two ordering rules fall out of separating the two concerns, and both were
-defects first (lector r8):
+defects first (review r8):
 
 - **A freed entry is not a write target.** Its `n` survives — that is what
   bounds it for lookups — so a fullness test of `n == len(buf)` compares a live
@@ -227,12 +227,12 @@ defects first (lector r8):
 ### 3.4 Memory, stated honestly
 
 Rev 4 claimed constant-memory `Validate` **and** unbounded delimiters. Those are
-incompatible (lector r4 B2). The truthful statement:
+incompatible (review r4 B2). The truthful statement:
 
 > **Peak memory is `O(buffer + longest active delimiter + retained views)`**,
 > where a retained view costs its segments' **full buffers** — including the
 > unwritten tail of a held partial segment. A view on one byte of a 32 KiB
-> segment retains 32 KiB (lector r6: the earlier wording implied span-sized
+> segment retains 32 KiB (review r6: the earlier wording implied span-sized
 > cost). Smaller segments trade allocations for finer reclamation.
 
 Plus one term that is not bytes of stream: **directory entries**. An entry whose
@@ -249,10 +249,10 @@ bytes per segment.
   constant *plus the longest delimiter the source contains*. That term is
   unbounded because the grammar is: `scan.l`'s `dolqdelim` is unbounded,
   `pstrdup` stores the whole delimiter, and `truncate_identifier` is called by
-  the **identifier** action, not the dollar path *(lector r3 B4, verified in the
+  the **identifier** action, not the dollar path *(review r3 B4, verified in the
   PostgreSQL source)*.
 
-**A location-bearing scan carries one term more** *(lector r16)*. Resolving a
+**A location-bearing scan carries one term more** *(review r16)*. Resolving a
 token's line and column needs the bytes from its line's start, so a scan that
 will answer `LocationAt` keeps the current line resident and holds its line
 index: peak gains **the longest live line, plus `O(lines in the live window)`**
@@ -276,7 +276,7 @@ func WithForms(f ...Form) Option
 func WithMaxDelimiter(n int) Option   // 0 = unbounded; see §3.4
 
 // One pass over one input. Ownership of the reader is an ARGUMENT, never an
-// effect hidden in a name (lector r4 B6).
+// effect hidden in a name (review r4 B6).
 type Ownership bool
 const (BorrowReader Ownership = false; OwnReader Ownership = true)
 
@@ -417,7 +417,7 @@ func (l *Lexer) WriteTokens(ctx context.Context, w io.Writer, r io.Reader) error
 > the live-window index — but they are bounded by retention, not by the stream, so
 > the two paths differ in what they can ANSWER far more than in what they cost.
 
-`ScanBytes` restores the borrowed, no-copy path (lector r4 B6): its cache is a
+`ScanBytes` restores the borrowed, no-copy path (review r4 B6): its cache is a
 single immutable segment over the caller's slice, never written to and never
 recycled, so `Acquire` is free and `Close` releases nothing.
 
@@ -462,7 +462,7 @@ lifetime along with them.
 > legacy type changes and that is a breaking change to an interface Johno asked
 > to keep for now.
 >
-> Accepted in direction (lector r11): `Token{Kind Kind; Start, End int64}`, with
+> Accepted in direction (review r11): `Token{Kind Kind; Start, End int64}`, with
 > coordinates resolved on demand from a line index the lexer builds out of the
 > newlines it already passes over.
 >
@@ -478,11 +478,11 @@ lifetime along with them.
 > **Landed (rev 15, corrected rev 16–17): `Token` and `Source`.** `Token{Kind
 > Kind; Start, End int64}` is in `token.go`. The location type is `Location{Offset,
 > Line, Column int64}` — every coordinate is `int64`, so none truncates on a
-> 32-bit build (rev 17, lector r16) — resolved by `Source.LocationAt(off)`
+> 32-bit build (rev 17, review r16) — resolved by `Source.LocationAt(off)`
 > (`source.go`).
 >
 > `Source` resolves locations over the **live window** of the stream, which the
-> streaming rewrite makes honest where rev 15 was not (lector r15):
+> streaming rewrite makes honest where rev 15 was not (review r15):
 >
 > - **The byte accessor is lifetime-bearing.** Column is a rune count over the
 >   line's bytes, and streamcache lends those bytes only while a `View` is open —
@@ -490,7 +490,7 @@ lifetime along with them.
 >   copying. So `Source` reads through a `read(from, to, func(io.Reader) error)`
 >   seam that holds a `View` for the call and closes it after: no borrowed slice
 >   outlives a lookup, and no whole-range copy or materialization is made — only
->   the bounded decode buffering an `io.Reader`/`bufio` require (lector r17). Rev
+>   the bounded decode buffering an `io.Reader`/`bufio` require (review r17). Rev
 >   15's `func(from,to)([]byte,error)` could not be both no-copy and lifetime-safe.
 > - **The line index is reclaimed with the watermark, at a line boundary.** It is
 >   not a copy of the source, but it is one `int64` per line, which is O(lines) —
@@ -583,7 +583,7 @@ func DelimitedForm(prefix, suffix byte, o DelimitedOpts) Form // the $tag$ SHAPE
 `DelimitedForm` generalises the tag-carrying shape, so PostgreSQL's
 dollar-quoting is one call from a leaf rather than a branch in the core.
 
-**The tag rule is the leaf's** *(lector r11)*. Unconstrained, the shape is too
+**The tag rule is the leaf's** *(review r11)*. Unconstrained, the shape is too
 permissive to be useful — `$1$` would open a literal in a dialect where `$1` is
 a parameter — and with PostgreSQL's charset written into the core, the core has
 named a dialect, which criterion 16 forbids. So:
@@ -607,7 +607,7 @@ take a token away from whatever can lex it. The bound is decidable before the
 suffix arrives: once the tag is longer than it may ever be, no later byte can
 rescue it.
 
-**The conformance suite is `parse/parsetest`** *(accepted, lector r11)*. Rev 8
+**The conformance suite is `parse/parsetest`** *(accepted, review r11)*. Rev 8
 named it `parse.TestForm`, which puts `import "testing"` in the core and
 registers testing's flags in every binary that links the parser, for a symbol no
 production caller uses. The standard library keeps exactly this helper one
@@ -637,7 +637,7 @@ shape); at a window full of member bytes under `MoreInput` it defers with
 `ErrNeedMore`, because the run may continue. `End` indexes the run as
 `len(openedWith)+i`, so the opener's WIDTH is load-bearing even though its bytes
 go unused: `Starts` consumed run index 0, and `End` continues from there
-*(lector r16)*.
+*(review r16)*.
 
 A `SetForm` recognises the longest of a fixed set of literals with a **stable
 first-terminal opener**: `Starts` answers `Incomplete` until the observed bytes
@@ -646,7 +646,7 @@ holds it as the window grows, and `End` resolves the longest completed
 descendant, deferring only while a longer one is still possible. This is
 chunk-invariant even for a shared prefix like `-`/`--`: `Starts` fixes the short
 literal's WIDTH as the opener but does not commit to it as the final token — `End`
-may still extend it — so the `Starts` answer never has to be withdrawn *(lector
+may still extend it — so the `Starts` answer never has to be withdrawn *(review
 r16–17, correcting an earlier claim that a shared prefix could only be resolved by
 a catch-all)*.
 
@@ -671,7 +671,7 @@ punctuation, and **`ByteForm` last** as the final fallback, so no offset is left
 with no match.
 
 The fallback has to be its own form, and the reason is a real distinction rather
-than a naming preference *(lector r19)*. A run stops before the first byte it can
+than a naming preference *(review r19)*. A run stops before the first byte it can
 SEE refused, so asked with an empty remainder and more input possible it **must
 defer** — a membership callback cannot be asked about a byte it was never shown.
 That is right for a run and wrong for a fallback: `RunForm` with a member true
@@ -816,7 +816,7 @@ The rules, complete:
    It asks for input that cannot exist; honouring it is an infinite loop and
    ignoring it silently picks one of the two answers in the table above.
 
-   *Status, stated precisely (lector r11): the generic forms OBEY this rule and
+   *Status, stated precisely (review r11): the generic forms OBEY this rule and
    `parsetest` DETECTS its violation, shown against a decoy. Enforcement by the
    core — turning an arbitrary form's `ErrNeedMore` at EOF into
    `ErrFormContract` — lands with `Scan`, which does not exist yet. Criterion 19
@@ -836,7 +836,7 @@ The **AST and grammar tree**; **intention and threat classification**; a
 `pg_query_go` **adapter**; **`dao` read-only enforcement**. A
 **tree-structured cache** was analysed and deferred (Johno). The original
 argument said offset→segment is O(1) arithmetic with fixed-size segments; that
-is **false in the implementation** and the ADR was stale (lector r6). A held
+is **false in the implementation** and the ADR was stale (review r6). A held
 partial segment is left short and the next begins after it, so sizes vary and
 arithmetic indexing is unavailable. Lookup is a binary search — done **once**
 per span, then a cursor walk — which is O(log n + k) and still well inside what
