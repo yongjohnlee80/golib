@@ -9,6 +9,18 @@ import (
 	"github.com/yongjohnlee80/golib/tui/widget/terminal"
 )
 
+// TerminalActivity is what a terminal's program is doing, for a host deciding whether closing it
+// would lose work: idle at its prompt, running something, or unknown.
+//
+// Deprecated: use [terminal.TerminalActivity], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+type TerminalActivity = terminal.TerminalActivity
+
+// ActivityReporter is a TerminalProcess that says what it is doing, for a process that is no
+// pseudo-terminal of the system's (a host's own, say): the terminal asks it instead.
+//
+// Deprecated: use [terminal.ActivityReporter], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+type ActivityReporter = terminal.ActivityReporter
+
 // TerminalMode is where a Terminal's keys go.
 //
 // Deprecated: use [terminal.TerminalMode], from github.com/yongjohnlee80/golib/tui/widget/terminal.
@@ -116,6 +128,21 @@ type TerminalTabs = terminal.TerminalTabs
 type TerminalTabsMenuAction = terminal.TerminalTabsMenuAction
 
 const (
+	// TerminalActivityUnknown: nothing honest can be said; a host about to close treats it as
+	// running, and asks.
+	//
+	// Deprecated: use [terminal.TerminalActivityUnknown], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+	TerminalActivityUnknown = terminal.TerminalActivityUnknown
+	// TerminalIdle: the program runs alone at its prompt, or there is no program (never started,
+	// or exited): closing loses nothing it is doing.
+	//
+	// Deprecated: use [terminal.TerminalIdle], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+	TerminalIdle = terminal.TerminalIdle
+	// TerminalRunning: something the program started is alive, in the foreground, in the
+	// background, or stopped (Ctrl+Z): closing ends it.
+	//
+	// Deprecated: use [terminal.TerminalRunning], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+	TerminalRunning = terminal.TerminalRunning
 	// TerminalInput sends every key to the program, except the ways out.
 	//
 	// Deprecated: use [terminal.TerminalInput], from github.com/yongjohnlee80/golib/tui/widget/terminal.
