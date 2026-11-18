@@ -817,26 +817,42 @@ func (t *TerminalTabs) SetTabClosable(id TerminalTabID, closable bool) error {
 	return nil
 }
 
-// SetOnTabClose is what a press on a tab's × does (SetTabCloseButtons): fn with the tab's id. It
-// only asks: the tabs never close a tab by themselves, so the host closes it (Remove), asking
+// SetOnTabClose is what a press on a tab's × does (SetTabCloseButtons): the active tab's terminal
+// keeps the keyboard, as after a press on a tab, and fn is called with the tab's id. It only asks: the tabs never close a tab by themselves, so the host closes it (Remove), asking
 // first if it must, as its own close does. nil does nothing.
 func (t *TerminalTabs) SetOnTabClose(fn func(TerminalTabID)) {
 	t.onTabClose = fn
 	t.syncClose()
 }
 
-// syncClose gives the strip its × while SetTabCloseButtons has them on: its press asks
-// SetOnTabClose's function, read as it is pressed.
+// syncClose gives the strip its × while SetTabCloseButtons has them on: its press gives the
+// active tab's terminal the keyboard (keepKeys), then asks SetOnTabClose's function, read as it is
+// pressed.
 func (t *TerminalTabs) syncClose() {
 	if !t.closeOn {
 		t.strip.SetOnClose(nil)
 		return
 	}
 	t.strip.SetOnClose(func(id string) {
+		t.keepKeys()
 		if t.onTabClose != nil {
 			t.onTabClose(TerminalTabID(id))
 		}
 	})
+}
+
+// keepKeys gives the active tab's terminal the keyboard, as a press on a tab ends (Select): a
+// press on a × chooses no tab, and the press's click-to-focus would otherwise leave the keyboard
+// on the tabs themselves. So it is in the terminal before the host asks its question, and the
+// question gives it back there.
+func (t *TerminalTabs) keepKeys() {
+	ctx := t.Context()
+	if ctx == nil || !ctx.Mounted() {
+		return
+	}
+	if e, err := t.find(t.active); err == nil && e.closing == nil {
+		ctx.FocusComponent(e.terminal)
+	}
 }
 
 // SetWindowButtons shows _, + and x at the strip's right end, side by side as the title bar's, or
