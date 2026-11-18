@@ -168,7 +168,7 @@ O(dao.OptionalJoinExpr[*Artist, ArtistField, ArtistSort, string](TableLabelGroup
 
 ```go
 // Single row by a unique field (no join — only narrow columns selected):
-a, err := artists.DAO().With(ArtistURI, "monstercat").Get()
+a, err := artists.DAO().With(ArtistURI, "example-artist").Get()
 switch {
 case errors.Is(err, dao.ErrNoRows):
     // not found
@@ -374,8 +374,8 @@ err = dao.RunTx(ctx, func(tx *dao.Transaction) error {
     if err := labels.On(tx).With(LabelID, id).Set(LabelName, n).Update(); err != nil {
         return err
     }
-    return goldLabels.On(tx).With(GoldLabelID, id).Set(GoldLabelName, n).Update()
-}, dao.Spanning(lmConn, goldConn))
+    return billingLabels.On(tx).With(BillingLabelID, id).Set(BillingLabelName, n).Update()
+}, dao.Spanning(mainConn, billingConn))
 var ce *dao.CommitError
 if errors.As(err, &ce) && len(ce.AlreadyDurable) > 0 {
     log.Critical(logger, ce, "cross-DB inconsistency — reconcile") // impossible to miss now
@@ -484,15 +484,15 @@ debugSchema.DAO().With(ArtistURI, "x").Get()
 // logs at SeverityDebug: {dao: "artist", sql: `SELECT artist.id, ... WHERE artist.uri = $1 LIMIT $2`, args: ["x", 1]}
 ```
 
-Bridge an existing (e.g. monstercat) logger without a dependency:
+Bridge an existing logger without a dependency:
 
 ```go
 import (
     glog "github.com/yongjohnlee80/golib/logger"
-    mclog "github.com/monstercat/golib/logger"
+    extlog "example.com/yourorg/logger"
 )
-func bridge(l mclog.Logger) glog.Logger {
-    return glog.Adapt(func(s glog.Severity, p any) { l.Log(mclog.Severity(s), p) })
+func bridge(l extlog.Logger) glog.Logger {
+    return glog.Adapt(func(s glog.Severity, p any) { l.Log(extlog.Severity(s), p) })
 }
 ```
 
@@ -613,11 +613,11 @@ For strict cross-DB atomicity on a capable dialect (Postgres, with
 // protocol is fixed before any statement runs. Declared together with the span,
 // an incapable dialect fails from RunTx BEFORE fn (ADR-0015 §2.5).
 err := dao.RunTx(ctx, func(tx *dao.Transaction) error {
-    if _, err := lm.On(tx).Set(LMName, n).Insert(); err != nil {
+    if _, err := labels.On(tx).Set(LabelName, n).Insert(); err != nil {
         return err
     }
-    return gold.On(tx).With(GoldID, id).Set(GoldName, n).Update()
-}, dao.Spanning(lmConn, goldConn), dao.TwoPhase())
+    return billing.On(tx).With(BillingID, id).Set(BillingName, n).Update()
+}, dao.Spanning(mainConn, billingConn), dao.TwoPhase())
 
 var ce *dao.CommitError
 if errors.As(err, &ce) && len(ce.PreparedPending) > 0 {

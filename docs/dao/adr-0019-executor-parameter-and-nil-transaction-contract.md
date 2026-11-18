@@ -206,7 +206,7 @@ via `RunTx` when nil — is the natural companion to `RunTx` and would sit well 
 - **`Must` is the wrong prefix for a function that returns an error.** golib
   philosophy #8 is "ecosystem-normal shapes"; in the stdlib `Must*`
   (`template.Must`, `regexp.MustCompile`) means *panics instead of returning an
-  error*. The downstream name is inherited from LabelManager's
+  error*. The downstream name is inherited from an earlier
   `pkg/transaction.MustTx` and is fine in place, but minting it as public golib
   API would ship a stdlib-contradicting name permanently. `dao.JoinTx` or
   `dao.RunTxJoining` are candidates; the choice belongs with whoever brings the
@@ -264,8 +264,8 @@ context), and it is out of scope here. Noted as a direction, not a decision.
 
 Measured 2026-09-05 at `golib` `origin/main` `8dfb0ab` (v0.5.7). Consumers of
 `github.com/yongjohnlee80/golib/dao`, excluding golib's own tree: **autodb**
-(v0.5.7), **ddex-server** (v0.2.2), **ddex-validator** (v0.2.1). LabelManager is
-*not* a consumer — it uses `monstercat/golib` with a different DAL.
+(v0.5.7), **ddex-server** (v0.2.2), **ddex-validator** (v0.2.1). The earlier
+DAL's own application is *not* a consumer: it uses a different DAL.
 
 | # | Question | Measurement | Verdict |
 |---|---|---|---|

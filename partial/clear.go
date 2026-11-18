@@ -11,12 +11,12 @@ type ClearMode uint8
 const (
 	// ClearOnNull (default): a JSON null value means "clear the field". The
 	// ecosystem-natural reading of PATCH (RFC 7386 merge-patch uses it), and
-	// the fix for LM's footgun where a client null silently no-opped.
+	// the fix for the prior art's footgun where a client null silently no-opped.
 	ClearOnNull ClearMode = iota
 
-	// ExplicitClear (LM-compat): null means absent (ignored); clears ride the
+	// ExplicitClear (legacy-compat): null means absent (ignored); clears ride the
 	// reserved ClearKey ("$clear") array of field names. For wire contracts
-	// migrated from LM, where clients already send $clear.
+	// migrated from the legacy shape, where clients already send $clear.
 	ExplicitClear
 )
 

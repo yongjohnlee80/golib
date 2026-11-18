@@ -133,7 +133,7 @@ func TestALabelReadsOnTheFillItsStyleChose(t *testing.T) {
 	dark := testTheme
 	dark.Background, dark.Text = color.NRGBA{R: 0x1e, G: 0x23, B: 0x2b, A: 0xff}, color.NRGBA{R: 0xd8, G: 0xde, B: 0xe9, A: 0xff}
 	dark.NodeFill, dark.NodeStroke = color.NRGBA{R: 0x2e, G: 0x34, B: 0x40, A: 0xff}, color.NRGBA{R: 0x81, G: 0xa1, B: 0xc1, A: 0xff}
-	src := "flowchart LR\n  A[admin reset] --> B[gold-http]\n  B --> C[plain]\n  C --> D[own colour]\n  E[by class]:::ext --> A\n" +
+	src := "flowchart LR\n  A[admin reset] --> B[api-http]\n  B --> C[plain]\n  C --> D[own colour]\n  E[by class]:::ext --> A\n" +
 		"  classDef ext fill:#e8f6f0,stroke:#3a9\n  class B ext\n  style A fill:#e8f6f0\n  style D fill:#e8f6f0,color:#eeeeee"
 	ratio := func(fg, bg color.NRGBA) float64 {
 		r, _ := style.ContrastRatio(style.RGB(fg.R, fg.G, fg.B), style.RGB(bg.R, bg.G, bg.B))
@@ -153,7 +153,7 @@ func TestALabelReadsOnTheFillItsStyleChose(t *testing.T) {
 				by[n.label.lines[0]] = n
 			}
 		}
-		for _, id := range []string{"admin reset", "gold-http", "by class"} {
+		for _, id := range []string{"admin reset", "api-http", "by class"} {
 			n := by[id]
 			if r := ratio(n.label.color, n.fill); r < labelContrast {
 				t.Errorf("text %v on %s's fill %v reads at %.2f, want %g or more", th.Text, id, n.fill, r, labelContrast)

@@ -1,7 +1,7 @@
 package logger
 
 // Adapt turns a logging function into a [Logger]. Use it to bridge any external
-// logger (for example monstercat/golib/logger.Logger) without golib depending on
+// logger of the same Log(severity, payload) shape without golib depending on
 // it — the consumer supplies the closure and owns the external import.
 func Adapt(fn func(severity Severity, payload any)) Logger {
 	return adapterFunc(fn)

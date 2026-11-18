@@ -36,9 +36,9 @@ a per-field Write/Skip/Clear disposition, with clearability declared on the
 body once, tracks presence, validates at bind time, survives server-side
 mutation, and emits that disposition. That is `golib/partial`.
 
-### 1.2 What LM taught us
+### 1.2 What the prior art taught us
 
-The prior art (Label Manager's `internal/partial`, ~900 lines) is the
+The prior art (an earlier `internal/partial`, ~900 lines) is the
 proof of need and the catalogue of costs. Its shape: `Payload[T]` embeds a
 mutable `audit.DataMap` (`map[string]any`), presence = key-in-map, wire
 `null` deliberately means *absent* (`payload.go:139-142` — encoding/json
@@ -107,7 +107,7 @@ the map at bind time.
 - **G4 — Package-owned typed errors.** `partial.ValidationError` with field
   path + reason, `errors.As`-able, produced at bind time; no app error
   imports.
-- **G5 — LM's mutation semantics, hardened.** `Set`/`Clear`/`Remove`/`Only`
+- **G5 — the prior art's mutation semantics, hardened.** `Set`/`Clear`/`Remove`/`Only`
   with last-mutation-wins-over-clear; unknown field names are loud (the
   mutator surface is developer code, not wire data).
 - **G6 — The DAO seam is a projection, not a coupling.** `Rules()` emits the
@@ -169,7 +169,7 @@ const (
 The two channels are disjoint by invariant: a name is never in both `fields`
 and `clear` (bind validates, mutators maintain). Presence is keyed by
 **canonical effective JSON names** resolved through the per-`T` plan (§2.4)
-— never by Go field names (the LM tag-divergence bug is structurally
+— never by Go field names (the prior art's tag-divergence bug is structurally
 impossible) and never by raw wire spelling (case-variant keys are
 normalized at bind, mirroring `encoding/json`'s own match rules).
 
@@ -191,7 +191,7 @@ func (p *Patch[T]) Contains(fields ...string) bool
 func (p *Patch[T]) Fields() []string
 
 // Empty reports whether the patch carries nothing to apply — no values AND
-// no clears (the LM emptiness lesson: a clear-only patch is not empty).
+// no clears (the emptiness lesson: a clear-only patch is not empty).
 func (p *Patch[T]) Empty() bool
 
 // Err returns the sticky first mutator error (nil when clean). Data, Rules,
@@ -267,7 +267,7 @@ for dec.More() {                         // keys in SOURCE ORDER
 			delete(p.fields, name)        // last-key-wins across a value→null collision
 			p.clear[name] = struct{}{}    // null ⇒ clear
 		case ExplicitClear:
-			delete(p.fields, name)        // LM semantics: null ⇒ absent
+			delete(p.fields, name)        // legacy semantics: null ⇒ absent
 			delete(p.clear, name)
 		}
 		continue
@@ -303,12 +303,12 @@ type ClearMode uint8
 const (
 	// ClearOnNull (default): a JSON null value means "clear the field".
 	// The ecosystem-natural reading of PATCH (RFC 7386 merge-patch uses it),
-	// and the fix for LM's footgun where a client null silently no-opped.
+	// and the fix for the prior art's footgun where a client null silently no-opped.
 	ClearOnNull ClearMode = iota
 
-	// ExplicitClear (LM-compat): null means absent (ignored); clears ride
+	// ExplicitClear (legacy-compat): null means absent (ignored); clears ride
 	// the reserved ClearKey ("$clear") array of field names. For wire
-	// contracts migrated from LM, where clients already send $clear.
+	// contracts migrated from the legacy shape, where clients already send $clear.
 	ExplicitClear
 )
 
@@ -371,7 +371,7 @@ Resolution rules (mirroring `encoding/json`):
 - **Anonymous value embeds** recurse with JSON's flattening and conflict
   rules (shallowest wins; same-depth conflicts are dropped, as json does).
 - **Anonymous pointer embeds panic at plan build** with a message naming
-  the type and field — the loud fix for LM's silent cliff. A model bound as
+  the type and field — the loud fix for the prior art's silent cliff. A model bound as
   a partial payload must use value embeds; the panic fires on first use in
   dev, not as silently missing presence in prod.
 - **A field whose canonical name is `ClearKey` (`"$clear"`) panics at plan
@@ -414,7 +414,7 @@ json/v2 swap is local (§1.4).
 ```go
 // Set stages a server-owned value for field, replacing any bound value and
 // dropping any pending clear — the last server mutation wins over a clear
-// (a clear entry must not beat an injected value with a NULL write; LM
+// (a clear entry must not beat an injected value with a NULL write; the prior art's
 // payload.go:81-94). The value is marshaled once at Set time.
 func (p *Patch[T]) Set(field string, v any) *Patch[T]
 
@@ -430,13 +430,13 @@ func (p *Patch[T]) Remove(field string) *Patch[T]
 func (p *Patch[T]) Only(fields ...string) *Patch[T]
 ```
 
-Divergence from LM, deliberate: **mutators are a developer surface, so
+Divergence from the prior art, deliberate: **mutators are a developer surface, so
 unknown field names are loud.** A name that doesn't resolve through the
 plan records a sticky first error (`fmt.Errorf("%w: %q", ErrUnknownField,
 field)`) surfaced by `Err()`, `Data()`, `Rules()`, and `ApplyRules` — the
 same fluent-but-loud posture as dao's `Set` (dao ADR-0010 §2.4 draws the
 identical trust boundary from the other side: *its* lenient surface is the
-wire-derived rules map, *its* loud surface is developer keys). LM's silent
+wire-derived rules map, *its* loud surface is developer keys). The prior art's silent
 as-is recording let a typo'd `Set("ArtistTitle", …)` vanish. All mutators
 invalidate the `Data` cache.
 
@@ -450,7 +450,7 @@ invalidate the `Data` cache.
   without deep-merge. The outer patch's `State("inner")` says whether the
   nested object appeared; the inner patch carries its own three states.
   Composition uses the default `ClearOnNull` mode (Go gives `UnmarshalJSON`
-  no options channel); an LM-compat nested contract binds the inner type
+  no options channel); a legacy-compat nested contract binds the inner type
   explicitly instead.
 - **Deep-merge is out of scope v1** (revisit only with a concrete consumer
   and RFC 7386 on the table).
@@ -548,7 +548,7 @@ func WithRename(fn func(string) string) ApplyOption
 Name alignment stays a **declaration convention**: golib entities own both
 the `json` tags and the dao field enums, so they agree by construction and
 the adapter is a type cast. `WithRename` is the loud escape hatch, not the
-default path. This is the end-to-end collapse of LM's cost center: PATCH
+default path. This is the end-to-end collapse of the prior art's cost center: PATCH
 body → `Bind` → mutate → `ApplyRules(...).Update()`, zero per-entity code.
 
 ### 2.10 Marshal round-trip
@@ -556,7 +556,7 @@ body → `Bind` → mutate → `ApplyRules(...).Update()`, zero per-entity code.
 `Patch[T]` implements `json.Marshaler`: Present fields emit their raw
 slices; Cleared fields emit per mode (`null` under `ClearOnNull`, a
 `$clear` array under `ExplicitClear`) — so a proxied or logged patch
-round-trips without losing clear intent (LM's `Bytes` re-injection lesson,
+round-trips without losing clear intent (the prior art's `Bytes` re-injection lesson,
 `payload.go:330-346`, without the byte-cache coherence hazard: marshal is
 derived fresh from the two channels every call).
 
@@ -598,13 +598,13 @@ func patchRelease(w http.ResponseWriter, r *http.Request) {
 **Positive.** The wire half of the partial-update story lands with the
 same declaration-over-code shape as the dao half: presence is parsed once,
 validated once, keyed by one name space, and projected onto `SetRules`
-mechanically. LM's five measured defects (multi-parse, name divergence,
+mechanically. The prior art's five measured defects (multi-parse, name divergence,
 uncached reflection, pointer-embed cliff, exposed mutable state) are each
 structurally closed. The package is stdlib-only; only the one adapter file
 touches `golib/dao`.
 
 **Negative / costs.** `ClearOnNull` as default is a *semantic choice* a
-migrating LM client must opt out of (`ExplicitClear`) — the compat mode
+migrating legacy client must opt out of (`ExplicitClear`) — the compat mode
 exists precisely so the default can be the honest one. Composition can't
 carry a non-default mode through `UnmarshalJSON` (documented; Go gives no
 options channel there). The plan cache panics on pointer embeds — loud by
@@ -616,7 +616,7 @@ binder is a hand-rolled token loop rather than a one-line `json.Unmarshal`
 into a map — the cost of `encoding/json` order-parity, which a map cannot
 give.
 
-**Migration.** New package; nothing existing changes. LM-shaped consumers
+**Migration.** New package; nothing existing changes. Legacy-shaped consumers
 adopt with `WithClearMode(partial.ExplicitClear)` and keep their wire
 contract byte-compatible ($clear array, null-means-absent).
 
@@ -624,7 +624,7 @@ contract byte-compatible ($clear array, null-means-absent).
 
 ## 4. Alternatives considered
 
-- **Map-backed payload (LM's shape: `map[string]any` + typed decode on
+- **Map-backed payload (the prior art's shape: `map[string]any` + typed decode on
   demand).** Proven, but it is exactly the multi-parse/`any`-round-trip
   design the audit costed out; presence keyed by map membership invites the
   Go-name/wire-name split. Rejected for raw slots + one plan.
@@ -632,13 +632,13 @@ contract byte-compatible ($clear array, null-means-absent).
   `Optional[T]`/`Null[T]` wrapper types on the model.** Infects every model
   definition and every consumer of the model with wire concerns; can't
   distinguish null from absent without a three-state wrapper on every
-  field; LM's `nilable.Value` was on the drop list for this reason.
+  field; the prior art's `nilable.Value` was on the drop list for this reason.
   Rejected: presence lives in the carrier, models stay plain.
-- **`null` always means clear, no compat mode.** Cleaner, but strands LM
+- **`null` always means clear, no compat mode.** Cleaner, but strands legacy
   wire contracts (their clients send `$clear` and use `null` as a no-op) —
   a migration cliff for the package's most likely early adopters. Rejected
   for the two-mode policy with the honest default.
-- **`$clear` always, no null-clear mode.** Keeps LM's footgun as the only
+- **`$clear` always, no null-clear mode.** Keeps the prior art's footgun as the only
   semantics: the ecosystem-natural `{"field":null}` silently no-ops — the
   exact surprise the plan calls out. Rejected as default; kept as the
   compat mode.
@@ -653,7 +653,7 @@ contract byte-compatible ($clear array, null-means-absent).
   explicit and severable. Rejected.
 - **Validating unknown wire keys at bind.** Strict-shape APIs are a
   legitimate policy, but it is an API-layer policy, not payload semantics —
-  and LM's ignore-unknown posture is load-bearing for shared payload shapes.
+  and the prior art's ignore-unknown posture is load-bearing for shared payload shapes.
   Rejected as built-in; a consumer wanting it can diff `Fields()` against
   the body's keys… or we add a `WithDenyUnknown` BindOption when someone
   actually asks.
@@ -723,7 +723,7 @@ contract byte-compatible ($clear array, null-means-absent).
 | `partial/dao.go` | new — `ApplyRules`, `ApplyOption`, `WithRename` (the only dao import) |
 | `partial/doc.go` | new — package doc: three-state model, modes, the dao seam |
 | `partial/*_test.go` | new — acceptance criteria 1–8 (dao fake for #7) |
-| `partial/README.md` | new — usage, the north-star handler, LM-compat migration note |
+| `partial/README.md` | new — usage, the north-star handler, legacy-compat migration note |
 
 ---
 

@@ -5,9 +5,9 @@ A small, toggleable, level-based logging hook. Zero external dependencies
 
 The package exists so other golib packages — notably `dao` — can accept
 optional logging without pulling in a logging framework. The `Logger` interface
-is intentionally shape-identical to `monstercat/golib/logger.Logger`, and
-`Severity` uses the same six values as monstercat and `ddex-sftp`, so records
-bridge between them losslessly.
+has the common `Log(severity, payload)` shape, and `Severity` uses the six
+values common to such loggers and `ddex-sftp`'s, so records bridge between them
+losslessly.
 
 ```bash
 go get github.com/yongjohnlee80/golib/logger
@@ -30,8 +30,7 @@ golib packages will accept.
 
 `Severity` is a string with six constants, ordered least-to-most severe:
 `SeverityDebug`, `SeverityInfo`, `SeverityNotice`, `SeverityWarning`,
-`SeverityError`, `SeverityCritical`. `InList(list, s)` tests membership (parity
-with monstercat's helper). `ParseSeverity(name)` reads one from a flag or
+`SeverityError`, `SeverityCritical`. `InList(list, s)` tests membership. `ParseSeverity(name)` reads one from a flag or
 setting, in any case (`debug`, `Warning`), and refuses any other name.
 
 ## Implementations
@@ -44,14 +43,14 @@ logger.New(                  // canonical constructor: functional options
     logger.WithMinLevel(logger.SeverityInfo),   // drop anything below Info
     logger.WithBlockList(logger.SeverityNotice),
 )
-logger.NewLogger("ctx")      // monstercat-parity: SimpleLogger with context, no filtering
+logger.NewLogger("ctx")      // SimpleLogger with context, no filtering
 logger.NewMulti(a, b)        // fan-out to several loggers (nil entries skipped)
 logger.NewContextual(l, ctx) // wrap a Logger, attaching a fixed context to every record
 ```
 
 Prefer `New(opts...)` — it takes an injectable `io.Writer` so tests need no
 global `log.SetOutput`. `SimpleLogger`'s fields (`Context`, `MinLevel`,
-`BlockList`) remain settable for monstercat-parity call sites.
+`BlockList`) remain settable for existing call sites.
 
 ```go
 l := logger.New(logger.WithContext("api"), logger.WithMinLevel(logger.SeverityInfo))
@@ -99,16 +98,16 @@ logger.Error(l, err, logger.Fields{"op": "save"})
 
 `Adapt` turns a function (or a closure over another logger) into a `Logger`, so
 golib never imports the external package. The severity string values are
-identical across monstercat/ddex-sftp, so the cast is lossless:
+the same in a logger of this shape, so the cast is lossless:
 
 ```go
 import (
     glog "github.com/yongjohnlee80/golib/logger"
-    mclog "github.com/monstercat/golib/logger"
+    extlog "example.com/yourorg/logger"
 )
 
-func bridge(l mclog.Logger) glog.Logger {
-    return glog.Adapt(func(s glog.Severity, p any) { l.Log(mclog.Severity(s), p) })
+func bridge(l extlog.Logger) glog.Logger {
+    return glog.Adapt(func(s glog.Severity, p any) { l.Log(extlog.Severity(s), p) })
 }
 
 // then:

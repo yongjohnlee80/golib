@@ -26,8 +26,8 @@ only runtime behavior toggle is the debug SQL log baked into the engine
 (`queryDAO.log`, `dao/query_dao.go`).
 
 The 2026-07-04 audit rated query-time extensibility the package's weakest axis
-and the single largest "too simplified vs LM" risk. The prior art this package
-rewrote (Label Manager's DAL) leaned heavily on a query-time seam — the
+and the single largest "too simplified vs the prior art" risk. The prior art this package
+rewrote (an earlier DAL) leaned heavily on a query-time seam — the
 `dao.Option` hook family (`internal/dao/option.go:40-102`) with per-verb
 `Preprocess{Select,Get,Update,Insert,Delete}Query` methods — to implement:
 
@@ -55,7 +55,7 @@ Every verb follows one shape (see `Get`, `dao/query_dao.go`): resolve columns
 → build SQL (`builder`) → debug-log → resolve executor (`handle()`) →
 `QueryContext`/`ExecContext` → translate/scan. The engine therefore needs only
 **one** interception pipeline, not per-verb variants — a deliberate departure
-from LM's five `Preprocess*Query` methods, which this design replaces with a
+from the prior art's five `Preprocess*Query` methods, which this design replaces with a
 single hook interface plus an `Op` discriminator.
 
 ### 1.3 Goals
@@ -126,7 +126,7 @@ func (o Op) IsWrite() bool
 type QueryInfo struct {
 	Op    Op
 	Table string // the schema's table
-	Conn  string // DataConn name, e.g. "postgres-gold"
+	Conn  string // DataConn name, e.g. "postgres-billing"
 	SQL   string // set for BeforeExec / AfterExec
 	Args  []any  // ditto
 }
@@ -388,7 +388,7 @@ no SELECT-only asymmetry, and no change to any existing call site.
 **Positive.** Cross-cutting concerns (scoping, soft delete, observability,
 error enrichment) become declarations, matching the package's data-over-code
 principle; ADR-0010 gains its attachment point; the ctx-first divergence
-closes; LM's access-scoping SELECT-only flaw is structurally impossible.
+closes; the prior art's access-scoping SELECT-only flaw is structurally impossible.
 
 **Negative / costs.** The verbs' shared-tail refactor touches every verb body
 (mechanical, behavior-preserving, guarded by the existing engine tests). Hooks
@@ -404,7 +404,7 @@ compiles and behaves identically.
 
 ## 4. Alternatives considered
 
-- **Per-verb hook methods (LM's shape).** Five near-identical interfaces and
+- **Per-verb hook methods (the prior art's shape).** Five near-identical interfaces and
   the proven SELECT-only asymmetry trap. Rejected: one pipeline + `Op`.
 - **Single-method interceptor (`Handle(ctx, q, next) error`, gRPC style).**
   Maximum power, but forces every hook to reimplement phase dispatch and makes
