@@ -405,18 +405,21 @@ func TestAPicturesArrivalSettlesBeforeTheNextInput(t *testing.T) {
 		}
 		time.Sleep(time.Millisecond)
 	}
-	if err := ih.TB.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 1, Y: 0},
-		tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 1, Y: 0}); err != nil {
+	// the click, fenced: the line is read once the App has dispatched it, so a click not routed yet
+	// (input and Updates are separate lanes, and a slow machine takes its time) is never read as one
+	// that landed on line 1, the old offset's
+	done, err := ih.TB.InjectFenced(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 1, Y: 0},
+		tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 1, Y: 0})
+	if err != nil {
 		t.Fatal(err)
 	}
-	var ln int
-	for deadline := time.Now().Add(3 * time.Second); ; { // the click routed (input and Updates are separate lanes)
-		ih.OnLoop(func() { ln, _ = e.Core().Line() })
-		if ln != 1 || time.Now().After(deadline) {
-			break
-		}
-		time.Sleep(time.Millisecond)
+	select {
+	case <-done:
+	case <-time.After(30 * time.Second):
+		t.Fatal("the click was never dispatched")
 	}
+	var ln int
+	ih.OnLoop(func() { ln, _ = e.Core().Line() })
 	if ln != 0 {
 		t.Errorf("a click on the view's first row right after the picture landed on line %d, want 0 (the picture's fence)", ln)
 	}

@@ -94,44 +94,17 @@ func sendWin(t *testing.T, h *widgettest.Harness, term *Terminal, text string) {
 	}
 }
 
-// interruptWinUntilIdle sends Ctrl+C until the terminal is idle. A program the job already counts
-// may not yet have joined the console's Ctrl+C (measured: ping went on replying after one sent the
-// moment it was counted), so it is sent again, as a user would press it again.
-func interruptWinUntilIdle(t *testing.T, h *widgettest.Harness, term *Terminal, what string) {
-	t.Helper()
-	deadline := time.Now().Add(activityWait)
-	for {
-		sendWin(t, h, term, "\x03")
-		retry := time.Now().Add(2 * time.Second)
-		for time.Now().Before(retry) {
-			var got TerminalActivity
-			h.OnLoop(func() { got = term.Activity() })
-			if got == TerminalIdle {
-				return
-			}
-			time.Sleep(20 * time.Millisecond)
-		}
-		if time.Now().After(deadline) {
-			var s string
-			h.OnLoop(func() { s = winText(term) })
-			t.Fatalf("%s: Ctrl+C never ended the program; the screen:\n%s", what, s)
-		}
-	}
-}
-
 // cmd.exe at its prompt is idle: the job holds it alone (the pseudo-console's host is not in the
-// job). A program it starts is running while it runs, and idle once it has ended. The mutants,
-// named here: the shell counted twice (idle read as running: the job's count compared with 0), and
-// the count not read (running read as idle).
+// job). A program it starts is running while it runs, and idle once it has ended by itself. The
+// program ends by itself (a ping of four echoes, about three seconds), so the cell tests Activity,
+// never how a key reaches the program. The mutants, named here: the shell counted twice (idle read
+// as running: the job's count compared with 0), and the count not read (running read as idle).
 func TestCmdAtItsPromptIsIdleAndAChildRunning(t *testing.T) {
 	h, term := cmdOn(t)
 	waitActivityWin(t, h, term, "cmd at its prompt", TerminalIdle)
-	sendWin(t, h, term, "ping -n 30 127.0.0.1\r")
+	sendWin(t, h, term, "ping -n 4 127.0.0.1\r")
 	waitActivityWin(t, h, term, "ping running", TerminalRunning)
-	interruptWinUntilIdle(t, h, term, "ping ended by Ctrl+C, cmd at its prompt")
-	sendWin(t, h, term, "ping -n 2 127.0.0.1\r")
-	waitActivityWin(t, h, term, "a short ping running", TerminalRunning)
-	waitActivityWin(t, h, term, "the short ping ended by itself", TerminalIdle)
+	waitActivityWin(t, h, term, "ping ended by itself, cmd at its prompt", TerminalIdle)
 }
 
 // cmd.exe exited is idle, its program gone, and asking again after its job is closed (the
@@ -155,7 +128,8 @@ func TestAnExitedCmdIsIdle(t *testing.T) {
 }
 
 // Windows PowerShell, AutoDoc's shell on Windows when pwsh is not installed, at its prompt is idle:
-// the job holds it alone. A program it starts (ping) is running, and idle again after Ctrl+C. A
+// the job holds it alone. A program it starts (ping) is running, and idle again once it has ended
+// by itself (four echoes), so the cell tests Activity, never how a key reaches the program. A
 // cmdlet runs inside PowerShell's own process, so a cmdlet at work (Start-Sleep) reads idle, as a
 // Unix shell's builtin does: a known limit (pty's Activity).
 func TestPowerShellAtItsPromptIsIdleAndAProgramItStartsRunning(t *testing.T) {
@@ -169,7 +143,7 @@ func TestPowerShellAtItsPromptIsIdleAndAProgramItStartsRunning(t *testing.T) {
 	})
 	waitScreenWin(t, h, term, "PowerShell's prompt", func(s string) bool { return strings.Contains(s, "PS ") && strings.Contains(s, ">") })
 	waitActivityWin(t, h, term, "PowerShell at its prompt", TerminalIdle)
-	sendWin(t, h, term, "ping -n 30 127.0.0.1\r")
+	sendWin(t, h, term, "ping -n 4 127.0.0.1\r")
 	waitActivityWin(t, h, term, "ping running under PowerShell", TerminalRunning)
-	interruptWinUntilIdle(t, h, term, "ping ended by Ctrl+C, PowerShell at its prompt")
+	waitActivityWin(t, h, term, "ping ended by itself, PowerShell at its prompt", TerminalIdle)
 }
