@@ -1583,7 +1583,9 @@ type StatusBar = core.StatusBar
 // Deprecated: use [core.StatusBarOption], from github.com/yongjohnlee80/golib/tui/widget/core.
 type StatusBarOption = core.StatusBarOption
 
-// StripTab is one of a TabStrip's tabs: the host's id for it, and its label.
+// StripTab is one of a TabStrip's tabs: the host's id for it, and its label. NoClose leaves its ×
+// off while the strip's tabs close (SetOnClose): a tab with nothing a close could do (one already
+// closing, say) shows none, rather than a × that does nothing.
 //
 // Deprecated: use [core.StripTab], from github.com/yongjohnlee80/golib/tui/widget/core.
 type StripTab = core.StripTab
