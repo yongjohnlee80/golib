@@ -96,6 +96,31 @@ func TestAShellAtItsPromptIsIdleAndAForegroundProgramRunning(t *testing.T) {
 	interruptUntilIdle(t, h, term)
 }
 
+// suspendUntilPrompt sends Ctrl+Z until the shell shows its prompt again, the foreground job
+// stopped. As with Ctrl+C (interruptUntilIdle), one sent before the shell has handed its child the
+// terminal reaches only the shell, which ignores it, so it is sent again.
+func suspendUntilPrompt(t *testing.T, h *widgettest.Harness, term *Terminal) {
+	t.Helper()
+	deadline := time.Now().Add(activityWait)
+	for {
+		send(t, h, term, "\x1a")
+		retry := time.Now().Add(time.Second)
+		for time.Now().Before(retry) {
+			var s string
+			h.OnLoop(func() { s = vtText(term) })
+			if strings.Count(s, "ready$") >= 2 {
+				return
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		if time.Now().After(deadline) {
+			var s string
+			h.OnLoop(func() { s = vtText(term) })
+			t.Fatalf("Ctrl+Z never stopped the foreground program; the screen:\n%s", s)
+		}
+	}
+}
+
 // interruptUntilIdle sends Ctrl+C until the shell is idle at its prompt. A Ctrl+C sent in the
 // moment between the shell's fork and its handing the child the terminal (tcsetpgrp) reaches the
 // shell's own group, which an interactive shell ignores, and the child runs on: so it is sent
@@ -144,8 +169,7 @@ func TestAStoppedJobIsRunning(t *testing.T) {
 	h, term := shellOn(t)
 	send(t, h, term, "sleep 30\n")
 	waitActivity(t, h, term, "sleep in the foreground", TerminalRunning)
-	send(t, h, term, "\x1a")
-	waitScreen(t, h, term, "the prompt after Ctrl+Z", func(s string) bool { return strings.Count(s, "ready$") >= 2 })
+	suspendUntilPrompt(t, h, term)
 	waitActivity(t, h, term, "the sleep stopped, the shell at its prompt", TerminalRunning)
 	send(t, h, term, "kill -9 %1\n")
 	waitActivity(t, h, term, "the stopped job killed", TerminalIdle)
