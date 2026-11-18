@@ -6,6 +6,10 @@
 //   - Ollama ([NewOllama]): Native integration with Ollama's local /api/embed API.
 //   - OpenAI-Compatible ([NewOpenAI]): Standard /v1/embeddings endpoint integration for
 //     cloud models using standard net/http with zero SDK dependencies.
+//   - Vertex AI ([NewVertex]): gemini-embedding-2's :embedContent, one text a call, in Google's
+//     prompt formats for queries and documents, authorized by the caller's [TokenFunc].
+//
+// A search's query is embedded with [Query], which uses a provider's [Querier] when it has one.
 //
 // # Setting a Model Up
 //
