@@ -5,14 +5,14 @@
 
 **Abstract:** Defines `tui/style`: an immutable, value-semantics `style.Style` with fluent chained setters over typed private fields plus a `uint64` set-bitfield (the lipgloss v0.11 model — the property-bag `map[string]interface{}` design from the originating task is examined in full and rejected on production evidence), a `style.Color` sum type resolved at render time against Backend capabilities with an ANSI-16-first downsampling chain, and a `style.Token`/`style.Theme` design-token system adopting Textual's 11-slot vocabulary with a deliberately minimal derived-variant set.
 
-> **Authored natively in the KB** (jarvis, 2026-07-08) as part of the golib/tui design
+> **Authored natively in the KB** (2026-07-08) as part of the golib/tui design
 > dossier. golib/tui keeps its own 0001–0007 ADR numbering; the `golib-tui-` filename
 > prefix namespaces it against this KB's auto-agents ADR sequence. Navigation hub:
 > golib-tui. Umbrella ADR: golib-tui-0001-overview-and-architecture.
 
-- **Status:** **Accepted** (Johno, 2026-07-08) — revision 1 (Lector r1 `change_requested` → r2 `approved_with_amendments`, all amendments folded); revision 2 (2026-11-05, theme pass): `TokenAccentDocument` joins the derived set — the document page's accent, a theme's optional `document.accent` (the menu's accent stays the chrome's; retro's navy page needs its own red).
+- **Status:** **Accepted** (Johno, 2026-07-08) — revision 1 (review r1 `change_requested` → r2 `approved_with_amendments`, all amendments folded); revision 2 (2026-11-05, theme pass): `TokenAccentDocument` joins the derived set — the document page's accent, a theme's optional `document.accent` (the menu's accent stays the chrome's; retro's navy page needs its own red).
 - **Date:** 2026-07-08
-- **Reviewed by:** lector, 2026-07-08 — agents/lector/reviews/2026-07-08-golib-tui-adrs-review.md (r1); agents/lector/reviews/2026-07-08-golib-tui-adrs-rereview.md (r2, `approved_with_amendments`)
+- **Reviewed by:** an independent reviewer, 2026-07-08 (r1; r2, `approved_with_amendments`)
 - **Module:** github.com/yongjohnlee80/golib
 - **Supersedes:** none (greenfield)
 - **Related:** ADR-0001 (umbrella; fixes the typed-fields+bitfield decision at
@@ -23,7 +23,7 @@
   App-level event triggering full repaint), ADR-0007 (widget set — every widget's style
   hooks consume this package).
 
-> **Revision history.** rev 1 (2026-07-08): folded Lector r1 `change_requested` —
+> **Revision history.** rev 1 (2026-07-08): folded review r1 `change_requested` —
 > (1) **must-fix #1**: resolution rewritten against ADR-0002's canonical capability
 > model — `type ColorProfile uint8` (`ProfileMono | ProfileANSI16 | ProfileANSI256 |
 > ProfileTrueColor`) and `Capabilities.DarkBackground bool` — no phantom fields (§2.4,
@@ -35,7 +35,7 @@
 > `.Faint(true)` (§2.5); (5) **Q4**: `Adaptive` rejects token leaves in v1 —
 > compile-shape prevention documented plus a belt-and-braces panic (§2.4);
 > (6) **Q5**: `Ext`'s O(N²) copy-on-write accepted; `Apply(opts...)` documented as the
-> batching path for multiple extensions (§2.7). §6 questions carry Lector's r1 answers
+> batching path for multiple extensions (§2.7). §6 questions carry the reviewer's r1 answers
 > inline. rev 2 (2026-11-05, theme pass): `TokenAccentDocument` joins the derived set —
 > the document page's accent (inline code, h3, question callouts, the diagram theme's
 > outlines), mapped from a theme's optional `document.accent` in the App's token theme
@@ -364,7 +364,7 @@ func (c Color) spec() Color { return c }
 func (t Token) spec() Color { return Color{kind: kindToken, light: colorLeaf{n: uint8(t)}} }
 ```
 
-> **Rev 1 (Lector must-fix #1).** `kindToken` was referenced by `Token.spec()` without
+> **Rev 1 (review must-fix #1).** `kindToken` was referenced by `Token.spec()` without
 > being declared in the `colorKind` enum; the enum is now spelled out in full, with the
 > Color-level-only kinds (`kindAdaptive`, `kindToken`) marked as such.
 
@@ -379,7 +379,7 @@ construction — golib convention). Theme authors who want adaptive *tokens* put
 `Adaptive(...)` color in the Theme slot — adaptivity then lives behind the token, where
 it resolves in the same single pass.
 
-> **Rev 1 (Lector r1 Q4 answer folded).** Token-in-`Adaptive` was posed as Q4; Lector:
+> **Rev 1 (review r1 Q4 answer folded).** Token-in-`Adaptive` was posed as Q4; the reviewer:
 > reject for v1, keep resolution single-pass and representable by flat comparable
 > values. The paragraph above is now normative.
 
@@ -397,7 +397,7 @@ capability model — `Capabilities.ColorProfile` of type `ColorProfile uint8`
    `ProfileMono`** (drop color, keep attributes). A color never upsamples; an ANSI-16
    color on a truecolor terminal emits the ANSI-16 SGR so the user's palette renders it.
 
-> **Rev 1 (Lector must-fix #1).** This section previously named a phantom profile shape
+> **Rev 1 (review must-fix #1).** This section previously named a phantom profile shape
 > (`{Mono, ANSI16, ANSI256, TrueColor}`); it now consumes exactly the fields ADR-0002
 > (as amended in r1) defines: `Capabilities.ColorProfile` with the `Profile*` constants
 > and `Capabilities.DarkBackground`.
@@ -483,8 +483,8 @@ attribute into a color token would make `ColorSpec` semantics surprising — a
 "color" argument that also mutates the attribute set — and would break the resolve
 pipeline's clean color-only downsampling chain (§2.4).
 
-> **Rev 1 (Lector should-fix, Q2/Q3 answers folded).** (a) `TokenBorder` and
-> `TokenBorderFocused` added — load-bearing per Lector; ADR-0007's Box focus visuals now
+> **Rev 1 (review should-fix, Q2/Q3 answers folded).** (a) `TokenBorder` and
+> `TokenBorderFocused` added — load-bearing per the reviewer; ADR-0007's Box focus visuals now
 > reference `TokenBorderFocused` instead of hardcoding `TokenAccent`. (b)
 > `TokenTextOnSecondary` added — ADR-0007's Select/List do use Secondary fills.
 > (c) The draft had the resolver adding SGR faint for `TokenTextMuted`; that attribute
@@ -579,7 +579,7 @@ func (s Style) GetExt(k ExtKey) (any, bool)
   extension properties land in one clone:
   `st.Apply(tuix.WithUnderlineColor(c), tuix.WithHyperlink(url))`.
 
-> **Rev 1 (Lector r1 Q5 answer folded).** The O(N²) copy-on-write is accepted as-is for
+> **Rev 1 (review r1 Q5 answer folded).** The O(N²) copy-on-write is accepted as-is for
 > the escape hatch; no `Exts(map[ExtKey]any)` variant is added. `Apply` is now
 > explicitly documented (above) as the batching path.
 
@@ -697,7 +697,7 @@ func (s Style) GetExt(k ExtKey) (any, bool)
   (everything must be a comparable value; `BorderStyle` is already shaped by this). Is
   that trade correct, or should we drop the guarantee now (freeing future properties to
   hold slices) and key caches by an explicit `Hash() uint64` instead?
-  — **Lector r1:** keep comparability as a binding constraint; it is a real simplifier
+  — **Review r1:** keep comparability as a binding constraint; it is a real simplifier
   for diffing, caching, and tests — future slice/map-shaped properties go through
   handles or `extras`.
 - **Q2.** The derived-token set (§2.5) was six slots, chosen as "what ADR-0007's widgets
@@ -705,22 +705,22 @@ func (s Style) GetExt(k ExtKey) (any, bool)
   authors — specifically, should `TokenTextOnSecondary` and a `TokenBorder` /
   `TokenBorderFocused` pair be added now, given ADR-0007's Box focus-visuals will
   otherwise hardcode `TokenAccent` for focused borders?
-  — **Lector r1:** add `TokenBorder` + `TokenBorderFocused` now (load-bearing) and
+  — **Review r1:** add `TokenBorder` + `TokenBorderFocused` now (load-bearing) and
   `TokenTextOnSecondary` since Select/List secondary fills are expected. Folded in §2.5.
 - **Q3.** `TokenTextMuted` resolved (in the draft) to Foreground's color plus
   resolver-added SGR faint — a token carrying an *attribute*, not just a color. Is that
   acceptable token semantics, or should tokens be strictly colors (making muted text a
   widget-side `.Faint(true)` convention instead)?
-  — **Lector r1:** tokens are colors only; muted text is a widget/style convention via
+  — **Review r1:** tokens are colors only; muted text is a widget/style convention via
   `.Faint(true)`. Folded as the normative rule in §2.5.
 - **Q4.** The `ColorSpec` flatten-at-set-time trick (§2.4) means `Token` is representable
   *inside* `Color` (`kindToken`), so token-in-adaptive nestings are conceivably
   expressible. Should `Adaptive` accept tokens (resolve order: token → adaptive pick →
   downsample), or reject them at construction to keep resolution single-pass?
-  — **Lector r1:** reject tokens inside `Adaptive` for v1; keep resolution single-pass
+  — **Review r1:** reject tokens inside `Adaptive` for v1; keep resolution single-pass
   over flat comparable values. Folded in §2.4 (compile-shape prevention + panic).
 - **Q5.** `Ext`'s copy-on-write clone per call (§2.7) preserves immutability but makes
   building a style with N extras O(N²). Acceptable for an escape hatch, or should
   `Apply` batch extras into one clone (an `Exts(map[ExtKey]any)` variant)?
-  — **Lector r1:** O(N²) accepted for the escape hatch; document `Apply(opts...)` as the
+  — **Review r1:** O(N²) accepted for the escape hatch; document `Apply(opts...)` as the
   batching path for multiple extensions. Folded in §2.7; no `Exts` variant.

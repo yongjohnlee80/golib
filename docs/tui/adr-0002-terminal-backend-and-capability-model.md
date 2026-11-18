@@ -5,14 +5,14 @@
 
 **Abstract:** Defines the `tui.Backend` driver seam (Ratatui-Backend-shaped: lifecycle, size, cell-diff flush, latched cursor ops, capability report, single event channel), the deterministic in-memory `tui.TestBackend`, and the concrete `tui/term` ANSI implementation — raw mode on unix and Windows, the DEC ANSI input parser, legacy + kitty key decoding, SGR mouse, bracketed paste, alternate screen, the DA1-fenced startup capability probe, resize handling on both platforms, and panic-safe terminal restoration.
 
-> **Authored natively in the KB** (jarvis, 2026-07-08) as part of the golib/tui design
+> **Authored natively in the KB** (2026-07-08) as part of the golib/tui design
 > dossier. golib/tui keeps its own 0001–0007 ADR numbering; the `golib-tui-` filename
 > prefix namespaces it against this KB's auto-agents ADR sequence. Navigation hub:
 > golib-tui. Umbrella ADR: golib-tui-0001-overview-and-architecture.
 
-- **Status:** **Accepted** (Johno, 2026-07-08) — revision 1 (Lector r1 `change_requested` → r2 `approved_with_amendments`, all amendments folded).
+- **Status:** **Accepted** (Johno, 2026-07-08) — revision 1 (review r1 `change_requested` → r2 `approved_with_amendments`, all amendments folded).
 - **Date:** 2026-07-08
-- **Reviewed by:** lector, 2026-07-08 — agents/lector/reviews/2026-07-08-golib-tui-adrs-review.md (r1); agents/lector/reviews/2026-07-08-golib-tui-adrs-rereview.md (r2, `approved_with_amendments`)
+- **Reviewed by:** an independent reviewer, 2026-07-08 (r1; r2, `approved_with_amendments`)
 - **Module:** github.com/yongjohnlee80/golib
 - **Supersedes:** none (greenfield)
 - **Related:** ADR-0001 (umbrella — layering, dependency policy, probe-don't-database
@@ -23,7 +23,7 @@
   ADR-0006 (transport scaffold — the `Run(ctx)`/teardown lifecycle discipline the
   backend's Start/Stop mirrors).
 
-> **Revision history.** rev 1 (2026-07-08): folded Lector r1 `change_requested` —
+> **Revision history.** rev 1 (2026-07-08): folded review r1 `change_requested` —
 > (1) must-fix #1: capability/color model unified with ADR-0006 — `ColorProfile` enum
 > replaces the bare `Truecolor bool`, `DarkBackground bool` added with a documented
 > assume-dark fallback, `Mouse` becomes tri-state `Tri` backed by a DECRQM ?1006 probe
@@ -34,7 +34,7 @@
 > (4) nit: `Start(ctx)` cancellation-during-probe semantics specified — abort, discard
 > partial replies, restore, return `ctx.Err()` (§2.1, §2.6); (5) nit:
 > `TestBackend.Inject` overflow now errors, the event buffer is configurable, and
-> `SetErr` was added (§2.3); (6) Lector's Q1–Q5 answers annotated in §6.
+> `SetErr` was added (§2.3); (6) the reviewer's Q1–Q5 answers annotated in §6.
 
 > **Self-containment contract.** This ADR is implementable with no prior context beyond
 > the golib conventions (golang, golib) and the sibling ADRs listed under Related.
@@ -176,7 +176,7 @@ const (
 )
 ```
 
-> **Rev 1 (Lector must-fix #2).** `Err()` added and `Events()` re-specified as ordered
+> **Rev 1 (review must-fix #2).** `Err()` added and `Events()` re-specified as ordered
 > and un-coalesced. The backend's job ends at decoding: the App intake stage (ADR-0005,
 > amended in parallel) pulls promptly and owns every coalescing/overflow decision, and
 > reads `Err()` after channel close to distinguish clean stop from reader failure.
@@ -250,12 +250,12 @@ confirms `RGB`; else `ProfileANSI256` when `$TERM` contains `256color`; else
 `ProfileANSI16`. `ProfileMono` is reserved for `TERM=dumb`-class devices (which normally
 fail `Open`'s TTY check anyway) and explicit future options.
 
-> **Rev 1 (Lector must-fix #1).** The capability/color model is unified with ADR-0006:
+> **Rev 1 (review must-fix #1).** The capability/color model is unified with ADR-0006:
 > `ColorProfile` — the enum ADR-0006's `style.Color` resolution consumes — replaces the
 > bare `Truecolor bool`; `DarkBackground` is a first-class derived field with a
 > documented assume-dark fallback (raw `DefaultFG/BG` retained); and `Mouse` becomes
 > tri-state — a merely-requested, unverifiable enable is `TriUnknown`, never boolean
-> `true` (this also folds Lector's answer to this ADR's Q4).
+> `true` (this also folds the reviewer's answer to this ADR's Q4).
 
 A flat value struct (not per-capability methods) because — unlike `dao.Dialect`'s
 predicate style (golib-dao-0008-read-mostly-no-transaction-driver-contract §2.2) —
@@ -302,7 +302,7 @@ fail loud in tests, where the panic is a test failure with a coordinate in the m
 on overflow rather than blocking or silently dropping. This is the backend behind
 ADR-0001 acceptance criterion 3 (full interaction script in CI, no PTY).
 
-> **Rev 1 (Lector nit).** `Inject` no longer claims "never blocks": the buffer is
+> **Rev 1 (review nit).** `Inject` no longer claims "never blocks": the buffer is
 > configurable and overflow returns an error. `SetErr` was added alongside must-fix #2's
 > `Err()` so reader-failure loop paths are scriptable without a real terminal.
 
@@ -452,8 +452,8 @@ probe immediately, **discards all partial capability replies** (a partially-nego
 profile is never observable), unwinds the already-acquired state through the §2.10 undo
 chain (raw mode, alt screen, VT modes restored), and returns `ctx.Err()`.
 
-> **Rev 1 (Lector should-fix + nit).** Default probe timeout raised 100 ms → 250 ms
-> (Lector's Q2 answer: the DA1 fence spares healthy terminals; 100 ms falsely downgraded
+> **Rev 1 (review should-fix + nit).** Default probe timeout raised 100 ms → 250 ms
+> (the reviewer's Q2 answer: the DA1 fence spares healthy terminals; 100 ms falsely downgraded
 > high-latency SSH), the DECRQM ?1006 row added for verifiable tri-state `Mouse`
 > (must-fix #1), and the `Start(ctx)` cancellation-during-probe semantics above made
 > explicit.
@@ -496,7 +496,7 @@ stage (ADR-0005), which guarantees that intermediate sizes are never laid out an
 **final size always renders**. Post-resize rendering is a full clear + repaint, never a
 diff across sizes (ADR-0003 §2.6).
 
-> **Rev 1 (Lector must-fix #2).** Coalescing moved out of the backend: rev 0 had the
+> **Rev 1 (review must-fix #2).** Coalescing moved out of the backend: rev 0 had the
 > backend collapsing notifications into a latest-size cell, which contradicted
 > ADR-0005's intake-owned queue policy. The backend now only re-queries and emits.
 
@@ -544,7 +544,7 @@ Contract (the `server/ws/ws.go` one-reader/`sync.Once`/`done chan struct{}` disc
   reader's owner closes the channel, and only after the reader has exited** — consumers
   may safely `range` until close, then consult `Err()`.
 
-> **Rev 1 (Lector must-fix #2).** The backend-side "coalesced through the latest-size
+> **Rev 1 (review must-fix #2).** The backend-side "coalesced through the latest-size
 > cell" language is gone: the channel is ordered and un-coalesced end to end, and
 > `Err()` (§2.1) carries the reader/probe terminal error the App loop reads after close.
 
@@ -714,7 +714,7 @@ tests of core and widgets never touch `tui/term`.
   materializing). The slice was chosen because the differ already owns a reusable scratch
   slice and the seam stays trivially mockable — but is the iterator form the better
   golib-native contract to freeze now, given the seam is hard to change later?
-  — **Lector r1:** keep `Flush([]CellUpdate)` — `Flush` is a hot internal driver seam
+  — **Review r1:** keep `Flush([]CellUpdate)` — `Flush` is a hot internal driver seam
   fed by a reusable diff slice; the slice is the better concrete contract.
 - **Q2.** The probe deadline default is 100 ms with a 50 ms floor. Over high-latency SSH
   (~200 ms RTT) even DA1 may miss the deadline, silently degrading a fully modern remote
@@ -723,7 +723,7 @@ tests of core and widgets never touch `tui/term`.
   allow late-arriving probe replies to *upgrade* capabilities after Start (adds
   time-varying `Capabilities()`, which §4.6 rejected). We chose (a) — confirm, or pick a
   different trade?
-  — **Lector r1:** option (b) — raise the default to 250 ms with the same option/floor;
+  — **Review r1:** option (b) — raise the default to 250 ms with the same option/floor;
   the DA1 fence avoids paying it on good terminals and 100 ms falsely downgrades
   ordinary high-latency SSH. Folded in rev 1 (§2.4, §2.6).
 - **Q3.** On non-kitty terminals we hold a lone ESC for 35 ms (§2.5). An alternative is
@@ -732,7 +732,7 @@ tests of core and widgets never touch `tui/term`.
   Is the timeout (with its slow-SSH spurious-ESC caveat) acceptable as the only legacy
   mechanism, or should the runtime expose the pending-ESC state so widgets can defer
   ESC-triggered actions themselves?
-  — **Lector r1:** accepted — the timeout stays the only legacy mechanism; pending-ESC
+  — **Review r1:** accepted — the timeout stays the only legacy mechanism; pending-ESC
   state is not exposed (it leaks parser mechanics into app semantics).
 - **Q4.** `Mouse` is probe-independent (there is no reliable mouse-support query); we
   enable `?1002/?1006` on everything except detected-legacy-conhost and report
@@ -740,11 +740,11 @@ tests of core and widgets never touch `tui/term`.
   mouse sequences — harmless, but `Capabilities().Mouse` then over-promises. Is an
   optimistic flag acceptable, or should `Mouse` be tri-state (yes/no/unknown) at the
   cost of a non-uniform capability model?
-  — **Lector r1:** never report an optimistic request as boolean support; tri-state
+  — **Review r1:** never report an optimistic request as boolean support; tri-state
   adopted. Folded in rev 1 (§2.2 `Tri`, §2.6 DECRQM ?1006 probe row, §2.7).
 - **Q5.** Windows floor 1809+ with hard `ErrConsoleTooOld` (§2.4, N4): golib server-side
   tools may still meet Server 2016 (1607: VT output yes, ConPTY no). Should the floor be
   softened to "1607+ output, degraded input" (extra conditional paths in the one place
   we've kept single-pathed), or is the 1809 hard floor right for a 2026 library?
-  — **Lector r1:** keep the 1809+ hard floor for v1; a degraded 1607 path is too much
+  — **Review r1:** keep the 1809+ hard floor for v1; a degraded 1607 path is too much
   platform branching for the first implementation.

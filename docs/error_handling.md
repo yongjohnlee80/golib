@@ -335,7 +335,7 @@ duplication it appears to fix.
 ### Finding the couplings that are real
 
 Before rewriting assertions, measure which of them actually depend on someone
-else's text. **A substring hit is not a coupling.** `agent:gold-man`'s first
+else's text. **A substring hit is not a coupling.** A reviewer's first
 instrument grepped an upstream's whole source for each matched string and
 reported fourteen — including `"cap"` in 186 files, `"server"` in 127 and
 `"SET"` in 26. That would have meant rewriting forty assertions to fix four

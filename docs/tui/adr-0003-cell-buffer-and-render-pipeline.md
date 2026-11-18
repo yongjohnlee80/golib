@@ -10,14 +10,14 @@ scheduling (render-on-dirty, min-frame-interval, resize full-repaint), the gener
 Unicode width/segmentation tables in `tui/internal/grapheme`, and the normative
 anti-flicker and IME cursor rules.
 
-> **Authored natively in the KB** (jarvis, 2026-07-08) as part of the golib/tui design
+> **Authored natively in the KB** (2026-07-08) as part of the golib/tui design
 > dossier. golib/tui keeps its own 0001–0007 ADR numbering; the `golib-tui-` filename
 > prefix namespaces it against this KB's auto-agents ADR sequence. Navigation hub:
 > golib-tui. Umbrella ADR: golib-tui-0001-overview-and-architecture.
 
-- **Status:** **Accepted** (Johno, 2026-07-08) — revision 1 (Lector r1 `change_requested` → r2 `approved_with_amendments`, all amendments folded).
+- **Status:** **Accepted** (Johno, 2026-07-08) — revision 1 (review r1 `change_requested` → r2 `approved_with_amendments`, all amendments folded).
 - **Date:** 2026-07-08
-- **Reviewed by:** lector, 2026-07-08 — agents/lector/reviews/2026-07-08-golib-tui-adrs-review.md (r1); agents/lector/reviews/2026-07-08-golib-tui-adrs-rereview.md (r2, `approved_with_amendments`)
+- **Reviewed by:** an independent reviewer, 2026-07-08 (r1; r2, `approved_with_amendments`)
 - **Module:** github.com/yongjohnlee80/golib
 - **Supersedes:** none (greenfield)
 - **Related:** ADR-0001 (umbrella — fixes grapheme cells, diff+one-write, and the
@@ -29,14 +29,14 @@ anti-flicker and IME cursor rules.
   ADR-0006 (transport scaffold — the registry wake/broadcast idiom reused by the frame
   scheduler).
 
-> **Revision history.** rev 1 (2026-07-08): folded Lector r1 `change_requested` —
+> **Revision history.** rev 1 (2026-07-08): folded review r1 `change_requested` —
 > (1) must-fix #3: the grapheme width policy is now explicit and callable —
 > `WidthPolicy` enum, package-level `StringWidth` pinned to `WidthPolicyDefault`,
 > policy-explicit `StringWidthPolicy`, `Graphemes` re-specified as segmentation-only
 > (policy-independent), `Surface` gains a policy-applying `StringWidth`, and the
 > components-measure-via-Surface normative rule (§2.4, §2.7); (2) Q5 answer folded:
 > `Fill` with a width-2 cluster now fills the trailing odd column with a styled space
-> instead of leaving it untouched (§2.4, §5.9); (3) Lector's Q1–Q5 answers annotated in
+> instead of leaving it untouched (§2.4, §5.9); (3) the reviewer's Q1–Q5 answers annotated in
 > §6.
 
 > **Self-containment contract.** This ADR is implementable with no prior context beyond
@@ -237,12 +237,12 @@ type Surface interface {
 }
 ```
 
-> **Rev 1 (Lector must-fix #3).** `StringWidth` added to `Surface`, and the width policy
+> **Rev 1 (review must-fix #3).** `StringWidth` added to `Surface`, and the width policy
 > made part of the Surface's resolution context: a package-level function cannot close
 > over a per-App option, so rev 0's measurement API made the policy unusable as
 > specified. Components measure via Surface/Context — normative.
 
-> **Rev 1 (Lector Q5 answer).** `Fill` with a width-2 cluster now paints the trailing
+> **Rev 1 (Review Q5 answer).** `Fill` with a width-2 cluster now paints the trailing
 > odd column with a styled space instead of leaving it untouched — an untouched column
 > risked a stale visual stripe in the common background-fill case.
 
@@ -382,7 +382,7 @@ of this switch is `tui.WidthPolicy` (§2.4): the App fixes it once via `WithWidt
 policy explicitly, and `tui.Graphemes` is segmentation-only and policy-independent. The
 policy is always an explicit parameter or Surface/Context state — never a global.
 
-> **Rev 1 (Lector must-fix #3).** Rev 0 claimed the package-level wrappers "close over"
+> **Rev 1 (review must-fix #3).** Rev 0 claimed the package-level wrappers "close over"
 > the per-App option — impossible for a package-level function, which left the policy
 > uncallable. It is now an explicit, named API: `WidthPolicy`, `StringWidthPolicy`, and
 > `Surface.StringWidth` (§2.4).
@@ -570,14 +570,14 @@ The dossier §8 flicker checklist, promoted to numbered rules code and reviews c
   200×60 double-buffered). We chose the plain string for simplicity and comparability
   and deferred interning as a measured optimization — is the memory profile acceptable
   to freeze, given `Cell` is exported and its layout is therefore API?
-  — **Lector r1:** accepted — keep `Cell.Content string` for v1; the plain comparable
+  — **Review r1:** accepted — keep `Cell.Content string` for v1; the plain comparable
   struct is more valuable than packing complexity before profiles exist.
 - **Q2.** East Asian Ambiguous width as a per-App boolean option defaulting to 1
   (§2.7): should the driver instead attempt runtime detection (e.g. cursor-position
   probe after emitting an ambiguous character during ADR-0002's startup probe, the way
   some editors measure), which auto-fixes CJK-locale legacy terminals at the cost of
   one more probe round-trip and a fuzzier capability model?
-  — **Lector r1:** no runtime probing in v1 — explicit per-App policy, with the
+  — **Review r1:** no runtime probing in v1 — explicit per-App policy, with the
   measurement API fixed so the policy is actually usable. Folded as must-fix #3
   (§2.4, §2.7).
 - **Q3.** §2.8 re-anchors after **every** risky cluster on non-2027 terminals. A
@@ -586,7 +586,7 @@ The dossier §8 flicker checklist, promoted to numbered rules code and reviews c
   cluster is maximally safe and costs ~8 bytes each; per-run halves the overhead on
   emoji-dense rows. Is per-cluster the right default, and should it be tunable at all
   (lean: no tunable — one behavior, testable)?
-  — **Lector r1:** keep per-risky-cluster re-anchoring and do not make it tunable; one
+  — **Review r1:** keep per-risky-cluster re-anchoring and do not make it tunable; one
   tested behavior beats a byte-saving knob.
 - **Q4.** `Surface.Theme()`/`Caps()` put the style-resolution context on the render
   seam (§2.4), which means resolved colors can differ per-backend at `Render` time. The
@@ -595,7 +595,7 @@ The dossier §8 flicker checklist, promoted to numbered rules code and reviews c
   testability and simplicity; does the reviewer see a problem for ADR-0006's adaptive
   (light/dark) colors — e.g. an OSC 11-reported background change mid-session
   invalidating cached cells, which the current design handles by full repaint?
-  — **Lector r1:** confirmed — Surface-carried theme/caps is right; it keeps render
+  — **Review r1:** confirmed — Surface-carried theme/caps is right; it keeps render
   tests simple, and theme/capability changes are handled by invalidating cells (full
   repaint).
 - **Q5.** `Fill` with a width-2 cluster leaves a trailing odd column untouched (§2.4
@@ -604,6 +604,6 @@ The dossier §8 flicker checklist, promoted to numbered rules code and reviews c
   the call). The untouched-column choice is the least surprising for the diff but can
   leave a stale stripe if the caller assumed full coverage — which semantic should be
   frozen?
-  — **Lector r1:** CHANGED — fill the trailing odd column with a styled space; an
+  — **Review r1:** CHANGED — fill the trailing odd column with a styled space; an
   untouched column risks stale visual stripes in the common background-fill case.
   Folded in rev 1 (§2.4, §5.9).

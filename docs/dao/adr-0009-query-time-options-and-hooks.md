@@ -1,6 +1,6 @@
 # ADR-0009 — `golib/dao`: Query-Time Options & the Hook/Middleware Seam
 
-- **Status:** **Accepted** (2026-07-04; revision 3 — lector r2 approved_with_amendments, nits applied, see §7)
+- **Status:** **Accepted** (2026-07-04; revision 3 — review r2 approved_with_amendments, nits applied, see §7)
 - **Date:** 2026-07-04
 - **Module:** `github.com/yongjohnlee80/golib`
 - **Supersedes:** none (additive to ADR-0002/0003/0006)
@@ -470,8 +470,8 @@ compiles and behaves identically.
 
 ## 7. Review history
 
-- **r1 (2026-07-04, lector): `change_requested`** — review doc:
-  `agents/lector/reviews/2026-07-04-golib-dao-adr-0009-review.md`.
+- **r1 (2026-07-04, review): `change_requested`**.
+  
   Amendments applied in revision 2:
   - **must-fix #1**: `Stager.Where` no longer claims INSERT/UPSERT coverage —
     per-op semantics defined; `Where` on insert-like ops fails loudly with
@@ -490,8 +490,8 @@ compiles and behaves identically.
   - **notes**: duplicate hook names panic at `dao.New`; `SkipHooks` skips all
     bearers of a name; identifier trust wording strengthened on
     `Stager.SetColumn`/`Where` (§2.1, §2.2).
-- **r2 (2026-07-04, lector): `approved_with_amendments`** — review doc:
-  `agents/lector/reviews/2026-07-04-golib-dao-adr-0009-rereview.md`. R1
+- **r2 (2026-07-04, review): `approved_with_amendments`**.
+   R1
   blockers confirmed closed. Non-blocking nits applied in revision 3: §2.6
   COPY wording tightened (no non-error veto signal exists — a hook error
   fails the flush per §2.4; callers wanting rewriteable bulk statements use

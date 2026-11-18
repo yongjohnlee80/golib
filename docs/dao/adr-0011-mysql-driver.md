@@ -1,7 +1,7 @@
 # ADR-0011 — `golib/dao`: MySQL driver (`dao/mysql`)
 
-- **Status:** **Accepted** (2026-08-16 — lector r2 `approved_with_amendments`, amendment folded; authored by
-  ultron-prime for autodb M1, implemented on `dao-m1`. Release target
+- **Status:** **Accepted** (2026-08-16 — review r2 `approved_with_amendments`, amendment folded; authored
+  for autodb M1, implemented on `dao-m1`. Release target
   **v0.3.0** approved by Johno; released as v0.3.0)
 - **Date:** 2026-08-16
 - **Module:** `github.com/yongjohnlee80/golib`
@@ -20,7 +20,7 @@
 ## 1. Context
 
 The dao driver matrix today is postgres (pgx), sqlite (modernc, pure Go), and
-bigquery (nested module). MySQL is required by the autodb project (autovim KB,
+bigquery (nested module). MySQL is required by the autodb project (its
 ADR-0052 / roadmap M1: postgres, mysql, sqlite first) and named as a target in
 this package's own `Dialect` doc comments since ADR-0004 — the placeholder,
 bind-cap, and LastInsertId comments all cite MySQL as the model.

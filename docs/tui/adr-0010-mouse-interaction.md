@@ -1,10 +1,10 @@
 # ADR-0010 — `golib/tui`: mouse interaction (click-to-focus, Table, Editor)
 
-- **Status:** **Proposed (rev 9)** (2026-08-25, authored by jarvis at Johno's
+- **Status:** **Proposed (rev 9)** (2026-08-25, authored at Johno's
   request). **Rev 6 adds §2.5, double-click as activation** — Johno, 2026-08-25:
   *"Let's implement double mouse click as ENTER."* Nothing in rev 5 changes. Companion to autodb ADR-0064 §2.2, which is the consumer that asked
   for this and which decided *not* to build a webapp instead.
-  - **Lector r2 `change_requested`** — three findings against this ADR, **all
+  - **Review r2 `change_requested`** — three findings against this ADR, **all
     CONFIRMED against the code and folded into rev 2**. Each was a case of rev 1
     specifying something the codebase cannot represent or already contradicts:
     - **The focus-mutation retry broke this ADR's own invariant.** Rev 1 said
@@ -27,27 +27,27 @@
       origin — which would need new state plus invariants across five paths — to
       its own ADR (§2.3).
   - Rev 1 closed r1's Table-ownership finding outright.
-  - **Lector r3 `change_requested`** — one finding here, **CONFIRMED**, and it
+  - **Review r3 `change_requested`** — one finding here, **CONFIRMED**, and it
     retires an idea I had now defended twice: the focus-mutation **retry is not
     implementable at all**. A replacement mounted by a `FocusEvent` handler is
     invisible to `hitTest` until the next layout pass (`tree.go:40`,
     `routing.go:174`, `app.go:220-232`), so the synchronous retry rev 2 specified
-    could only ever reach a stale ancestor. Rev 3 takes the **skip** rule lector
+    could only ever reach a stale ancestor. Rev 3 takes the **skip** rule the reviewer
     proposed in round one. Two amendments also landed: the genuinely stale §5
     "unspecified" bullet (r2's correction had been appended to a *different*
     alternative — the wrong bullet), and "the press never modifies buffer text",
     which contradicted rev 2's own pending-rune settlement.
-  - **Lector r4 `change_requested`** — one finding, **CONFIRMED**: the trap
+  - **Review r4 `change_requested`** — one finding, **CONFIRMED**: the trap
     boundary must be `currentScope()`, not `trapScopeOf(focused)`. golib has a
     repair state in which the focused child dies, `focused` becomes 0, and the
     trap survives on `scopeStack`; deriving the boundary from the focused node
     then finds no trap and lets a click escape it. `currentScope()` is the
     primitive keyboard traversal already uses and handles that path explicitly.
     Criterion 4b pins the state (§2.1).
-  - **Lector r5: APPROVED** (2026-08-24) — no remaining design or wording blocker
+  - **Review r5: APPROVED** (2026-08-24) — no remaining design or wording blocker
     across five rounds. Approval is of the DESIGN only: it is explicitly not
     authority to implement, and Johno's authorization remains an external gate.
-  - **Rev 5 (implementation round r3)** restates criterion 18 only. Lector's r3
+  - **Rev 5 (implementation round r3)** restates criterion 18 only. The reviewer's r3
     review cleared all production code and held that three representative web
     tests do not satisfy "every behaviour through both producers" — correct, and
     my wording was worse than unachievable: it named `TestBackend` as "the
@@ -55,7 +55,7 @@
     terminal producer had no coverage at all. Criterion 18 now states the
     three-layer structure that was actually intended, and both producers now
     have a behavioural integration slice.
-  - **Lector r1 `change_requested`** (2026-08-24) raised three findings against
+  - **Review r1 `change_requested`** (2026-08-24) raised three findings against
     this ADR; **all three are CONFIRMED against the code and folded into rev 1**,
     two of them by reproducing the behaviour rather than reading it:
     - **§2.2 was not implementable.** Rev 0 said `Table` would translate row
@@ -63,7 +63,7 @@
       target-first, no-capture routing it cannot: `List` is a placed child, so a
       body press reaches `List` directly and `Table` never sees it. A probe on
       the unmodified tree (`TestCurrentTableMouseRouting`, run independently of
-      lector's) selected **row 2** for a body press at absolute `Y=3` — already
+      the reviewer's) selected **row 2** for a body press at absolute `Y=3` — already
       correct — and **row 0** for a header press at `Y=0` from a pinned
       selection of 2, which is the real defect. Rev 1 adopts the ownership the
       routing actually permits (§2.2).
@@ -257,7 +257,7 @@ scope rules stated; it is out of scope here.
 ### 2.2 `Table`: `List` keeps body presses; `Table` refuses the header
 
 Rev 1 takes the ownership target-first routing actually permits, which is
-lector's option (1). The alternative — restructuring layout/routing so `Table`
+the reviewer's option (1). The alternative — restructuring layout/routing so `Table`
 becomes the pointer target and owns all translation — would mean introducing
 capture or retargeting and **amending ADR-0004**, for no behavioural gain over
 this. Rejected on that basis (§5).
@@ -391,7 +391,7 @@ rule decides this: a click *count* is not decode shape, it is behaviour derived
 from timing and position, so it belongs at the one point every producer's events
 already flow through — the `MouseEvent` case in `App.dispatch`.
 
-**Committed immediately before DELIVERY, not on arrival** (lector r1 finding 1).
+**Committed immediately before DELIVERY, not on arrival** (review r1 finding 1).
 Rev 6 stamped the ordinal before hit-testing and before the focus step, which
 meant a press the focus step then *skipped* still advanced the run: the widget
 that replaced an unmounted target saw `Count == 2` as its first ever delivered
@@ -412,7 +412,7 @@ property the layered rule exists to protect.
 **The widget owns LOGICAL identity; the App cannot** (finding 2). An absolute
 cell is not a row — and a row index is not durable either: it names a row only
 within one **source epoch**, so replacing or refreshing a `List`'s source ends the
-pairing (lector r2). Scroll a `List` between the two presses and the same cell
+pairing (review r2). Scroll a `List` between the two presses and the same cell
 addresses different data — `List`'s own previous detection compared logical rows
 and refused that pair, so keying activation on the cell alone silently activated
 the wrong row. `List` therefore also requires the same logical row, and `Tree` the
@@ -588,7 +588,7 @@ that made `tui.Backend` worth keeping (autodb ADR-0064 §2.1).
     and an epoch ends at every **NOTIFIED** change: `SetSource`, `SetItems`,
     `RefreshSource`.
 
-    "Every source change" was unimplementable as written (lector r3). A
+    "Every source change" was unimplementable as written (review r3). A
     `ListSource` exposes only `Len`/`Item`, and `SliceSource` aliases the caller's
     slice, so a caller can mutate a row on the loop without invoking any `List`
     method — `List` cannot observe it and cannot defend against it. The contract
@@ -634,7 +634,7 @@ carry no criteria here rather than carrying unstated ones.
   frontend.
 - **A `Clickable` capability interface.** Rejected in §2.4.
 - **Restructuring layout/routing so `Table` is the pointer target** and owns all
-  coordinate translation (lector's option 2). Rejected: it requires capture or
+  coordinate translation (the reviewer's option 2). Rejected: it requires capture or
   retargeting and therefore an **amendment to ADR-0004**'s target-first,
   no-capture contract, and it buys nothing over §2.2 — body presses already land
   correctly, so the only thing needing a decision is the header, which one

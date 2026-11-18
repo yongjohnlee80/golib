@@ -32,7 +32,7 @@ func startupStream() ([]byte, map[string]string) {
 	want := map[string]string{
 		"server_version": "17.2", "client_encoding": "UTF8", "DateStyle": "ISO, MDY", "TimeZone": "UTC",
 		"integer_datetimes": "on", "standard_conforming_strings": "on", "server_encoding": "UTF8",
-		"is_superuser": "off", "session_authorization": "autodb", "application_name": "", "in_hot_standby": "off",
+		"is_superuser": "off", "session_authorization": "app", "application_name": "", "in_hot_standby": "off",
 	}
 	var s []byte
 	s = append(s, frame('R', []byte{0, 0, 0, 0})...) // AuthenticationOk

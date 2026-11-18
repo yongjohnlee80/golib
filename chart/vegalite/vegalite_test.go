@@ -1268,9 +1268,9 @@ func TestAShapeByTheColoursFieldSharesItsLegend(t *testing.T) {
 	}
 }
 
-// vm43Spec is a chart like a test gate's: stacked outcome bars, and a text layer filtered to the
+// gateSpec is a chart like a test gate's: stacked outcome bars, and a text layer filtered to the
 // failures. The text mark and the transform stay outside the subset, so it declines whole.
-const vm43Spec = `{
+const gateSpec = `{
   "title": {"text": "The gate", "subtitle": "one failure"},
   "data": {"values": [{"suite": "dao", "outcome": "passed", "tests": 9}, {"suite": "root", "outcome": "failed", "tests": 1}]},
   "layer": [
@@ -1282,12 +1282,12 @@ const vm43Spec = `{
 }`
 
 func TestAFilteredTextLayerStillDeclines(t *testing.T) {
-	if _, err := lay(t, vm43Spec, 600); !errors.Is(err, pvl.ErrUnsupported) {
+	if _, err := lay(t, gateSpec, 600); !errors.Is(err, pvl.ErrUnsupported) {
 		t.Errorf("%v, want pvl.ErrUnsupported", err)
 	}
 	// its bars alone draw: the subtitle and the range are in the subset
 	var sp map[string]any
-	_ = json.Unmarshal([]byte(vm43Spec), &sp)
+	_ = json.Unmarshal([]byte(gateSpec), &sp)
 	sp["layer"] = sp["layer"].([]any)[:1]
 	src, _ := json.Marshal(sp)
 	mustLay(t, string(src), 600)

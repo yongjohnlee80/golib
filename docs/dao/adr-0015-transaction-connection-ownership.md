@@ -2,8 +2,8 @@
 
 - **Status:** **Accepted** (2026-08-21 — accepted by Johno as written, including
   the options tail over his `...DataConn` sketch (§4 alternative 1) and the §2.4
-  cross-connection guard. Authored by jarvis from Johno's report that `RunTx`'s
-  `[]DataConn` parameter is an anti-pattern; lector design r1
+  cross-connection guard. Authored from Johno's report that `RunTx`'s
+  `[]DataConn` parameter is an anti-pattern; design review r1
   `change_requested` folded, r2 **approved** at `6282278` with no findings
   outstanding. See Review history. Implemented on `dao-tx`.)
 - **Date:** 2026-08-21
@@ -486,10 +486,8 @@ consequences:
    deletion of the unused `Store.Conn()`, and lands with or after the golib
    change.
 
-After acceptance, the KB follows the code: the `golib-dao` convention's
-"Transactions (ADR-0005)" section, the ADR-0005 KB page's superseded
-paragraphs, and this ADR imported as
-`shared/adrs/golib-dao-0015-transaction-connection-ownership.md`.
+After acceptance, the project's own notes on transactions (ADR-0005's
+among them) follow the code.
 
 ## 6. Files / acceptance
 
@@ -552,7 +550,7 @@ criteria 4–6 below.** New criteria:
 
 ## 7. Resolved review questions
 
-Lector's design r1 answered the open questions; they are recorded here as
+The reviewer's design r1 answered the open questions; they are recorded here as
 decisions, not questions:
 
 1. **First-join lock-in stays** — it preserves the accidental-cross-DB guard
@@ -568,7 +566,7 @@ decisions, not questions:
 
 ## Review history
 
-- **r1 (2026-08-21, lector — `change_requested`, folded in this revision).**
+- **r1 (2026-08-21, review — `change_requested`, folded in this revision).**
   Must-fix 1: ADR-0005 criterion 6 could not both "survive unchanged" and be
   superseded by the declared-span pre-flight — supersession and acceptance now
   say criteria 1–5 survive and 6 is refined (§2.5, §6). Must-fix 2: the
@@ -584,8 +582,7 @@ decisions, not questions:
   worktree, so it does not currently build. Should-fix 3: `Spanning`
   normalization (nil / empty / duplicate / repeated) and `initErr` closure on
   the manual `Begin` path specified in §2.3.
-  Review doc: `$KB_ROOT/agents/lector/reviews/2026-08-21-golib-dao-0015-transaction-connection-ownership-review.md`
-- **r2 (2026-08-21, lector — `approved`).** Reviewed the complete
+- **r2 (2026-08-21, review — `approved`).** Reviewed the complete
   `1be8ac6..6282278` amendment diff: all two must-fix and three should-fix
   findings resolved without changing the approved architecture — the
   criterion-6 refinement is internally consistent, `checkTwoPhase` is
@@ -598,7 +595,7 @@ decisions, not questions:
   no sentinel (programming errors with no recovery branch), and duplicate names
   may merge first-wins under the strengthened one-logical-database name
   contract, because the actual-participant `Commit` check preserves 2PC safety
-  even when wrapper capabilities differ. Lector independently reproduced the
+  even when wrapper capabilities differ. The reviewer independently reproduced the
   `example/` build failure recorded in §5. No implementation exists at this
   revision, so the r1 `go test ./dao/...` baseline remains the applicable
   result. **Ready for Johno's acceptance, then implementation on `dao-tx`.**

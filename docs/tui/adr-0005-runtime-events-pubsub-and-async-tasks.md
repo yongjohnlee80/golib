@@ -13,14 +13,14 @@ tasks whose results are posted as `TaskResult` events addressed to the owning `N
 cancelled at unmount, with exclusive groups, monotonic staleness IDs, per-task panic
 isolation, and `TaskProgress` streaming via `Post`.
 
-> **Authored natively in the KB** (jarvis, 2026-07-08) as part of the golib/tui design
+> **Authored natively in the KB** (2026-07-08) as part of the golib/tui design
 > dossier. golib/tui keeps its own 0001–0007 ADR numbering; the `golib-tui-` filename
 > prefix namespaces it against this KB's auto-agents ADR sequence. Navigation hub:
 > golib-tui. Umbrella ADR: golib-tui-0001-overview-and-architecture.
 
-- **Status:** **Accepted** (Johno, 2026-07-08) — revision 1 (Lector r1 `change_requested` → r2 `approved_with_amendments`, all amendments folded).
+- **Status:** **Accepted** (Johno, 2026-07-08) — revision 1 (review r1 `change_requested` → r2 `approved_with_amendments`, all amendments folded).
 - **Date:** 2026-07-08
-- **Reviewed by:** lector, 2026-07-08 — agents/lector/reviews/2026-07-08-golib-tui-adrs-review.md (r1); agents/lector/reviews/2026-07-08-golib-tui-adrs-rereview.md (r2, `approved_with_amendments`)
+- **Reviewed by:** an independent reviewer, 2026-07-08 (r1; r2, `approved_with_amendments`)
 - **Module:** github.com/yongjohnlee80/golib
 - **Supersedes:** none (greenfield)
 - **Related:** ADR-0001 (fixes `App`/`Event`/`Bus`/`NodeID` vocabulary and the
@@ -31,8 +31,8 @@ isolation, and `TaskProgress` streaming via `Post`.
   drives; unmount semantics the task system depends on), golib server ADR-0006 (the
   transport scaffold whose `Run(ctx)`/drain lifecycle `App.Run` deliberately mirrors).
 
-> **Revision history.** rev 1 (2026-07-08): folded Lector r1 `change_requested` —
-> (1) **must-fix #2**: input-queue ownership resolved per Lector's stated preference —
+> **Revision history.** rev 1 (2026-07-08): folded review r1 `change_requested` —
+> (1) **must-fix #2**: input-queue ownership resolved per the reviewer's stated preference —
 > the backend only decodes and emits ordered, un-coalesced events and gains
 > `Err() error`; an App-owned **intake stage** now applies all lane-A policy
 > (drop-oldest, resize latest-wins, motion coalescing, `WithInputQueueSize`) under a
@@ -91,7 +91,7 @@ semaphore-bounded background work with a synchronous `ctx.Done` fallback
   **guaranteed terminal restore even on panic**.
 - **G2** — A `Post` that never blocks, never deadlocks, and never drops program events —
   designed explicitly around gocui's panic-at-256 and tview's self-deadlock. Panic occurs
-  only under an explicit `WithEventQueueLimit` opt-in (rev 1, Lector Q1).
+  only under an explicit `WithEventQueueLimit` opt-in (rev 1, Review Q1).
 - **G3** — Async results **addressed to the originating component** (`NodeID`), delivered
   on the loop goroutine, dead-lettered after unmount — the task-objective-6 primitive.
 - **G4** — Typed pub/sub with zero reflection at dispatch, enqueue-only publish, and
@@ -152,7 +152,7 @@ func WithInputQueueSize(n int) AppOption
 // events (default: unlimited; §2.4). Exceeding it PANICS with
 // "tui: program event queue exceeded N — runaway producer": lane-B growth past
 // any sane bound is an app bug, and apps preferring fail-fast crash detection
-// over memory growth opt in here. (Rev 1, Lector Q1.)
+// over memory growth opt in here. (Rev 1, Review Q1.)
 func WithEventQueueLimit(n int) AppOption
 
 // WithTaskPoolSize bounds concurrently RUNNING tasks (default 16; §2.8).
@@ -235,10 +235,10 @@ for {
 }
 ```
 
-> **Rev 1 (Lector must-fix #2).** The draft loop consumed `backend.Events()` directly
+> **Rev 1 (review must-fix #2).** The draft loop consumed `backend.Events()` directly
 > and called an `a.backend.Err()` that no interface declared, while ADR-0002
 > simultaneously claimed the backend's channel never drops — contradictory queue
-> ownership. Resolved per Lector's stated preference: the backend only decodes and
+> ownership. Resolved per the reviewer's stated preference: the backend only decodes and
 > emits ordered, un-coalesced events, and `Backend` gains `Err() error` (valid after
 > `Events()` closes or `Stop` returns — ADR-0002 rev 1, amended in parallel); every
 > queueing/coalescing/overflow policy now lives in the App-owned intake stage (§2.4).
@@ -323,7 +323,7 @@ lost wakeups, zero blocking. Unbounded growth is deliberate: lane-B traffic is g
 by the app's own finite tasks and handlers, dropping it corrupts program state, and
 blocking reintroduces the deadlock; memory pressure from a runaway producer is an app
 bug the runtime makes *visible* rather than converting into a hang. Two rev-1
-hardenings (Lector Q1): **(a)** high-water-mark logging is **mandatory**, not best
+hardenings (Review Q1): **(a)** high-water-mark logging is **mandatory**, not best
 effort — the drain tracks the maximum pending count and logs threshold crossings via
 `WithLogger`, with an acceptance test exercising it (§5.11); **(b)** apps that prefer
 fail-fast runaway detection opt into `WithEventQueueLimit(n)` (§2.1), under which
@@ -346,7 +346,7 @@ func (a *App) Post(ev Event)
 func (a *App) Update(fn func())
 ```
 
-> **Rev 1 (Lector should-fix / Q2 answer).** The draft ran `Update` inline when called
+> **Rev 1 (review should-fix / Q2 answer).** The draft ran `Update` inline when called
 > from the loop goroutine, detected by parsing the `runtime.Stack` header for the
 > goroutine id — self-described as the least principled line in the design. **Dropped
 > entirely.** Since lane B never blocks, always-enqueue is deadlock-free by the same
@@ -354,7 +354,7 @@ func (a *App) Update(fn func())
 > "sometimes-inline" ordering rule to teach. The in-handler idiom is direct mutation,
 > documented in `tui/doc.go` alongside the invariant (§2.3).
 
-> **Amended 2026-10-30 (golib scalability audit GP-1; design approved by Jarvis):
+> **Amended 2026-10-30 (golib scalability audit GP-1; design approved in review):
 > latest-wins keys, opt-in.** A producer that only needs its newest closure or value run
 > (a progress value, a refresh signal, a stats tick) grew lane B one item a call while
 > the loop was slow; the only bound, `WithEventQueueLimit`, panics in the producer.
@@ -781,7 +781,7 @@ the root) is precisely the anti-pattern G3 exists to kill.
   alternative is a large bound (say 64k) with a panic-on-overflow "you have a runaway
   producer" crash. Is unbounded-with-visibility acceptable, or do you want a hard
   ceiling as a last-resort bug detector?
-  — **Lector r1:** unbounded is acceptable only with explicit high-water logging and
+  — **Review r1:** unbounded is acceptable only with explicit high-water logging and
   tests, plus an optional hard ceiling for fail-fast apps — folded: mandatory high-water
   logging + `WithEventQueueLimit(n)` (§2.1, §2.4, §5.11).
 - **Q2.** Inline `Update` relies on goroutine-id capture via `runtime.Stack` header
@@ -789,23 +789,23 @@ the root) is precisely the anti-pattern G3 exists to kill.
   dropping the fast-path entirely (Update always enqueues; document that in-handler
   callers just mutate directly) loses only same-statement ordering. Keep the gid parse,
   or drop inline execution for purity?
-  — **Lector r1:** drop gid parsing; always enqueue `Update`; same-handler code mutates
+  — **Review r1:** drop gid parsing; always enqueue `Update`; same-handler code mutates
   directly — folded (§2.4, §3, §5.2).
 - **Q3.** Default task-pool size is a flat 16 (§2.1). Should it instead scale
   (`max(4, runtime.GOMAXPROCS(0))`), given tasks are typically IO-bound where GOMAXPROCS
   is the wrong signal — or is a documented flat default the more predictable golib
   choice?
-  — **Lector r1:** keep the flat 16 — predictable, and IO-bound work does not scale
+  — **Review r1:** keep the flat 16 — predictable, and IO-bound work does not scale
   cleanly with GOMAXPROCS. Unchanged.
 - **Q4.** Streaming is `TaskProgress` posted by the task itself via `TaskInfo(ctx)`
   (§2.8.3) rather than a first-class `App.GoStream`. Accept the convention-over-API
   call, or is a `yield func(any)` signature worth the second primitive for
   discoverability (widget authors in ADR-0007 will write this pattern often)?
-  — **Lector r1:** keep the `TaskProgress` convention for v1; `GoStream` can be sugar
+  — **Review r1:** keep the `TaskProgress` convention for v1; `GoStream` can be sugar
   later if widget code proves noisy. Unchanged.
 - **Q5.** `PanicRepanic` (restore terminal, then propagate) is the default panic policy
   (§2.1/§2.2) — crash loudly with the original stack, golib fail-loud. lazygit-class
   production apps may prefer `PanicReturn` to show their own error UI on the way out.
   Right default?
-  — **Lector r1:** `PanicRepanic` is the right default — restore-then-repanic gives
+  — **Review r1:** `PanicRepanic` is the right default — restore-then-repanic gives
   golib's fail-loud behavior without leaving raw mode behind. Unchanged.

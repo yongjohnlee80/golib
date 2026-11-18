@@ -4,8 +4,8 @@ package postgres
 // bound vectors through both paths that carry arguments (the pool and a
 // transaction), the three metrics' orders, and full-text matching and ranking
 // with weight classes and text-search configurations. They run wherever
-// TEST_PGURL points (golib-test.sh --target vm43 points it at a scratch
-// database on autodb-r3-pg, PostgreSQL 18 with pgvector) and skip without it.
+// TEST_PGURL points (a scratch database on PostgreSQL 18 with pgvector) and
+// skip without it.
 // Each test owns a schema of its own and drops it.
 
 import (

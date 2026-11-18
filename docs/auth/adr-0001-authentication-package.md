@@ -1,22 +1,22 @@
 # ADR-0001 — `golib/auth`: composable authentication
 
-- **Status:** **Accepted (rev 11)** (2026-08-22 — authored by jarvis; lector
-  design r1-r3 `change_requested` folded, r4 **approved**, and **accepted by
+- **Status:** **Accepted (rev 11)** (2026-08-22 — design review
+  r1-r3 `change_requested` folded, r4 **approved**, and **accepted by
   Johno 2026-08-21** — implementation in progress. **Rev 5 changed a mechanism
   mid-implementation**: §2.5 SSHSIG verification is delegated to
   `ssh-keygen -Y verify` instead of the hand-rolled parser, which makes the
-  client claim an identity. Lector r5 and r6 both `change_requested`, six
-  must-fixes total, all folded. Lector r7 **approved the SSH work in substance**
+  client claim an identity. Review r5 and r6 both `change_requested`, six
+  must-fixes total, all folded. Review r7 **approved the SSH work in substance**
   and raised five more against the newly added `Throttle`/`MemTracker`, folded in
   **rev 8**, the current text. Four were shipped bugs: cancellation did not reap
   descendants (r5); the post-`Run` group kill could signal an unrelated process
   group after pid reuse (r6); a locked attempt destroyed single-use credentials,
-  and eviction stopped enforcing its cap after 2038 (r7). Lector r8 closed the
+  and eviction stopped enforcing its cap after 2038 (r7). Review r8 closed the
   throttle work and raised five against §2.7/§2.8, folded in **rev 9**, the
   current text — including a factor's error text carrying a credential into the
   log, and an adapter whose bearer key did not compose with its own token
-  factor. Lector r9 raised two more — an incomplete safe-reason migration and an
-  outcome erased by `Any` — folded in rev 10. Lector r10 **approved the
+  factor. Review r9 raised two more — an incomplete safe-reason migration and an
+  outcome erased by `Any` — folded in rev 10. Review r10 **approved the
   production code** and gated release on one vacuous acceptance test, fixed in
   **rev 11**, the current text. See Review history. Lands on `auth-pkg`.)
 - **Date:** 2026-08-21
@@ -525,8 +525,8 @@ The counter store is a **minimal injected interface** whose operations
 seam now means the multi-replica case does not require an interface change
 later; shipping only the in-memory map would.
 
-**Implementation notes (2026-08-22, rev 8 — folding lector r7).** Rev 7 shipped
-`Throttle` + `MemTracker` and lector found five blockers in them. Each one
+**Implementation notes (2026-08-22, rev 8 — folding review r7).** Rev 7 shipped
+`Throttle` + `MemTracker` and the reviewer found five blockers in them. Each one
 changed the design, so they are recorded here rather than as a diff summary.
 
 **Every `Tracker` method takes a `context.Context` and returns an `error`
@@ -671,7 +671,7 @@ could not have caught this, which is why it did not.
 **That uniqueness check must compare the DETAIL, not the rendered line
 (r10 must-fix).** Rev 10 keyed it on the log line, which embeds a fresh random
 `auth attempt=<ID>` — so every entry was unique by construction and the
-duplicate assertion could never fire. Lector's control (two table entries on one
+duplicate assertion could never fire. The reviewer's control (two table entries on one
 sentinel) passed 20/20. It now reads `Attempt.Reasons` through `Observe`, and a
 nil table entry **fails** rather than being skipped. Both controls now fail as
 they must.
@@ -1071,24 +1071,24 @@ accepts) → `password` (other callers). `totp` is deferred entirely (§3).
 
 ## Review history
 
-- **r10 (2026-08-22, lector — `change_requested` on ONE test defect; production
+- **r10 (2026-08-22, review — `change_requested` on ONE test defect; production
   code approved).** Both r9 blockers and both notes confirmed closed. The gate
   was that `TestBuiltInReasonsAreDistinguishable` did not test what its name
   claimed: it keyed uniqueness on the rendered log line, which embeds a fresh
-  random attempt ID, so duplicate reasons always produced distinct keys. Lector's
+  random attempt ID, so duplicate reasons always produced distinct keys. The reviewer's
   control — two table entries pointing at the same sentinel — passed 20/20. The
   adjacent `if sentinel == nil { continue }` also silently accepted a lost
   sentinel. **This was the fourth vacuous assertion I shipped in this review
   cycle**, and the pattern was identical every time: the property was stated in
   prose and the test exercised something adjacent to it. Fixed by comparing
-  `Attempt.Reasons` through `Observe` and failing on nil, with both of Lector's
+  `Attempt.Reasons` through `Observe` and failing on nil, with both of the reviewer's
   controls now failing as they must. Amendments: the "fourteen sentinels" count
   was wrong (the table has eighteen) and is now omitted rather than maintained;
   and the claim that package prefixes make Reason collisions "unreachable" is
   corrected — they make an accidental cross-package collision unlikely, while the
   detail-uniqueness test is the real guard.
 
-- **r9 (2026-08-22, lector — `change_requested`; both must-fixes and both notes
+- **r9 (2026-08-22, review — `change_requested`; both must-fixes and both notes
   folded in rev 10).** All five r8 findings and the three notes were confirmed
   closed. Two audit-contract bugs remained, both reproducible through public
   APIs:
@@ -1109,7 +1109,7 @@ accepts) → `password` (other callers). `totp` is deferred entirely (§3).
   narrowed to the body and status, since the correlation header deliberately
   varies.
 
-- **r8 (2026-08-22, lector — `change_requested`; all five must-fixes and all
+- **r8 (2026-08-22, review — `change_requested`; all five must-fixes and all
   three notes folded in rev 9).** All five r7 throttle/tracker blockers were
   confirmed closed, along with the capability split, the 2038 fix, the bounded
   work and the negative-controlled timing test. The five new blockers were in
@@ -1138,7 +1138,7 @@ accepts) → `password` (other callers). `totp` is deferred entirely (§3).
   the "unforgeable context" claim is restated as a package-import trust boundary,
   since `WithIdentity` is exported on purpose.
 
-- **r7 (2026-08-22, lector — `change_requested`; all five must-fixes and both
+- **r7 (2026-08-22, review — `change_requested`; all five must-fixes and both
   notes folded in rev 8).** The r6 SSH work was **approved in substance**, as was
   running the full password verifier while locked. All five blockers were in the
   `Throttle`/`MemTracker` surface rev 7 added, and every one of them changed the
@@ -1169,7 +1169,7 @@ accepts) → `password` (other callers). `totp` is deferred entirely (§3).
   `NewOpenSSH` correctly refuses, which is what was failing the Windows test
   binary.
 
-- **r6 (2026-08-22, lector — `change_requested`; all three must-fixes and all
+- **r6 (2026-08-22, review — `change_requested`; all three must-fixes and all
   three notes folded in rev 7).** Rev 6 closed every r5 blocker, and
   `NewPureGo` rejecting an empty configured set was confirmed as the right
   fail-at-construction call. Three new blockers, all in the subprocess and
@@ -1181,7 +1181,7 @@ accepts) → `password` (other callers). `totp` is deferred entirely (§3).
      not hit *our* group — not that it could not hit anyone's. Removed. The
      `Cancel`-path kill is the safe one because the unreaped child still holds
      the pgid, and a clean verify spawns nothing to clean up anyway.
-  2. **The binary was validated as readable, not executable.** Lector
+  2. **The binary was validated as readable, not executable.** The reviewer
      reproduced a mode-0600 text file constructing successfully. Fixed via
      `exec.LookPath` for explicit paths too; a negative `VerifyTimeout` is now
      also a construction error.
@@ -1196,14 +1196,14 @@ accepts) → `password` (other callers). `totp` is deferred entirely (§3).
   non-`Z` timestamps on `TZ`, so both are in the trust base; and caller
   cancellation now reads differently from the configured timeout.
 
-- **r5 (2026-08-22, lector — `change_requested`; all three must-fixes and all
+- **r5 (2026-08-22, review — `change_requested`; all three must-fixes and all
   four should-fixes folded in rev 6).** The identity claim, the sentinel
   divergence, the dependency accounting and the `hiddeco/sshsig` rejection were
   all **approved** — and Argon2id is explicitly not reopened. The must-fixes were
   about the subprocess, not the design:
   1. **Cancellation leaked descendants — a live bug, reproduced.** `WaitDelay`
      closes pipes but kills nothing; `CommandContext` kills only the direct
-     child. Lector's repro: the timeout fixture returned in ~1.1s and `pgrep`
+     child. The reviewer's repro: the timeout fixture returned in ~1.1s and `pgrep`
      still showed its `sleep 30`. Fixed with an owned process group killed as a
      group, `WaitDelay` retained as the final I/O bound. The regression test now
      asserts the grandchild is **gone**, and fails on a surviving pid when the
@@ -1228,7 +1228,7 @@ accepts) → `password` (other callers). `totp` is deferred entirely (§3).
   make verifier *health* observable, which is claim-independent and enumerates
   nobody, so no dummy fork is added to disguise an outage.
 
-- **rev 5 (2026-08-22, jarvis — mechanism change).**
+- **rev 5 (2026-08-22 — mechanism change).**
   Rev 4 justified `x/crypto/ssh` partly on not hand-rolling a signature parser;
   implementation then found `x/crypto` ships **no `sshsig` package**, so the
   envelope parser was ours after all — recorded at the time as a correction, but
@@ -1248,7 +1248,7 @@ accepts) → `password` (other callers). `totp` is deferred entirely (§3).
   **§2.4's Argon2id decision stands** — Johno confirmed 2026-08-22 — and the
   dependency accounting in §2.3 is unchanged.
 
-- **r4 (2026-08-21, lector — `approved_with_amendments`; both applied in rev 4).**
+- **r4 (2026-08-21, review — `approved_with_amendments`; both applied in rev 4).**
   The r3 structural work was accepted: one coherent closed
   `Factor` → `Leaf`/`Node` → `Policy` graph with the invariants split by level.
   Two amendments: acceptance criteria 2c and 11 (and the cross-ADR summary) still
@@ -1258,7 +1258,7 @@ accepts) → `password` (other callers). `totp` is deferred entirely (§3).
   "each is a protocol surface plus dependencies" sentence, which belonged to the
   deferred-protocol list and had no plural antecedent where it sat.
 
-- **r3 (2026-08-21, lector — `change_requested`, folded in rev 3).**
+- **r3 (2026-08-21, review — `change_requested`, folded in rev 3).**
   **Must-fix 1: the type graph was incomplete** — rev 2 wrote
   `NewPolicy(root Node)` without ever defining `Node`, while `All`/`Any` still
   had the signature of the `Authenticator` interface rev 2 had just removed, so
@@ -1279,7 +1279,7 @@ accepts) → `password` (other callers). `totp` is deferred entirely (§3).
   `Policy`; "six method subpackages" corrected to five after the TOTP deferral;
   and the malformed deferred-`Attributes` paragraph repaired.
 
-- **r2 (2026-08-21, lector — `change_requested`, folded in rev 2).** The r1
+- **r2 (2026-08-21, review — `change_requested`, folded in rev 2).** The r1
   substance was accepted; these were contradictions I introduced. **Must-fix 1
   was a type contradiction:** rev 1 gave leaves `Kind()` *and* embedded an
   `Authenticator` returning `*Identity`, while the invariant demanded every
@@ -1292,7 +1292,7 @@ accepts) → `password` (other callers). `totp` is deferred entirely (§3).
   *computed* (`All` bears identity if **any** child does; `Any` only if **every**
   branch does) and `NewPolicy` validates the **finished tree**, which also makes
   `Any(mtls, All(ipallow, sshChallenge))` legal — I had feared rev 1 banned it,
-  and lector confirmed the nested form must be valid. **Must-fix 3:** the
+  and the reviewer confirmed the nested form must be valid. **Must-fix 3:** the
   validity interval is an intersection — **latest** `IssuedAt`, **minimum finite
   non-zero** `ExpiresAt`, zero meaning no bound — a static `ipallow` match
   contributes no expiry while a continuing finite assertion does, and a ticket's
@@ -1304,7 +1304,7 @@ accepts) → `password` (other callers). `totp` is deferred entirely (§3).
   (denies) separated from an empty or contextual-only policy (construction
   error).
 
-- **r1 (2026-08-21, lector — `change_requested`, folded in this revision).**
+- **r1 (2026-08-21, review — `change_requested`, folded in this revision).**
   **Must-fix 1:** rev 0 specified `All`/`Any` control flow but never how
   successful identities *combine*, so `All(password, totp)` could have merged two
   different people — §2.2.1 now requires subject agreement, at least one
@@ -1339,4 +1339,3 @@ accepts) → `password` (other callers). `totp` is deferred entirely (§3).
   `NewPolicy(Any(Leaf(ticket), Leaf(mtls), Leaf(sshChallenge)))`, optionally
   wrapped in `NewPolicy(All(Leaf(ipallow), Any(...)))` — IP optional and never
   identity-bearing.
-  Review doc: `$KB_ROOT/agents/lector/reviews/2026-08-21-golib-tui-web-auth-coupled-design-review.md`
