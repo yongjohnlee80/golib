@@ -129,3 +129,24 @@ func TestAnExitedCmdIsIdle(t *testing.T) {
 	}
 	waitActivityWin(t, h, term, "cmd exited", TerminalIdle)
 }
+
+// Windows PowerShell, AutoDoc's shell on Windows when pwsh is not installed, at its prompt is idle:
+// the job holds it alone. A program it starts (ping) is running, and idle again after Ctrl+C. A
+// cmdlet runs inside PowerShell's own process, so a cmdlet at work (Start-Sleep) reads idle, as a
+// Unix shell's builtin does: a known limit (pty's Activity).
+func TestPowerShellAtItsPromptIsIdleAndAProgramItStartsRunning(t *testing.T) {
+	term := NewTerminal(WithCommand("powershell.exe", "-NoLogo", "-NoProfile"))
+	h := widgettest.StartApp(t, term, 100, 12)
+	t.Cleanup(h.Stop)
+	h.OnLoop(func() {
+		if err := term.Start(); err != nil {
+			t.Fatal(err)
+		}
+	})
+	waitScreenWin(t, h, term, "PowerShell's prompt", func(s string) bool { return strings.Contains(s, "PS ") && strings.Contains(s, ">") })
+	waitActivityWin(t, h, term, "PowerShell at its prompt", TerminalIdle)
+	sendWin(t, h, term, "ping -n 30 127.0.0.1\r")
+	waitActivityWin(t, h, term, "ping running under PowerShell", TerminalRunning)
+	sendWin(t, h, term, "\x03")
+	waitActivityWin(t, h, term, "ping ended by Ctrl+C, PowerShell at its prompt", TerminalIdle)
+}
