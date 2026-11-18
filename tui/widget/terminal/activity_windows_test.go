@@ -94,6 +94,31 @@ func sendWin(t *testing.T, h *widgettest.Harness, term *Terminal, text string) {
 	}
 }
 
+// interruptWinUntilIdle sends Ctrl+C until the terminal is idle. A program the job already counts
+// may not yet have joined the console's Ctrl+C (measured: ping went on replying after one sent the
+// moment it was counted), so it is sent again, as a user would press it again.
+func interruptWinUntilIdle(t *testing.T, h *widgettest.Harness, term *Terminal, what string) {
+	t.Helper()
+	deadline := time.Now().Add(activityWait)
+	for {
+		sendWin(t, h, term, "\x03")
+		retry := time.Now().Add(2 * time.Second)
+		for time.Now().Before(retry) {
+			var got TerminalActivity
+			h.OnLoop(func() { got = term.Activity() })
+			if got == TerminalIdle {
+				return
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		if time.Now().After(deadline) {
+			var s string
+			h.OnLoop(func() { s = winText(term) })
+			t.Fatalf("%s: Ctrl+C never ended the program; the screen:\n%s", what, s)
+		}
+	}
+}
+
 // cmd.exe at its prompt is idle: the job holds it alone (the pseudo-console's host is not in the
 // job). A program it starts is running while it runs, and idle once it has ended. The mutants,
 // named here: the shell counted twice (idle read as running: the job's count compared with 0), and
@@ -103,8 +128,7 @@ func TestCmdAtItsPromptIsIdleAndAChildRunning(t *testing.T) {
 	waitActivityWin(t, h, term, "cmd at its prompt", TerminalIdle)
 	sendWin(t, h, term, "ping -n 30 127.0.0.1\r")
 	waitActivityWin(t, h, term, "ping running", TerminalRunning)
-	sendWin(t, h, term, "\x03")
-	waitActivityWin(t, h, term, "ping ended by Ctrl+C, cmd at its prompt", TerminalIdle)
+	interruptWinUntilIdle(t, h, term, "ping ended by Ctrl+C, cmd at its prompt")
 	sendWin(t, h, term, "ping -n 2 127.0.0.1\r")
 	waitActivityWin(t, h, term, "a short ping running", TerminalRunning)
 	waitActivityWin(t, h, term, "the short ping ended by itself", TerminalIdle)
@@ -147,6 +171,5 @@ func TestPowerShellAtItsPromptIsIdleAndAProgramItStartsRunning(t *testing.T) {
 	waitActivityWin(t, h, term, "PowerShell at its prompt", TerminalIdle)
 	sendWin(t, h, term, "ping -n 30 127.0.0.1\r")
 	waitActivityWin(t, h, term, "ping running under PowerShell", TerminalRunning)
-	sendWin(t, h, term, "\x03")
-	waitActivityWin(t, h, term, "ping ended by Ctrl+C, PowerShell at its prompt", TerminalIdle)
+	interruptWinUntilIdle(t, h, term, "ping ended by Ctrl+C, PowerShell at its prompt")
 }
