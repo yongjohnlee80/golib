@@ -17,7 +17,7 @@ import (
 // Model names an embedding model exactly: two models with the same fingerprint make the same
 // vectors.
 type Model struct {
-	Provider string // "ollama" | "openai"
+	Provider string // "ollama" | "openai" | "vertex"
 	Name     string
 	Digest   string // the model's content digest where the provider reports one; "" otherwise
 	Dims     int
@@ -282,6 +282,11 @@ func call(ctx context.Context, client *http.Client, method, url string, header h
 	if err != nil {
 		return err
 	}
+	return decode(method, url, resp, out)
+}
+
+// decode reads a 200's JSON answer into out, at most maxAnswer of it, and closes its body.
+func decode(method, url string, resp *http.Response, out any) error {
 	defer resp.Body.Close()
 	body := &io.LimitedReader{R: resp.Body, N: maxAnswer + 1}
 	if err := json.NewDecoder(body).Decode(out); err != nil {
@@ -300,22 +305,40 @@ var maxAnswer int64 = 64 << 20 // a var: a cell lowers it rather than send 64 Mi
 // send sends one JSON request and answers the response of a 200, its body for the caller to read
 // and close; any other status is an error quoting the start of the body, typed as call's are.
 func send(ctx context.Context, client *http.Client, method, url string, header http.Header, in any) (*http.Response, error) {
-	var body io.Reader
-	if in != nil {
-		b, err := json.Marshal(in)
-		if err != nil {
-			return nil, err
-		}
-		body = bytes.NewReader(b)
+	b, err := marshal(in)
+	if err != nil {
+		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, method, url, body)
+	resp, err := do(ctx, client, method, url, header, b)
+	if err != nil {
+		return nil, err
+	}
+	return status(method, url, resp, nil)
+}
+
+// marshal is a request's JSON body; nil for none.
+func marshal(in any) ([]byte, error) {
+	if in == nil {
+		return nil, nil
+	}
+	return json.Marshal(in)
+}
+
+// do sends one request with body (JSON; nil for none) and answers its response, whatever its
+// status. A request that never got one is ErrUnreachable, unless the caller gave up.
+func do(ctx context.Context, client *http.Client, method, url string, header http.Header, body []byte) (*http.Response, error) {
+	var r io.Reader
+	if body != nil {
+		r = bytes.NewReader(body)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, url, r)
 	if err != nil {
 		return nil, err
 	}
 	for k, v := range header {
 		req.Header[k] = v
 	}
-	if in != nil {
+	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
 	resp, err := client.Do(req)
@@ -325,24 +348,44 @@ func send(ctx context.Context, client *http.Client, method, url string, header h
 		}
 		return nil, fmt.Errorf("%w: %s %s: %w", ErrUnreachable, method, url, err)
 	}
-	if resp.StatusCode != http.StatusOK {
-		defer resp.Body.Close()
-		b, err := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
-		if err != nil {
-			b = nil
-		}
-		msg := fmt.Sprintf("embed: %s %s: %s: %s", method, url, resp.Status, strings.TrimSpace(string(b)))
-		switch resp.StatusCode {
-		case http.StatusBadRequest, http.StatusRequestEntityTooLarge, http.StatusUnprocessableEntity:
-			return nil, fmt.Errorf("%w: %s", ErrRejected, msg)
-		case http.StatusTooManyRequests:
-			return nil, fmt.Errorf("%w: %s", ErrRateLimited, msg)
-		case http.StatusUnauthorized, http.StatusForbidden:
-			return nil, fmt.Errorf("%w: %s", ErrUnauthorized, msg)
-		}
-		return nil, errors.New(msg)
-	}
 	return resp, nil
+}
+
+// maxStatusBody is how much of a failed response's body is read: enough for a provider's
+// structured error (Google's run to a few KB), of which maxErrorBody is quoted.
+const maxStatusBody = 64 << 10
+
+// status answers resp when it is a 200; any other status closes it and is an error quoting the
+// start of its body. typed, when not nil, may type the error first from the status and the body
+// (as much of it as was read); nil from it leaves the shared mapping.
+func status(method, url string, resp *http.Response, typed func(code int, body []byte, msg string) error) (*http.Response, error) {
+	if resp.StatusCode == http.StatusOK {
+		return resp, nil
+	}
+	defer resp.Body.Close()
+	b, err := io.ReadAll(io.LimitReader(resp.Body, maxStatusBody))
+	if err != nil {
+		b = nil
+	}
+	quoted := b
+	if len(quoted) > maxErrorBody {
+		quoted = quoted[:maxErrorBody]
+	}
+	msg := fmt.Sprintf("embed: %s %s: %s: %s", method, url, resp.Status, strings.TrimSpace(string(quoted)))
+	if typed != nil {
+		if err := typed(resp.StatusCode, b, msg); err != nil {
+			return nil, err
+		}
+	}
+	switch resp.StatusCode {
+	case http.StatusBadRequest, http.StatusRequestEntityTooLarge, http.StatusUnprocessableEntity:
+		return nil, fmt.Errorf("%w: %s", ErrRejected, msg)
+	case http.StatusTooManyRequests:
+		return nil, fmt.Errorf("%w: %s", ErrRateLimited, msg)
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return nil, fmt.Errorf("%w: %s", ErrUnauthorized, msg)
+	}
+	return nil, errors.New(msg)
 }
 
 // Models are the models a provider offers, by name, sorted: an Ollama server's installed ones,
