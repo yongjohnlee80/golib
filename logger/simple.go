@@ -8,7 +8,7 @@ import (
 // SimpleLogger is a basic CLI/stdlib logger. It writes each record to an
 // injectable writer (default: the process-standard logger), prefixed with the
 // severity and an optional context. It satisfies [Logger]. Construct with
-// [New]; the exported fields remain settable for monstercat-parity call sites.
+// [New]; the exported fields remain settable for existing call sites.
 type SimpleLogger struct {
 	// Context is attached to every record, e.g. a request id or component name.
 	Context any
@@ -18,8 +18,7 @@ type SimpleLogger struct {
 	// disables the filter. Severities outside the known six are never dropped.
 	MinLevel Severity
 
-	// BlockList suppresses specific severities outright (parity with
-	// monstercat's Standard logger).
+	// BlockList suppresses specific severities outright.
 	BlockList []Severity
 
 	// out is the record sink; nil means the global stdlib logger (log.Printf).
@@ -57,7 +56,7 @@ func New(opts ...Option) *SimpleLogger {
 }
 
 // NewLogger creates a [SimpleLogger] with the given context and no filtering.
-// Kept for monstercat-parity; [New] with options is the canonical constructor.
+// Kept for existing call sites; [New] with options is the canonical constructor.
 func NewLogger(ctx any) *SimpleLogger {
 	return &SimpleLogger{Context: ctx}
 }

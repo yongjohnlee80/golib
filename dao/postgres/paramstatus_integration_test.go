@@ -10,8 +10,8 @@ import (
 // Live: the captured set is the server's own. Every captured key agrees with
 // pgconn's private map (through its per-key lookup), the set carries the
 // parameters every PostgreSQL reports, and a later SET of a reported parameter
-// shows up in the snapshot. Requires TEST_PGURL (autodb-r3-pg scratch DB on
-// VM43 — never lm-omni-db).
+// shows up in the snapshot. Requires TEST_PGURL (a scratch
+// database, never a production one).
 func TestParamStatus_Live_CapturedSetIsTheServersReportedSet(t *testing.T) {
 	p := mustPin(t, openPG(t))
 	got := p.ReportedParameterStatuses()

@@ -74,7 +74,7 @@ func Bind[T any](body []byte, opts ...BindOption) (*Patch[T], error) {
 				delete(p.fields, name) // last-key-wins across a value->null collision
 				p.clear[name] = struct{}{}
 			case ExplicitClear:
-				delete(p.fields, name) // LM semantics: null => absent
+				delete(p.fields, name) // legacy semantics: null => absent
 				delete(p.clear, name)
 			}
 			continue
@@ -105,7 +105,7 @@ func Bind[T any](body []byte, opts ...BindOption) (*Patch[T], error) {
 // UnmarshalJSON lets a Patch[T] bind itself when it appears as a field of an
 // outer decoded type — a Patch[Inner] inside a struct, or inside another
 // Patch[Outer]'s T. It uses the default ClearOnNull mode: Go
-// gives UnmarshalJSON no options channel, so an LM-compat nested contract must
+// gives UnmarshalJSON no options channel, so a legacy-compat nested contract must
 // bind the inner type explicitly instead.
 func (p *Patch[T]) UnmarshalJSON(data []byte) error {
 	bound, err := Bind[T](data)

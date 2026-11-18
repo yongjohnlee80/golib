@@ -49,7 +49,7 @@ Two conclusions, and the second is the one that shapes this ADR:
 `Field.Column` — `resolve`, `column`, `writeCol`, the search-op column binding,
 `sortExpr` — runs at or after `New`. That is the seam this ADR uses.
 
-Prior art for the shape: LM's legacy DAL restated each column three times
+Prior art for the shape: the legacy DAL restated each column three times
 (enum / translator / scanner), which ADR-0003 already collapsed into one
 `Field`. This ADR finishes the job for the *expression* half — and `COALESCE`
 appears **324 times** in that legacy DAL, so the joined-column form is not a
@@ -341,7 +341,7 @@ construction" rule. It fires only on declarations that are already broken.
 
 ### 2.7 Not in v1 — deliberately
 
-- **`Lower`/`Upper`/`Concat`/`Cast`/aggregates.** LM's legacy DAL uses `UPPER(`
+- **`Lower`/`Upper`/`Concat`/`Cast`/aggregates.** The legacy DAL uses `UPPER(`
   58×, `LOWER(` 27×, `CONCAT` 27×, `SUM(` 55× — but overwhelmingly in
   *predicate* and *aggregate* position, which the DAO already owns (`Search`,
   `Count`, `WithPredicate`), not in a declared projection. Adding them now would

@@ -97,7 +97,7 @@ func (p *Patch[T]) Fields() []string {
 }
 
 // Empty reports whether the patch carries nothing to apply — no values AND no
-// clears (the LM emptiness lesson: a clear-only patch is not empty).
+// clears (the emptiness lesson: a clear-only patch is not empty).
 func (p *Patch[T]) Empty() bool { return len(p.fields) == 0 && len(p.clear) == 0 }
 
 // Err returns the sticky first mutator error (nil when clean).

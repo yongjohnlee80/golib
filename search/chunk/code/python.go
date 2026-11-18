@@ -151,8 +151,8 @@ func (p pyFile) block(from, to, indent int, crumb string) []unit {
 			u := unit{start: start, end: end, crumb: ucrumb, sig: oneLine(sig), tail: sig,
 				embed: joinNonEmpty(ucrumb, doc, decorators, sig)}
 			for m := lineOf(p.lines, colon) + 1; m <= last; m++ {
-				if lm := p.lines[m]; !lm.blank && (lm.code || lm.comment) && lm.indent == bodyIndent && m > lineOf(p.lines, colon)+1 {
-					u.cuts = append(u.cuts, lm.first)
+				if ln := p.lines[m]; !ln.blank && (ln.code || ln.comment) && ln.indent == bodyIndent && m > lineOf(p.lines, colon)+1 {
+					u.cuts = append(u.cuts, ln.first)
 				}
 			}
 			sigCopy := sig

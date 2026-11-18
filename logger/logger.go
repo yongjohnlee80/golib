@@ -3,8 +3,8 @@ package logger
 import "fmt"
 
 // Logger logs a payload at a severity. This is the surface the dao package emits
-// to. It is intentionally identical in shape to monstercat/golib/logger.Logger so
-// the two interoperate via a trivial adapter (see [Adapt]).
+// to. It has the common shape of a severity logger, so another logger of that
+// shape interoperates via a trivial adapter (see [Adapt]).
 type Logger interface {
 	Log(severity Severity, payload any)
 }

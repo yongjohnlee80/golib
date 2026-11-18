@@ -77,7 +77,7 @@ func (o Op) whereCapable() bool {
 type QueryInfo struct {
 	Op    Op
 	Table string // the schema's table
-	Conn  string // DataConn name, e.g. "postgres-gold"
+	Conn  string // DataConn name, e.g. "postgres-billing"
 	SQL   string // set for BeforeExec / AfterExec
 	Args  []any  // ditto
 }

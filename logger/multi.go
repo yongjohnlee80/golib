@@ -1,7 +1,6 @@
 package logger
 
-// Multi forwards each record to every wrapped [Logger] (parity with monstercat's
-// Multi). A nil entry is skipped.
+// Multi forwards each record to every wrapped [Logger]. A nil entry is skipped.
 type Multi struct {
 	Loggers []Logger
 }

@@ -307,7 +307,7 @@ func Begin(ctx context.Context, opts ...TxOption) *Transaction {
 //
 // Writing to a second database requires declaring the span:
 //
-//	err := dao.RunTx(ctx, fn, dao.Spanning(lmConn, goldConn), dao.TwoPhase())
+//	err := dao.RunTx(ctx, fn, dao.Spanning(mainConn, billingConn), dao.TwoPhase())
 //
 // A mis-constructed transaction (see [Spanning], [TwoPhase]) returns its error
 // without calling fn at all.

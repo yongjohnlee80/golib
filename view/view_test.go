@@ -186,7 +186,7 @@ func TestLoad_Testdata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	doc, err := v.Parse([]byte(`{"entity_id":"trk_01","track":"Alone","label_title":"Monstercat","bpm":142,"music_key":"F minor","isrc":"US1234567890","release_date":"2024-05-01","lyric":"Say \"hi\"\nagain"}`))
+	doc, err := v.Parse([]byte(`{"entity_id":"trk_01","track":"Alone","label_title":"Example Records","bpm":142,"music_key":"F minor","isrc":"US1234567890","release_date":"2024-05-01","lyric":"Say \"hi\"\nagain"}`))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -218,7 +218,7 @@ pass none to use the schema default set. A column whose `Join` trigger isn't
 selected is neither joined nor scanned.
 
 ```go
-a, err := artists.DAO().With(ArtistURI, "monstercat").Get() // narrow, no join
+a, err := artists.DAO().With(ArtistURI, "example-artist").Get() // narrow, no join
 
 list, err := artists.DAO().
     Search("name:liquid public:true").
@@ -484,7 +484,7 @@ and a second one fails with `ErrUnknownConnection` rather than silently
 becoming a non-atomic cross-database commit:
 
 ```go
-err = dao.RunTx(ctx, fn, dao.Spanning(lmConn, goldConn))
+err = dao.RunTx(ctx, fn, dao.Spanning(mainConn, billingConn))
 ```
 
 Across multiple `DataConn`s, commit happens in deterministic touch order; a
@@ -810,8 +810,8 @@ artists := dao.New[...](conn, dao.WithLogger(log), dao.Debug(true), ...)
 - `Debug(true)` → each statement (and each batch chunk) logs `{dao, sql, args}`
   at `logger.SeverityDebug`. Silence one call with `SkipHooks("dao.log")`.
 
-Uses golib's [`logger`](../logger/README.md) interface (shape-identical to
-`monstercat/golib/logger`); bridge any external logger with `logger.Adapt`.
+Uses golib's [`logger`](../logger/README.md) interface (the common
+`Log(severity, payload)` shape); bridge any external logger with `logger.Adapt`.
 
 ## Errors
 

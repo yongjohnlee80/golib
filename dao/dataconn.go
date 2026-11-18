@@ -44,7 +44,7 @@ type DataConn interface {
 	Begin(ctx context.Context) (TxConn, error)
 
 	// Name identifies the connection for transaction-context keying and logs,
-	// e.g. "postgres" or "postgres-gold". It is the transaction layer's identity
+	// e.g. "postgres" or "postgres-billing". It is the transaction layer's identity
 	// for a logical database and MUST be:
 	//
 	//   - stable for the connection's lifetime;

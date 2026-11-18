@@ -45,26 +45,26 @@ Three concrete costs:
    could have derived. That is the [[golib]] "no dead surface" and "no
    positional config args" rules failing at the same call.
 2. **The list can be wrong, and only execution says so.** Pass the wrong pool
-   (a second, differently-named connection; a mock; the Gold pool instead of
-   the LM one) and every statement fails with `ErrUnknownConnection` at run
+   (a second, differently-named connection; a mock; the billing pool instead of
+   the main one) and every statement fails with `ErrUnknownConnection` at run
    time. The schema knew the right answer the whole time.
 3. **`Transaction` is coupled to `DataConn` for the wrong reason.** It keeps a
    `conns map[string]DataConn` registry purely so `executorFor(name)` can look
    a connection back up by string — a name→conn indirection that exists only
    because the conn arrived from the caller instead of from the participant.
 
-**Prior art (LM `pkg/transaction`, which ADR-0005 deliberately followed) got
+**Prior art (an earlier `pkg/transaction`, which ADR-0005 deliberately followed) got
 this part right.** `transaction.Tx(fn)` takes **no connections**:
 `transaction.New()` starts with an empty `Contexts` map, and each participant
 supplies its own database at first touch —
 `SqlxConnProvider.UseWithError(t)` calls
 `GetSqlxTransactionContext(s.DB, t, s.contextName)` with the `*sqlx.DB` the
-provider already holds. LM's `Transaction` never holds a connection registry;
+provider already holds. The prior art's `Transaction` never holds a connection registry;
 it holds `map[string]Context` and knows only `Commit()`/`Rollback()`. golib
-inherited LM's *lazy per-connection BEGIN* but replaced its
+inherited the prior art's *lazy per-connection BEGIN* but replaced its
 participant-supplies-the-conn model with a caller-supplied list — keeping the
 ceremony without the decoupling. This ADR takes the rest of the shape.
-Everything golib *fixed* about LM (F1–F4) stays fixed: LM's `.Use(tx)`
+Everything golib *fixed* about the prior art (F1–F4) stays fixed: the prior art's `.Use(tx)`
 per-call-site bind, its swallowed commit errors and its map-order commit are
 not coming back.
 
@@ -235,14 +235,14 @@ err = dao.RunTx(ctx, func(tx *dao.Transaction) error {
 	if err := labels.On(tx).With(LabelID, id).Set(LabelName, n).Update(); err != nil {
 		return err
 	}
-	return goldLabels.On(tx).With(GoldLabelID, id).Set(GoldLabelName, n).Update()
-}, dao.Spanning(lmConn, goldConn), dao.TwoPhase())
+	return billingLabels.On(tx).With(BillingLabelID, id).Set(BillingLabelName, n).Update()
+}, dao.Spanning(mainConn, billingConn), dao.TwoPhase())
 ```
 
 An options tail rather than `conns ...DataConn`: a bare connection list is a
 positional config argument that says nothing about what the connections *mean*
 (participants? an allowlist? pre-`BEGIN`?), and it cannot express the knobs
-that already exist (`TwoPhase`) or the ones LM proves callers want next
+that already exist (`TwoPhase`) or the ones the prior art proves callers want next
 (`NewSnapshot`'s read-only `REPEATABLE READ` — golib has no equivalent, and an
 `Isolation`/`ReadOnly` option is the obvious home for it). Functional options
 are the house idiom for exactly this.
@@ -310,7 +310,7 @@ gains the invariant the layer has always relied on:
 
 ```go
 // Name identifies the connection for transaction-context keying and logs,
-// e.g. "postgres" or "postgres-gold". It is the transaction layer's identity
+// e.g. "postgres" or "postgres-billing". It is the transaction layer's identity
 // for a logical database and MUST be:
 //
 //   - stable for the connection's lifetime;
@@ -563,7 +563,7 @@ decisions, not questions:
    the third site is what stops a no-touch manual transaction reporting
    success.
 4. **`(*Transaction).TwoPhase()` is removed outright**, no deprecated alias.
-5. **Exported raw join/exec and an LM-style `MustTx` stay out of scope** —
+5. **Exported raw join/exec and a legacy-style `MustTx` stay out of scope** —
    neither has a caller or an agreed contract today.
 
 ## Review history

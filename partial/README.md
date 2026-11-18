@@ -93,7 +93,7 @@ full, err := p.Data()                                 // the whole T from value-
 - **`ClearOnNull`** (default) — a JSON `null` clears. The ecosystem-natural
   PATCH reading (RFC 7386), and the fix for the footgun where a client `null`
   silently no-ops.
-- **`ExplicitClear`** (LM-compat) — `null` means *absent*; clears ride a
+- **`ExplicitClear`** (legacy-compat) — `null` means *absent*; clears ride a
   reserved `"$clear": ["field", ...]` array. Select it to keep a wire contract
   byte-compatible with a Label-Manager-style client:
 

@@ -19,7 +19,7 @@ func TestAdapt(t *testing.T) {
 }
 
 // extSeverity / extLogger stand in for an external logger with its OWN distinct
-// Severity string type (e.g. monstercat/golib/logger). The point of this test is
+// Severity string type. The point of this test is
 // that golib bridges to it via Adapt without importing it, and the string cast is
 // lossless because the severity values are identical.
 type extSeverity string

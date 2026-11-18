@@ -6,11 +6,11 @@
 //
 // # The interface
 //
-// [Logger] is intentionally shape-identical to monstercat/golib/logger.Logger:
+// [Logger] has the common shape of a severity logger:
 //
 //	Log(severity Severity, payload any)
 //
-// [Severity] is a string with the same six values monstercat and ddex-sftp use
+// [Severity] is a string with the same six values such loggers and ddex-sftp use
 // (Debug, Info, Notice, Warning, Error, Critical), so log records bridge between
 // the two vocabularies losslessly.
 //
@@ -24,11 +24,11 @@
 //
 // # Bridging an external logger
 //
-// golib never imports monstercat. [Adapt] turns a plain function into a [Logger],
+// golib never imports the external logger. [Adapt] turns a plain function into a [Logger],
 // so a consumer that imports both packages can bridge its logger in three lines:
 //
-//	func bridge(l mclog.Logger) logger.Logger {
-//		return logger.Adapt(func(s logger.Severity, p any) { l.Log(mclog.Severity(s), p) })
+//	func bridge(l extlog.Logger) logger.Logger {
+//		return logger.Adapt(func(s logger.Severity, p any) { l.Log(extlog.Severity(s), p) })
 //	}
 //
 // # Level helpers

@@ -4,7 +4,7 @@ import "fmt"
 
 // Contextual wraps a [Logger] and attaches a fixed context to every record, so
 // dao logs can carry {dao, request-id, ...} without the call site repeating it
-// (parity with ddex-sftp's Wrapper and monstercat's Contextual).
+// (parity with ddex-sftp's Wrapper).
 type Contextual struct {
 	Logger
 	// Context is rendered alongside each payload.

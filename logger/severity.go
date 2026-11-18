@@ -5,8 +5,8 @@ import (
 	"strings"
 )
 
-// Severity classifies a log record. The values match monstercat/golib/logger.Severity
-// and ddex-sftp's logger, so records bridge between them losslessly.
+// Severity classifies a log record. The values are the six common to severity
+// loggers, ddex-sftp's included, so records bridge between them losslessly.
 type Severity string
 
 const (
@@ -69,8 +69,7 @@ func ParseSeverity(s string) (Severity, error) {
 	return "", fmt.Errorf("logger: unknown severity %q: want debug, info, notice, warning, error or critical", s)
 }
 
-// InList reports whether needle is present in haystack (parity with
-// monstercat's helper of the same name).
+// InList reports whether needle is present in haystack.
 func InList(haystack []Severity, needle Severity) bool {
 	for _, s := range haystack {
 		if s == needle {

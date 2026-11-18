@@ -37,11 +37,11 @@ package's #1 capability gap (§2.2.1): every PATCH-shaped update must be
 hand-rolled per call site — build a values map, conditionally add entries,
 remember which nils mean "clear" and which mean "wasn't sent".
 
-The prior art this package rewrote (Label Manager's DAL) had full machinery
+The prior art this package rewrote (an earlier DAL) had full machinery
 here, and its shape is both the proof of need and the catalogue of mistakes
 to avoid:
 
-- **Value-time sentinels.** LM passed `postgres.OmmitedValue{}` /
+- **Value-time sentinels.** The prior art passed `postgres.OmmitedValue{}` /
   `postgres.ClearedValue{Value: …}` *as values* inside `map[string]any` rules
   maps; `Updater.Set` type-switched on them at write time
   (`pkg/postgres/updater.go:114-136`). It worked — overrides resolved
@@ -88,7 +88,7 @@ preserved:
 
 - **Empty update is a no-op, not an error.** `Update()` returns `nil` when
   nothing is staged — a partial payload can legitimately reduce to zero set
-  columns (LM learned this the hard way; its `Updater.Update` grew the same
+  columns (the prior art learned this the hard way; its `Updater.Update` grew the same
   guard).
 - **Unknown/read-only fields fail loudly on the developer surface.**
   `Set` stages `ErrUnknownField` / `ErrReadOnlyField` immediately
@@ -103,10 +103,10 @@ preserved:
   next to everything else the column declares. NOT NULL columns can declare a
   clear sentinel. Go-type nilability never implies clearability.
 - **G3 — Wire-safe by default.** A clear against a non-clearable column
-  downgrades to a skip (LM's proven semantics); a strict mode turns it into
+  downgrades to a skip (the prior art's proven semantics); a strict mode turns it into
   an error for teams that want loud failures.
 - **G4 — Order-independent resolution.** Rules are authoritative for their
-  field regardless of the order of `Set`/`SetMap`/`SetRules` calls — LM's
+  field regardless of the order of `Set`/`SetMap`/`SetRules` calls — the prior art's
   override-reconciliation lesson, kept without its re-run machinery.
 - **G5 — Zero per-entity code.** Field→column translation comes from the
   `Schema`'s existing `Field` declarations; a PATCH handler wires a rules map
@@ -145,7 +145,7 @@ package dao
 // the field, or clear it. The zero Rule is Skip — a rules map that doesn't
 // mention a field and one that maps it to the zero Rule mean the same thing.
 // Construct via Write/Skip/Clear; the kind is not exported so the vocabulary
-// stays closed (no sentinel-value pattern — the LM lesson, §1.1).
+// stays closed (no sentinel-value pattern — the prior art's lesson, §1.1).
 type Rule struct {
 	kind  ruleKind
 	value any
@@ -228,7 +228,7 @@ never boot.
 | not clearable (default) | **downgrade to Skip** — the column is left alone |
 | not clearable + `StrictClears()` | an **error rule** for the field; the verb returns `ErrNotClearable` and executes nothing — **iff it is still the field's final rule** (§2.3) |
 
-The downgrade default is LM's proven wire semantics (`ResolveClears`,
+The downgrade default is the prior art's proven wire semantics (`ResolveClears`,
 §1.1): a PATCH listing a field the entity doesn't clear produces no write and
 no error. Request-shape validation ("is clearing this field even a thing?")
 belongs at bind time in `golib/partial`, not in the engine. The strict mode
@@ -320,7 +320,7 @@ is order-independent by construction: `Set(f, v).SetRules(m)` and
 `SetRules(m).Set(f, v)` produce identical SQL when `m` carries a rule for
 `f` (the rule wins) — and under `StrictClears`,
 `SetRules({f: Clear()}).SetRules({f: Skip()})` is exactly `Skip` (no error),
-while `SetRules({f: Clear()})` alone errors. This keeps LM's override-wins
+while `SetRules({f: Clear()})` alone errors. This keeps the prior art's override-wins
 guarantee (`SetOverrides`/`Set` reconciliation,
 `pkg/postgres/updater.go:96-136`) without its re-run machinery. `orderedSet`
 gains the trivial `del`.
@@ -348,7 +348,7 @@ wire-derived — built from a patch whose field names crossed an HTTP boundary
 field, or carrying a field that simply isn't a column of this entity, is
 normal traffic, not a server fault; rejecting request-shape problems is
 bind-time validation in `golib/partial`, against the model type — not the
-engine's job. This mirrors LM's "partial payloads ignore unknown keys on the
+engine's job. This mirrors the prior art's "partial payloads ignore unknown keys on the
 set path" and is documented loudly on the method.
 
 (A developer who wants strict keys with rules semantics composes them from
@@ -368,7 +368,7 @@ code** — it keeps its direct semantics and does not consult `Clearable`:
   `ErrNotNull` — as it always has.
 
 Rules-driven `Clear()` is **request-derived intent** and always goes through
-the clearability authority (§2.2). Same split LM ran: hand-written
+the clearability authority (§2.2). Same split the prior art ran: hand-written
 `ClearUPC()` called `Set(col, nil)` directly, while wire `$clear` resolved
 via `releaseClearableColumns`. Since no existing schema declares `Clearable`
 or `ClearValue`, no existing `Clear()` call changes behavior.
@@ -403,7 +403,7 @@ func ApplyRules[R any, C ~string, ID any, T any](
    a rename hook — `golib-partial-0001`'s decision. Either way, `SetRules`'s
    lenient key handling (§2.4) makes stray wire fields safe.
 
-This is what collapses LM's per-entity cost center (~50 switches, ~10
+This is what collapses the prior art's per-entity cost center (~50 switches, ~10
 clearable maps, payload factories) to zero: field→column comes from
 `Fields(...)`, clearability from the `Field` declaration, translation from
 a type cast.
@@ -454,7 +454,7 @@ existing call site.
 the audit's #1 dao gap closes. Clearability is schema data next to the
 column it governs, honest about NOT NULL (sentinels declared, not
 discovered in production). The rules vocabulary is typed and closed; the
-LM sentinel-value and per-entity-switch failure modes are structurally
+The prior art's sentinel-value and per-entity-switch failure modes are structurally
 impossible. `golib-partial-0001` gets a stable, minimal target.
 
 **Negative / costs.** `DAO` (an interface golib owns but consumers may have
@@ -473,16 +473,16 @@ criterion 8).
 
 ## 4. Alternatives considered
 
-- **LM's value-time sentinels** (`OmittedValue`/`ClearedValue` passed as map
+- **The prior art's value-time sentinels** (`OmittedValue`/`ClearedValue` passed as map
   values, type-switched at write). Proven, but the semantics hide in untyped
   values — invisible to the reader and the type system, and the pattern is
   what demanded per-entity translation methods. Rejected for a closed, typed
   `Rule`.
-- **Per-entity rules methods** (LM's `SetOverrideRules` switches + clearable
+- **Per-entity rules methods** (the prior art's `SetOverrideRules` switches + clearable
   maps). The measured cost center (§1.1). Rejected: the `Schema` already owns
   field→column and now owns clearability.
 - **Clearability inferred from Go nilability** (pointer field ⇒ clearable).
-  Explicitly rejected by LM's own docs after real bugs — nilability is a
+  Explicitly rejected by the prior art's own docs after real bugs — nilability is a
   scanning concern, clearing is a business decision; NOT NULL sentinel
   columns break the inference in both directions. Kept as a declared flag.
 - **Hooks as the rules channel** (a `BeforeBuild` hook staging via
@@ -492,7 +492,7 @@ criterion 8).
   still observe/augment the statement after rules resolve (the two layers
   compose: rules shape the SET, a tenant hook still scopes the WHERE).
 - **Strict-by-default on unclearable clears.** Honest but hostile at the
-  boundary that actually produces clears (the wire): LM's downgrade exists
+  boundary that actually produces clears (the wire): the prior art's downgrade exists
   because PATCH traffic legitimately mentions fields an entity doesn't
   clear. Default stays downgrade; `StrictClears` is the opt-in.
 - **`$clear`/null parsing in dao.** Would drag wire semantics, JSON, and

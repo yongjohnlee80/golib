@@ -43,7 +43,7 @@ func Open(ctx context.Context, dsn string, opts ...Option) (dao.DataConn, error)
 	return OpenNamed(ctx, dao.DialectPostgres, dsn, opts...)
 }
 
-// OpenNamed opens a dao.DataConn with an explicit name (e.g. "postgres-gold") so a
+// OpenNamed opens a dao.DataConn with an explicit name (e.g. "postgres-billing") so a
 // transaction can hold one tx per database. The name is what dao keys
 // transaction contexts and logs on.
 func OpenNamed(ctx context.Context, name, dsn string, opts ...Option) (dao.DataConn, error) {

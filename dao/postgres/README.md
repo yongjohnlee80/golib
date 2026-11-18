@@ -23,7 +23,7 @@ artists := BuildArtistSchema(conn, log) // conn is a dao.DataConn
 
 ```go
 postgres.Open(ctx, dsn, opts...)              // DataConn named "postgres"
-postgres.OpenNamed(ctx, "postgres-gold", dsn) // explicit name (for multi-DB transactions)
+postgres.OpenNamed(ctx, "postgres-billing", dsn) // explicit name (for multi-DB transactions)
 ```
 
 Pool options map onto the pgx pool config:

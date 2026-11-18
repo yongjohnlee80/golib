@@ -10,7 +10,7 @@
 // effective JSON name (from a cached per-T plan), validates at bind time, and
 // primes one typed decode. What "clear" looks like on the wire is a declared
 // ClearMode: ClearOnNull (default — a JSON null clears) or ExplicitClear
-// (LM-compat — null is absent, clears ride a reserved "$clear" array).
+// (legacy-compat — null is absent, clears ride a reserved "$clear" array).
 //
 // Server code mutates the patch with Set/Clear/Remove/Only (last mutation
 // wins over a clear; unknown field names are loud). Rules projects the patch
