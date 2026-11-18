@@ -5,7 +5,9 @@ package pty
 // started, running or stopped, that ending the terminal would end too), or unknown (the system
 // gives no honest answer, and a caller that would lose work treats it as running).
 //
-// Two known limits. A program that execs another (a shell's exec vim) is that program, alone:
+// Three known limits. Work a shell does in its own process (a builtin: a loop, read; a
+// PowerShell cmdlet: Start-Sleep) is that shell alone: idle, since nothing outside it is alive for
+// any system to see. A program that execs another (a shell's exec vim) is that program, alone:
 // idle. A program with a child that never ends by design (a shell's prompt helper, an agent it
 // started) is always running, so a caller asks before every close: the safe side.
 type Activity uint8
