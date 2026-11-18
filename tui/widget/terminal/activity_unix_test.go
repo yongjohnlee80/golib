@@ -98,8 +98,10 @@ func TestAShellAtItsPromptIsIdleAndAForegroundProgramRunning(t *testing.T) {
 }
 
 // A job in the background, the shell back at its prompt, is running: the foreground test sees the
-// shell alone, and the job is the shell's child; idle once the job is killed. The mutant, named
-// here: the children look left out (the background job reads idle).
+// shell alone, and the job is the shell's child; idle once the job is killed, before the shell has
+// reaped it (a zombie child is not live). The mutants, named here: the children look left out (the
+// background job reads idle), and a zombie counted as live (the killed job reads running until the
+// shell waits for it).
 func TestAJobInTheBackgroundIsRunning(t *testing.T) {
 	t.Parallel()
 	h, term := shellOn(t)
