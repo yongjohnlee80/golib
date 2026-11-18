@@ -4,7 +4,8 @@
 //
 // # Architecture and Pipeline Components
 //
-//   - [Ranker]: Interface for cross-encoder scoring backends (such as Text Embeddings Inference / TEI).
+//   - [Ranker]: Interface for cross-encoder scoring backends: Text Embeddings Inference ([NewTEI]),
+//     a Cohere-style rerank API ([NewRerankAPI]) and the Vertex AI Ranking API ([NewVertex]).
 //   - [NewSearcher]: Decorator wrapping an underlying [search.Searcher]. When a ranker is in use,
 //     it requests max(window, limit) candidates from the inner search and scores up to window candidates
 //     with the ranker via [TextSource]; any remaining tail follows in original recall order, though
