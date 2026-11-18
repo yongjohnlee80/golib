@@ -860,8 +860,15 @@ func (t *TerminalTabs) keepKeys() {
 // WindowOperation.
 func (t *TerminalTabs) SetWindowButtons(on bool) { t.strip.SetWindowButtons(on) }
 
-// SetOnWindowButton is what a press on a window control does (SetWindowButtons): fn with its
-// operation, WindowMinimize, WindowMaximize or WindowClose. nil does nothing.
+// SetOnWindowButton is what a press on a window control does (SetWindowButtons): the active tab's
+// terminal keeps the keyboard (keepKeys: the press's click-to-focus would leave it on the tabs,
+// where typed keys reach no terminal), then fn with its operation, WindowMinimize, WindowMaximize
+// or WindowClose. nil does nothing more.
 func (t *TerminalTabs) SetOnWindowButton(fn func(core.WindowOperation)) {
-	t.strip.SetOnWindowButton(fn)
+	t.strip.SetOnWindowButton(func(op core.WindowOperation) {
+		t.keepKeys()
+		if fn != nil {
+			fn(op)
+		}
+	})
 }
