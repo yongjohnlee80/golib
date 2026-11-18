@@ -26,3 +26,6 @@ func (*PTY) Signal(os.Signal) error    { return errs.ErrUnsupported }
 func (*PTY) Pid() int                  { return 0 }
 func (*PTY) Wait() (int, error)        { return -1, errs.ErrUnsupported }
 func (*PTY) Close() error              { return nil }
+
+// Activity is unknown on this platform, where no PTY runs.
+func (*PTY) Activity() Activity { return ActivityUnknown }
