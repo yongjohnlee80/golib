@@ -93,8 +93,33 @@ func TestAShellAtItsPromptIsIdleAndAForegroundProgramRunning(t *testing.T) {
 	waitActivity(t, h, term, "the shell at its prompt", TerminalIdle)
 	send(t, h, term, "sleep 30\n")
 	waitActivity(t, h, term, "sleep in the foreground", TerminalRunning)
-	send(t, h, term, "\x03")
-	waitActivity(t, h, term, "the sleep ended by Ctrl+C, the shell at its prompt", TerminalIdle)
+	interruptUntilIdle(t, h, term)
+}
+
+// interruptUntilIdle sends Ctrl+C until the shell is idle at its prompt. A Ctrl+C sent in the
+// moment between the shell's fork and its handing the child the terminal (tcsetpgrp) reaches the
+// shell's own group, which an interactive shell ignores, and the child runs on: so it is sent
+// again, as a user would press it again. One reaching the child once it holds the terminal ends it.
+func interruptUntilIdle(t *testing.T, h *widgettest.Harness, term *Terminal) {
+	t.Helper()
+	deadline := time.Now().Add(activityWait)
+	for {
+		send(t, h, term, "\x03")
+		retry := time.Now().Add(time.Second)
+		for time.Now().Before(retry) {
+			var got TerminalActivity
+			h.OnLoop(func() { got = term.Activity() })
+			if got == TerminalIdle {
+				return
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		if time.Now().After(deadline) {
+			var s string
+			h.OnLoop(func() { s = vtText(term) })
+			t.Fatalf("Ctrl+C never ended the foreground program; the screen:\n%s", s)
+		}
+	}
 }
 
 // A job in the background, the shell back at its prompt, is running: the foreground test sees the
