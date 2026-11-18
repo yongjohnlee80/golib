@@ -525,3 +525,43 @@ func TestATabMarkedNoCloseHasNoCloseMark(t *testing.T) {
 		}
 	})
 }
+
+// TestATabsOwnCrossIsNoCloseMark: whether a tab has a × to press is a fact about the tab, never its
+// text. A tab that may not close (NoClose) whose own label begins with "×" (a title a program set,
+// say) is chosen by a press on its first cells, and no close is asked; a closable tab whose label
+// begins with "×" closes from the real mark's cells alone, its own "×" choosing it. The mutant,
+// named here: closeShown reading the label alone (the NoClose tab closed by its own text).
+func TestATabsOwnCrossIsNoCloseMark(t *testing.T) {
+	strip := NewTabStrip()
+	strip.SetTabs([]StripTab{{ID: "a", Label: "× evil", NoClose: true}, {ID: "b", Label: "× twin"}})
+	strip.SetActive("b")
+	var closed, chosen []string
+	strip.SetOnClose(func(id string) { closed = append(closed, id) })
+	strip.SetOnSelect(func(id string) { chosen = append(chosen, id) })
+	h := widgettest.StartApp(t, strip, 60, 1)
+	defer h.Stop()
+	h.Sync()
+	if got := h.TB.String(); !strings.Contains(got, " × evil ") || !strings.Contains(got, " × × twin ") {
+		t.Fatalf("the strip: %q; want a's own text alone and b's mark before its own ×", got)
+	}
+	var spans []TabSpan
+	h.OnLoop(func() { spans = strip.TabSpans() })
+	press := func(x int) {
+		t.Helper()
+		if err := h.TB.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: x, Y: 0}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	press(spans[0].X + 1) // a's own "×"
+	if !widgettest.Wait(h, func() bool { return len(chosen) == 1 }) || chosen[0] != "a" || len(closed) != 0 {
+		t.Fatalf("a press on a NoClose tab's own ×: chosen %v, closed %v; want a chosen, nothing closed", chosen, closed)
+	}
+	press(spans[1].X + 3) // b's own "×", after its mark
+	if !widgettest.Wait(h, func() bool { return len(chosen) == 2 }) || chosen[1] != "b" || len(closed) != 0 {
+		t.Fatalf("a press on a closable tab's own ×: chosen %v, closed %v; want b chosen, nothing closed", chosen, closed)
+	}
+	press(spans[1].X + 1) // b's mark
+	if !widgettest.Wait(h, func() bool { return len(closed) == 1 }) || closed[0] != "b" || len(chosen) != 2 {
+		t.Fatalf("a press on b's mark: chosen %v, closed %v; want b closed, no choice", chosen, closed)
+	}
+}
