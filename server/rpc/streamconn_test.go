@@ -326,6 +326,9 @@ func TestAPumpedWriteTheOSHasWhenCloseComesKeepsItsAnswer(t *testing.T) {
 		_ = conn.Close()
 		start := time.Now()
 		if answered {
+			// the OS answers a moment after the Close: by then a Write that gave up on the Close
+			// alone has returned net.ErrClosed, so the cell fails on it every time
+			time.Sleep(100 * time.Millisecond)
 			close(w.release)
 		}
 		select {
