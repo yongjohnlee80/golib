@@ -275,6 +275,75 @@ func TestAClosedStreamConnServesNothing(t *testing.T) {
 	})
 }
 
+// heldWriter is a writer whose Write takes the bytes, says so on took, and returns only once release
+// is closed: a write the OS has and hasn't answered yet. Its Close releases nothing.
+type heldWriter struct {
+	took    chan struct{}
+	release chan struct{}
+}
+
+func (w *heldWriter) Write(b []byte) (int, error) {
+	close(w.took)
+	<-w.release
+	return len(b), nil
+}
+
+func (w *heldWriter) Close() error { return nil }
+
+// On the goroutine path, a write the OS already has when Close comes returns the OS's answer: the
+// whole frame, not net.ErrClosed. A peer that reads the frame, answers it and closes would otherwise
+// make a delivered write look lost (a plugin host's plugin.close, reported as the link's EOF). A
+// write the OS keeps past the grace still returns, with net.ErrClosed.
+func TestAPumpedWriteTheOSHasWhenCloseComesKeepsItsAnswer(t *testing.T) {
+	for _, answered := range []bool{true, false} {
+		r, peerW, err := os.Pipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = peerW.Close(); _ = r.Close() })
+		w := &heldWriter{took: make(chan struct{}), release: make(chan struct{})}
+		t.Cleanup(func() {
+			select {
+			case <-w.release:
+			default:
+				close(w.release)
+			}
+		})
+		conn := StreamConn(hiddenR{r}, w)
+		if err := conn.SetWriteDeadline(later()); err != nil {
+			t.Fatal(err)
+		}
+		type result struct {
+			n   int
+			err error
+		}
+		done := make(chan result, 1)
+		go func() {
+			n, err := conn.Write([]byte("frame"))
+			done <- result{n, err}
+		}()
+		<-w.took
+		_ = conn.Close()
+		start := time.Now()
+		if answered {
+			close(w.release)
+		}
+		select {
+		case got := <-done:
+			switch {
+			case answered && (got.n != 5 || got.err != nil):
+				t.Errorf("a write the OS answered after Close = %d, %v; want 5, nil", got.n, got.err)
+			case !answered && (got.n != 0 || !errors.Is(got.err, net.ErrClosed)):
+				t.Errorf("a write the OS kept past the grace = %d, %v; want 0, net.ErrClosed", got.n, got.err)
+			case !answered && time.Since(start) < closedWriteGrace/2:
+				t.Errorf("a write the OS kept returned after %v, before the grace", time.Since(start))
+			}
+		case <-time.After(3 * closedWriteGrace):
+			t.Fatalf("the write never returned after Close (answered %v)", answered)
+		}
+	}
+}
+
 func TestClosingAStreamConnEndsAWaitingRead(t *testing.T) {
 	f := newStreamFixture(t, true)
 	done := make(chan error, 1)

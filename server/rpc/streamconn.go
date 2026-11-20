@@ -25,6 +25,10 @@ import (
 //     returns [os.ErrDeadlineExceeded], how much of it got through is unknown, and the connection's
 //     write side is broken from then on: every later write fails the same way. Only Close ends the
 //     stuck call, when the OS lets it.
+//   - A write the goroutine has already handed to the OS when Close comes returns the OS's answer
+//     if it arrives within a second (or by the write's deadline, if that is sooner), and
+//     [net.ErrClosed] after that. A frame that went out whole is not reported lost: the peer may
+//     answer it and close at once, and its close must not race the write's own result.
 //
 // A deadline changed during a read or write applies to it, as on a net.Conn. After Close, a read or
 // a write fails with net.ErrClosed, on both paths.
@@ -318,7 +322,38 @@ func (p *pumpedWriter) Write(b []byte) (int, error) {
 			stop()
 		case <-p.closed:
 			stop()
-			return 0, net.ErrClosed
+			return p.answerAfterClose()
 		}
+	}
+}
+
+// closedWriteGrace is how long a write the OS already has waits for its answer once Close has come.
+// The answer is usually there already, or a scheduling moment away: the pump's goroutine, back from
+// the OS, may wait for a thread before it can hand the result over.
+const closedWriteGrace = time.Second
+
+// answerAfterClose is a handed write's answer once Close has come: the pump's, when it arrives within
+// closedWriteGrace and by the write's deadline, else net.ErrClosed. A write the OS still holds after
+// that is left to end on its own (Windows can't end it on the Close alone).
+func (p *pumpedWriter) answerAfterClose() (int, error) {
+	select {
+	case r := <-p.results:
+		return r.n, r.err
+	default:
+	}
+	past, fired, _, stop := p.dl.arm()
+	defer stop()
+	if past {
+		return 0, net.ErrClosed
+	}
+	grace := time.NewTimer(closedWriteGrace)
+	defer grace.Stop()
+	select {
+	case r := <-p.results:
+		return r.n, r.err
+	case <-fired: // nil without a deadline: only the grace bounds it
+		return 0, net.ErrClosed
+	case <-grace.C:
+		return 0, net.ErrClosed
 	}
 }
