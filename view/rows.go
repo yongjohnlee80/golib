@@ -60,7 +60,8 @@ func (v *View) Query(ctx context.Context, conn dao.DataConn) (*Rows, error) {
 //   - Post-dispatch shape checks: After the query executes on the connection, result column metadata
 //     is inspected to verify the query returned exactly one column. If the driver does not support
 //     column name inspection ([dao.ErrUnsupported]), this cardinality check falls back to the first
-//     row's Scan operation.
+//     row's Scan operation. A result with no column at all is first asked for its error: a query
+//     the database refused as it started is reported with the database's error, not as a shape.
 //
 // The returned [Rows] cursor must be closed by the caller when iteration completes.
 func (inv Invocation) Query(ctx context.Context, conn dao.DataConn) (*Rows, error) {
@@ -83,6 +84,19 @@ func (inv Invocation) Query(ctx context.Context, conn dao.DataConn) (*Rows, erro
 	case err != nil:
 		_ = rows.Close()
 		return nil, fmt.Errorf("view %s: result columns: %w", v.name, err)
+	case len(cols) == 0:
+		// No column at all is what a driver has before the database's first answer is read. A
+		// query the database refuses as it starts (a table the role may not read, a constant
+		// that can't be computed) has none, and the refusal is the rows' own error: ask for it
+		// before judging the shape, so the caller is told what the database said.
+		if !rows.Next() {
+			if qerr := rows.Err(); qerr != nil {
+				_ = rows.Close()
+				return nil, fmt.Errorf("view %s: %w", v.name, qerr)
+			}
+		}
+		_ = rows.Close()
+		return nil, fmt.Errorf("%w: %s returns 0 columns %v", ErrRow, v.name, cols)
 	case len(cols) != 1:
 		_ = rows.Close()
 		return nil, fmt.Errorf("%w: %s returns %d columns %v", ErrRow, v.name, len(cols), cols)
